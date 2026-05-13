@@ -152,7 +152,8 @@ local function start_voip_engine(session)
         adapter = g_config and g_config.adapter or socket.dft(),
         -- adapter = session.adapter or (g_config and g_config.adapter) or socket.dft(),
         aec = true,
-        aec_denoise =true
+        aec_denoise =true,
+        aec_tail = 200
     })
 
     if ok then
@@ -627,7 +628,11 @@ if call then
 end
 ]]
 function exsip.get_current_call()
-    return g_current_call
+    local incoming_number
+    if g_current_call.from then
+        incoming_number = string.match(g_current_call.from, '"Extension%s*(%d+)"')
+    end
+    return incoming_number
 end
 
 --[[
