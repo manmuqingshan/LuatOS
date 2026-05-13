@@ -215,7 +215,29 @@ local function on_init_request()
             sys.publish("WIFI_STORAGE_GET_SAVED_LIST_RSP", {list = saved_list})
         end)
     else
-        log.error("wifi_storage", "fskv 初始化失败")
+        log.error("wifi_storage", "fskv 初始化失败，使用默认配置继续运行")
+        -- 初始化失败时，仍然注册事件处理器并发布加载响应
+        -- 使用默认配置，确保 wifi_app 不会进入僵尸状态
+        sys.subscribe("WIFI_STORAGE_SAVE_REQ", function(data)
+            log.warn("wifi_storage", "fskv 不可用，跳过保存:", data.ssid)
+        end)
+
+        sys.subscribe("WIFI_STORAGE_LOAD_REQ", function()
+            sys.publish("WIFI_STORAGE_LOAD_RSP", {config = config})
+        end)
+
+        sys.subscribe("WIFI_STORAGE_SET_ENABLED_REQ", function(data)
+            config.wifi_enabled = data.enabled
+            sys.publish("WIFI_STORAGE_SET_ENABLED_RSP", {success = false, enabled = config.wifi_enabled})
+        end)
+
+        sys.subscribe("WIFI_STORAGE_ADD_TO_SAVED_LIST_REQ", function(data)
+            log.warn("wifi_storage", "存储不可用，跳过添加已保存网络:", data.ssid)
+        end)
+
+        sys.subscribe("WIFI_STORAGE_GET_SAVED_LIST_REQ", function()
+            sys.publish("WIFI_STORAGE_GET_SAVED_LIST_RSP", {list = {}})
+        end)
     end
 
     sys.publish("WIFI_STORAGE_INIT_RSP", {success = ok})
