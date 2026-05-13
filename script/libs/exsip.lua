@@ -630,7 +630,7 @@ end
 function exsip.get_current_call()
     local incoming_number
     if g_current_call.from then
-        incoming_number = string.match(g_current_call.from, '"Extension%s*(%d+)"')
+        incoming_number = string.match(g_current_call.from, ':([^:@]+)@')
     end
     return incoming_number
 end
