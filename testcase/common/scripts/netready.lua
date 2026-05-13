@@ -1,7 +1,57 @@
 local ctx_path = "/luadb/ctx.json"
 
 local netready = {}
+
+local wifi_en = gpio.setup(12, 0)
+local uartid = 3
+
+local function config_uart_gpio_input()
+    -- 将串口对应的gpio设置为输入拉低模式
+    gpio.setup(22, nil, gpio.PULLDOWN)
+    gpio.setup(23, nil, gpio.PULLDOWN)
+end
+
+local function config_uart_gpio_close()
+    -- 关闭串口对应的GPIO 引脚功能
+    gpio.close(22)
+    gpio.close(23)
+end
+
+local function uart_setup()
+    config_uart_gpio_input()
+    local uart_id = 3
+    sys.wait(1000)
+    wifi_en(1) -- 拉高wifi使能gpio
+    sys.wait(1000)
+    config_uart_gpio_close()
+    uart.setup(uart_id, 2000000, 8, 1, uart.None, uart.LSB, 2048)
+end
+
 function netready.exec(ctx, timeout)
+    log.info("hmeta.model()", hmeta.model())
+    -- -- 1602使用airlink连接wifi
+    if hmeta.model() == "Air1602" then
+        -- wifi_en(1) 
+        -- log.info("netready_1602", "使用 AirLink SPI 连接 WiFi，开始初始化")
+        -- airlink.config(airlink.CONF_SPI_ID, 1) -- SPI1
+        -- airlink.config(airlink.CONF_SPI_CS, 29) -- GPIO PA_29
+        -- airlink.config(airlink.CONF_SPI_RDY, 8) -- GPIO PA_08
+        -- airlink.config(airlink.CONF_SPI_SPEED, 8 * 1000000) -- 8MHz速度
+        -- netdrv.setup(socket.LWIP_STA, netdrv.WHALE)
+        -- netdrv.setup(socket.LWIP_AP, netdrv.WHALE)
+        -- airlink.start(airlink.MODE_SPI_MASTER)
+        -- sys.wait(1000)
+
+        uart_setup()
+        airlink.init() -- 初始化airlink
+        airlink.config(airlink.CONF_UART_ID, uartid) -- 配置airlink的串口3
+
+        netdrv.setup(socket.LWIP_STA, netdrv.WHALE)
+        netdrv.setup(socket.LWIP_AP, netdrv.WHALE)
+
+        airlink.start(airlink.MODE_UART) -- 启动airlink的串口模式
+        sys.wait(100)
+    end
     -- 应该 根据 型号和上下文, 进行联网操作
     if mobile then
         -- 什么都不做
@@ -14,16 +64,18 @@ function netready.exec(ctx, timeout)
             wlan.setMode(wlan.STATION) -- 默认也是这个模式,不调用也可以
             wlan.connect(ssid, password, 1)
         end
-    elseif wlan and wlan.init and rtos.bsp() ~= "Air1601" then
+    elseif wlan and wlan.init and hmeta.model() ~= "Air1601" then
         log.info("netready", "使用 WiFi 网络开始初始化")
         local ssid = ctx.wifi_ssid
         local password = ctx.wifi_password
         wlan.init()
         wlan.setMode(wlan.STATION) -- 默认也是这个模式,不调用也可以
         wlan.connect(ssid, password, 1)
+        log.info("wlan", "connect", ssid, password)
+        socket.dft(socket.LWIP_STA)
     elseif socket then
         -- 1601的话初始化以太网
-        if rtos.bsp() == "Air1601" then
+        if hmeta.model() == "Air1601" then
             log.info("netready_1601", "使用以太网，开始初始化")
             local result = spi.setup(1, -- spi_id
             nil, 0, -- CPHA
