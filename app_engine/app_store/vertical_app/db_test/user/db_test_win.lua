@@ -30,6 +30,9 @@ local lb_params = nil  -- 操作参数
 local lb_status = nil  -- 响应状态
 local lb_data = nil    -- 返回数据
 
+-- 异步操作状态：nil/"delete"/"flow"
+local pending_action = nil
+
 ----------------------------------------------------------------------
 -- 登录状态检查
 ----------------------------------------------------------------------
@@ -123,11 +126,10 @@ local function do_delete()
         log.warn("db", "请先登录IOT账号")
         return
     end
-    local uk = "test_" .. os.time()
-    exapp.add_record({cls = 99, uni_key = uk, i1 = 1, s1 = "待删除"})
-    exapp.delete_record({cls = 99, uni_key = uk})
-    log.info("db", "delete_record 已调用 -> 查看日志中的 [db] 标签")
-    show_data("delete_record", "cls=99, uni_key=" .. uk, "已发送", "add后立即delete")
+    pending_action = "delete"
+    exapp.list_record({cls = 99, sort = "i1", desc = true, size = 5})
+    log.info("db", "list_record 已调用（准备删除第一条记录）-> 查看日志中的 [db] 标签")
+    show_data("delete_record", "先list获取id...", "已发送", "将删除list第一条记录")
 end
 
 local function do_flow()
@@ -137,10 +139,9 @@ local function do_flow()
     end
     local nick = get_nickname()
     local uk = "flow_" .. os.time()
+    pending_action = "flow"
     exapp.add_record({cls = 99, uni_key = uk, i1 = 50, s1 = nick})
-    exapp.list_record({cls = 99, size = 3})
-    exapp.delete_record({cls = 99, uni_key = uk})
-    log.info("db", "完整流程已调用：add -> list -> delete")
+    log.info("db", "完整流程 add 已调用 -> 查看日志 [db] 标签")
     show_data("完整流程", "add->list->delete", "已发送", "uni_key=" .. uk)
 end
 
@@ -281,11 +282,30 @@ end
 ----------------------------------------------------------------------
 -- DB 结果回调
 local function on_db_result(endpoint, success, info)
-    local op_name = endpoint
+    -- 异步流程链：add -> list -> delete
+    if success and endpoint == "add" and pending_action == "flow" then
+        exapp.list_record({cls = 99, size = 3, sort = "i1", desc = true})
+        show_data("完整流程", "add完成 -> list中", "进行中", "")
+        return
+    end
+    if success and endpoint == "list" and pending_action then
+        if type(info) == "table" and info.records and #info.records > 0 then
+            local rec = info.records[1]
+            local label = pending_action == "delete" and "delete_record" or "完整流程"
+            pending_action = nil
+            exapp.delete_record({cls = 99, id = rec.id})
+            log.info("db", label .. " delete 已调用 -> id=" .. rec.id)
+            show_data(label, "cls=99, id=" .. rec.id, "已发送", "uni_key=" .. (rec.uni_key or ""))
+        else
+            pending_action = nil
+            show_data("delete", "--", "失败", "无记录可删除，请先执行查询")
+        end
+        return
+    end
     if success then
-        show_data(op_name, "--", "成功", tostring(info or ""))
+        show_data(endpoint, "--", "成功", tostring(info or ""))
     else
-        show_data(op_name, "--", "失败", tostring(info or ""))
+        show_data(endpoint, "--", "失败", tostring(info or ""))
     end
 end
 

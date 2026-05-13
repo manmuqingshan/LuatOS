@@ -186,22 +186,21 @@ end
 local function iot_gen_device_uid()
     if device_uid then return device_uid end
     local model = rtos.bsp()
-    if model:find("Air1601") or model:find("Air1602") then
+    if model:find("Air1601") or model:find("Air1602")  or model:find("PC") then
         device_uid = mcu.unique_id()
     elseif model:find("Air8101") or model:find("Air6205") then
-        -- WiFi MAC 转数值
-        local mac = wlan.getMac()
-        if mac then
-            local hex = mac:gsub("[^%x]", "")
-            device_uid = tonumber(hex, 16) or 0
-        else
-            device_uid = 0
-        end
+        -- WiFi MAC 
+        device_uid = wlan.getMac()
+        -- local mac = wlan.getMac()
+        -- if mac then
+        --     local hex = mac:gsub("[^%x]", "")
+        --     device_uid = tonumber(hex, 16) or 0
+        -- else
+        --     device_uid = 0
+        -- end
     elseif model:find("Air780E") or model:find("Air8000") then
         -- 4G IMEI，保持字符串避免科学计数法
         device_uid = mobile.imei() or "0"
-    elseif model == "PC" or model:lower():find("pc") then
-        device_uid = "PC"
     else
         device_uid = mcu.unique_id() or "unknown"
     end
@@ -3350,13 +3349,15 @@ end
 @api exapp.list_record(params)
 @table params 查询参数表
 @int params.cls 业务表标识（必填）
+@string params.uni_key 唯一键（可选）
 @int params.page 页码（可选，默认 1）
-@int params.size 每页数量（可选，默认 10）
-@string params.sort 排序字段（可选）
-@return nil 无返回值，结果通过回调获取
+@int params.size 每页数量（可选，默认 20，最大 100）
+@string params.sort 排序字段（可选，如 "i1 desc"、"d1 asc"）
+@bool params.is_me 是否仅查询当前设备数据（可选，默认 false）
+@return nil 无返回值，结果通过 DB_RESULT 消息异步返回
 
 @usage
-exapp.list_record({cls = 2, sort = "i1_desc", size = 10})
+exapp.list_record({cls = 2, sort = "i1 desc", size = 10})
 exapp.list_record({cls = 2, filter = {aks = {"s1"}, acs = {"eq"}, avs = {"12"}}})
 ]]
 function exapp.list_record(params, appid)
@@ -3367,12 +3368,16 @@ function exapp.list_record(params, appid)
     local body = {
         cls = tonumber(params.cls) or 0,
         page = tonumber(params.page) or 1,
-        size = tonumber(params.size) or 10,
+        size = tonumber(params.size) or 20,
     }
+    if params.uni_key then body.uni_key = params.uni_key end
     if params.sort then body.sort = params.sort end
     -- desc：默认 true（降序），传 false 则升序
     if params.desc == false then
         body.desc = false
+    end
+    if params.is_me == true then
+        body.is_me = true
     end
     if params.filter and type(params.filter) == "table" then
         body.filter = params.filter
@@ -3392,27 +3397,25 @@ end
 @api exapp.delete_record(params)
 @table params 删除参数表
 @int params.cls 业务表标识（必填）
-@string params.uni_key 要删除的记录主键（必填）
+@string params.id 服务端记录 ID（必填，来自 list_record 返回的 records[i].id）
 @return nil 无返回值
 
 @usage
-exapp.delete_record({cls = 2, uni_key = "user_001"})
+exapp.delete_record({cls = 2, id = "2053765709500825602"})
 ]]
 function exapp.delete_record(params, appid)
     if not network_ready then
         log.warn("db", "delete_record: network not ready")
         return
     end
+    if not params.id then
+        log.warn("db", "delete_record: id is required")
+        return
+    end
     local body = {
         cls = tonumber(params.cls) or 0,
+        id = params.id,
     }
-    if params.id then
-        body.id = params.id
-    elseif params.filter and type(params.filter) == "table" then
-        body.filter = params.filter
-    elseif params.uni_key then
-        body.filter = {aks = {"uni_key"}, acs = {"eq"}, avs = {params.uni_key}}
-    end
     db_request("delete", body, appid, function(success, result)
         if success then
             log.info("db", "delete_record ok")

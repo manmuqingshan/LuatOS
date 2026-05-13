@@ -1,7 +1,7 @@
 {
   "app_name_cn": "数据库测试",
   "app_name_en": "db_test",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publish_time": "2026-05-11 12:00:00",
   "category": "工具",
   "description": "测试云端数据库增删查功能",
