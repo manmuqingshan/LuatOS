@@ -700,7 +700,7 @@ local function tcp_master_main_task_func(instance)
             -- 等待事件
             result, param = libnet.wait(instance.TASK_NAME, 0, instance.socket_client)
             if not result then
-                log.info("exmodbus", "连接断开")
+                log.info("exmodbus", "断开连接")
                 break
             end
         end
@@ -708,20 +708,20 @@ local function tcp_master_main_task_func(instance)
         -- 异常处理
         ::EXCEPTION_PROC::
 
-        -- 检查是否需要退出
-        if instance.should_exit then
-            if debug_enabled then
-                log.info("exmodbus", "收到退出信号，停止重连")
-            end
-            break
-        end
-
         -- 关闭连接
         if instance.socket_client then
             libnet.close(instance.TASK_NAME, 5000, instance.socket_client)
             socket.release(instance.socket_client)
             instance.socket_client = nil
             instance.is_connected = false
+        end
+
+        -- 检查是否需要退出
+        if instance.should_exit then
+            if debug_enabled then
+                log.info("exmodbus", "收到退出信号，停止重连")
+            end
+            break
         end
 
         -- 等待 5 秒后重试
@@ -1119,7 +1119,7 @@ local function tcp_slave_main_task_func(instance)
             -- 等待事件
             result, param = libnet.wait(instance.TASK_NAME, 0, instance.netc)
             if not result then
-                log.info("exmodbus", "客户端断开连接")
+                log.info("exmodbus", "断开连接")
                 break
             end
         end
@@ -1127,19 +1127,19 @@ local function tcp_slave_main_task_func(instance)
         -- 异常处理
         ::EXCEPTION_PROC::
 
+        -- 关闭连接
+        if instance.netc then
+            libnet.close(instance.TASK_NAME, 5000, instance.netc)
+            socket.release(instance.netc)
+            instance.netc = nil
+        end
+
         -- 检查是否需要退出
         if instance.should_exit then
             if debug_enabled then
                 log.info("exmodbus", "收到退出信号，停止重连")
             end
             break
-        end
-
-        -- 关闭连接
-        if instance.netc then
-            libnet.close(instance.TASK_NAME, 5000, instance.netc)
-            socket.release(instance.netc)
-            instance.netc = nil
         end
 
         -- 等待 5 秒后重试
@@ -1188,24 +1188,11 @@ function modbus:destroy()
     -- 设置退出标志，让主任务循环检测后主动退出
     self.should_exit = true
 
-    -- 关闭 TCP 连接（从站）
-    if self.netc then
-        -- 断开 socket 链接
-        libnet.close(self.TASK_NAME, 5000, self.netc)
-        -- 释放 socket 对象
-        socket.release(self.netc)
-        self.netc = nil
+    -- 主动关闭主/从站连接
+    if self.socket_client or self.netc then
+        sys.sendMsg(self.TASK_NAME, socket.EVENT, 1)
     end
-    
-    -- 关闭 TCP 连接（主站）
-    if self.socket_client then
-        -- 断开 socket 链接
-        libnet.close(self.TASK_NAME, 5000, self.socket_client)
-        -- 释放 socket 对象
-        socket.release(self.socket_client)
-        self.socket_client = nil
-        self.is_connected = false
-    end
+
     -- 释放缓冲区
     if self.recv_buff then
         self.recv_buff:free()
