@@ -1,6 +1,6 @@
 #include "luat_audio_data_codec.h"
 #include "luat_base.h"
-#include "luat_audio_api.h"
+#include "luat_audio_core.h"
 #include "luat_audio_request.h"
 #include "luat_audio_channel.h"
 #include "luat_common_api.h"
@@ -35,6 +35,7 @@ typedef struct
 	void *request_lock;	// 请求块列表操作保护锁
 	void *tts_wait_sem;	// tts任务等待信号量
 	uint32_t next_request_id;		// 下一个请求id
+	uint8_t default_driver_index;	// 默认驱动索引
 }luat_audio_ctrl_t;
 
 static luat_audio_ctrl_t _luat_audio;
@@ -178,6 +179,7 @@ static void luat_audio_common_task(void *param)
 {
 	luat_event_t out_event;
 	luat_audio_request_block_t *request_block;
+	uint8_t request_change;
 	for(;;) {
 		luat_rtos_event_recv(_luat_audio.common_task_handle, 0, &out_event, NULL, 0);
 		switch (out_event.id) {
@@ -211,13 +213,15 @@ static void luat_audio_common_task(void *param)
 		case LUAT_AUDIO_EV_RX_ENOUGH_DATA:
 			break;
 		case LUAT_AUDIO_EV_REQUEST:
+			request_change = 0;
 			luat_mutex_lock(_luat_audio.request_lock);
 			if (!_luat_audio.request_block) {	// 没有请求块，找下一个请求块
 				_audio_find_next_request_block();
 				if (!_luat_audio.request_block) {	// 找不到请求块，直接返回
 					break;
 				}
-			} else {
+				request_change = 1;
+			} else {	// 有请求块，检查一下队列里是否有更高优先级的请求块
 				if (!luat_llist_empty(&_luat_audio.request_block_list)) { // 请求队列不空的情况下，检查一下是否有更高优先级的请求块
 					request_block = (luat_audio_request_block_t *)_luat_audio.request_block_list.next;
 					if (request_block->priority > _luat_audio.request_block->priority) {
@@ -227,10 +231,14 @@ static void luat_audio_common_task(void *param)
 							luat_llist_add_tail(&_luat_audio.request_block->node, &_luat_audio.request_block_list);
 						}
 						_luat_audio.request_block = request_block;
+						request_change = 1;
 					}
 				}
 			}
 			luat_mutex_unlock(_luat_audio.request_lock);
+			if (request_change) {
+				// 请求块有变化，需要重新播放
+			}
 			break;
 		}
 	}
@@ -259,12 +267,15 @@ int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, struct luat
 	return -LUAT_ERROR_ID_INVALID; // 驱动注册失败，超过最大支持数量
 }
 
-luat_audio_driver_ctrl_t *luat_audio_driver_probe(struct luat_audio_driver_probe *probe)
+luat_audio_driver_ctrl_t *luat_audio_driver_probe(luat_audio_driver_probe_t *probe)
 {
 	int i;
 	if (!probe) {
-		if (_luat_audio.driver_ctrl[0].opts) {
-			return &_luat_audio.driver_ctrl[0];
+		if (_luat_audio.driver_ctrl[_luat_audio.default_driver_index].opts) {
+			LLOGC(luat_audio_debug_flag, "use default driver index: %d %d-%d", _luat_audio.default_driver_index,
+				_luat_audio.driver_ctrl[_luat_audio.default_driver_index].probe.bus_type,
+				_luat_audio.driver_ctrl[_luat_audio.default_driver_index].probe.bus_id);
+			return &_luat_audio.driver_ctrl[_luat_audio.default_driver_index];
 		}
 		return NULL;
 	}
@@ -274,6 +285,21 @@ luat_audio_driver_ctrl_t *luat_audio_driver_probe(struct luat_audio_driver_probe
 		}
 	}
 	return NULL;
+}
+
+int luat_audio_driver_set_default(luat_audio_driver_probe_t *probe)
+{
+	int i;
+	if (!probe) {
+		return -LUAT_ERROR_PARAM_INVALID;
+	}
+	for (i = 0; i < LUAT_AUDIO_DRIVER_MAX; i++) {
+		if (_luat_audio.driver_ctrl[i].opts != NULL && _luat_audio.driver_ctrl[i].probe.bus_type == probe->bus_type && _luat_audio.driver_ctrl[i].probe.bus_id == probe->bus_id) {
+			_luat_audio.default_driver_index = i;
+			return LUAT_ERROR_NONE;
+		}
+	}
+	return -LUAT_ERROR_PARAM_INVALID;
 }
 
 int luat_audio_request_init(luat_audio_request_block_t *req)

@@ -19,11 +19,11 @@
 #include "luat_common_api.h"
 #include "luat_audio_define.h"
 
-struct luat_audio_driver_probe
+typedef struct luat_audio_driver_probe
 {
     uint8_t bus_type;
     uint8_t bus_id;
-};
+} luat_audio_driver_probe_t;
 
 /**
  * @brief 音频驱动控制器结构
@@ -36,7 +36,7 @@ struct luat_audio_driver_ctrl
     void *driver_data;  /**< 驱动私有数据指针 */
     void *user_data;     /**< 用户自定义数据指针 */
     struct luat_audio_channel *data_channel;  /**< 关联的音频通道指针 */
-    struct luat_audio_driver_probe probe;  /**< 驱动匹配结构 */
+    luat_audio_driver_probe_t probe;  /**< 驱动匹配结构 */
     union {
         uint32_t *play_buff;  /**< 播放缓冲区指针 */
         uint8_t *play_buff_byte;  /**< 播放缓冲区指针，8位对齐 */
