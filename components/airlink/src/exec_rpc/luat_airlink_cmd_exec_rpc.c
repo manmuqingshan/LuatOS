@@ -50,8 +50,8 @@ int luat_airlink_cmd_exec_rpc(luat_airlink_cmd_t* cmd, void* userdata) {
 
     uint64_t start_tick = luat_mcu_tick64_ms();
     
-    LLOGD("rpc exec: rpc_id=0x%04X msg_type=%d req_len=%d pkgid=0x%llx", 
-          rpc_id, msg_type, req_len, req_pkgid);
+    // LLOGD("rpc exec: rpc_id=0x%04X msg_type=%d req_len=%d pkgid=0x%llx",
+    //       rpc_id, msg_type, req_len, req_pkgid);
 
     // NOTIFY: 传给 notify_handler，不发任何响应
     if (msg_type == AIRLINK_RPC_MSG_TYPE_NOTIFY) {
@@ -63,7 +63,7 @@ int luat_airlink_cmd_exec_rpc(luat_airlink_cmd_t* cmd, void* userdata) {
             LLOGW("rpc exec: 未找到 rpc_id=0x%04X 的 notify handler", rpc_id);
         } else {
             uint64_t elapsed = luat_mcu_tick64_ms() - start_tick;
-            LLOGD("rpc exec: notify handled (took %llums rc=%d)", elapsed, rc);
+        // LLOGD("rpc exec: notify handled (took %llums rc=%d)", elapsed, rc);
         }
         return 0;
     }
@@ -101,7 +101,7 @@ int luat_airlink_cmd_exec_rpc(luat_airlink_cmd_t* cmd, void* userdata) {
             LLOGE("rpc exec: handler failed rc=%d resp_len=%d (took %llums)", rc, resp_len, elapsed);
         }
     } else {
-        LLOGD("rpc exec: request handled resp_len=%d (took %llums)", resp_len, elapsed);
+        // LLOGD("rpc exec: request handled resp_len=%d (took %llums)", resp_len, elapsed);
     }
 
     luat_airlink_result_send(resp_buf, (size_t)(10 + resp_len));
