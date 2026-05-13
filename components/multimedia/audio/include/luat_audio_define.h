@@ -55,17 +55,13 @@ enum {
     LUAT_AUDIO_DRIVER_MODE_CALL, /**< 通话模式 */
     LUAT_AUDIO_DRIVER_MODE_CALL_WITH_BUFFER, /**< 通话带缓冲区模式 */
 
-    LUAT_AUDIO_CODEC_TYPE_WAV = 0, /**< WAV 编解码器 */
-    LUAT_AUDIO_CODEC_TYPE_AMR,     /**< AMR 编解码器 */
-    LUAT_AUDIO_CODEC_TYPE_TTS,     /**< TTS 编解码器 */
-    LUAT_AUDIO_CODEC_TYPE_MP3,     /**< MP3 编解码器 */
-    LUAT_AUDIO_CODEC_TYPE_OPUS,    /**< OPUS 编解码器 */
-    LUAT_AUDIO_CODEC_TYPE_G711,    /**< G711 编解码器 */
-    LUAT_AUDIO_CODEC_TYPE_MAX,     /**< 最大编解码器类型 */
-
-    LUAT_AUDIO_CODEC_DECODE_DONE = 0, /**< 编码完成状态 */
-
-    LUAT_AUDIO_CHANNEL_TX_FIFO_DONE = 0, /**< 发送FIFO完成状态 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_WAV = 0, /**< WAV 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_AMR,     /**< AMR 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_TTS,     /**< TTS 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_MP3,     /**< MP3 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_OPUS,    /**< OPUS 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_G711,    /**< G711 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_MAX,     /**< 最大编解码器类型 */
 
     LUAT_AUDIO_TTS_EVENT_START = 0, /**< TTS 开始事件 */
     LUAT_AUDIO_TTS_EVENT_NEW_DATA, /**< TTS 新数据可用事件 */
