@@ -727,6 +727,10 @@ local function tcp_master_main_task_func(instance)
         -- 等待 5 秒后重试
         sys.wait(5000)
     end
+
+    -- 释放资源
+    sys.cleanMsg(instance.TASK_NAME)
+    sys.taskDel(instance.TASK_NAME)
 end
 
 -- 解析 TCP 请求帧（从站使用）
@@ -1141,6 +1145,10 @@ local function tcp_slave_main_task_func(instance)
         -- 等待 5 秒后重试
         sys.wait(5000)
     end
+
+    -- 释放资源
+    sys.cleanMsg(instance.TASK_NAME)
+    sys.taskDel(instance.TASK_NAME)
 end
 
 -- 创建一个新的实例；
@@ -1179,8 +1187,6 @@ end
 function modbus:destroy()
     -- 设置退出标志，让主任务循环检测后主动退出
     self.should_exit = true
-    -- 停止任务
-    sys.taskDel(self.TASK_NAME)
 
     -- 关闭 TCP 连接（从站）
     if self.netc then
@@ -1238,6 +1244,7 @@ function modbus:read_internal(config)
             -- 解析响应数据；
             parsed_data = parse_tcp_response(response, config, function_code, transaction_id)
             parsed_data.raw_response = response
+            parsed_data.raw_request = request_frame
         end
     elseif config.raw_request then
         -- 发送请求并等待响应；
@@ -1248,6 +1255,7 @@ function modbus:read_internal(config)
             -- 直接返回响应结果和原始响应数据；
             parsed_data.status = exmodbus_ref.STATUS_SUCCESS
             parsed_data.raw_response = response
+            parsed_data.raw_request = config.raw_request
         end
     end
 
@@ -1283,6 +1291,7 @@ function modbus:write_internal(config)
             -- 解析响应数据；
             parsed_data = parse_tcp_response(response, config, function_code, transaction_id)
             parsed_data.raw_response = response
+            parsed_data.raw_request = request_frame
         end
     elseif config.raw_request then
         -- 发送请求并等待响应；
@@ -1293,6 +1302,7 @@ function modbus:write_internal(config)
             -- 直接返回响应结果和原始响应数据；
             parsed_data.status = exmodbus_ref.STATUS_SUCCESS
             parsed_data.raw_response = response
+            parsed_data.raw_request = config.raw_request
         end
     end
 
