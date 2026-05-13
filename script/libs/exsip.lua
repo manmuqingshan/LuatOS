@@ -212,7 +212,11 @@ local function sip_event_handler(event, action, payload)
         if action == "incoming" then
             g_current_call = {
                 from = payload.from,
-                call_id = payload.call_id
+                call_id = payload.call_id,
+                headers = payload.headers,
+                remote_sdp = payload.remote_sdp,
+                body = payload.body,
+                uri = payload.uri
             }
             emit_callback("call", "incoming", g_current_call)
             if g_config and g_config.auto_answer then
@@ -378,9 +382,9 @@ function exsip.start()
 
     -- 订阅网络状态事件
     if not g_netdrv_subscribed then
-        sys.subscribe("NETDRV_NETWORK_STATUS", netdrv_network_status_handler)
+        sys.subscribe("EXLIB_NETDRV_NETWORK_STATUS", netdrv_network_status_handler)
         g_netdrv_subscribed = true
-        log_info("subscribed to NETDRV_NETWORK_STATUS")
+        log_info("subscribed to EXLIB_NETDRV_NETWORK_STATUS")
     end
 
     sipclient.start({
@@ -424,9 +428,9 @@ function exsip.stop()
 
     -- 取消订阅网络状态事件
     if g_netdrv_subscribed then
-        sys.unsubscribe("NETDRV_NETWORK_STATUS", netdrv_network_status_handler)
+        sys.unsubscribe("EXLIB_NETDRV_NETWORK_STATUS", netdrv_network_status_handler)
         g_netdrv_subscribed = false
-        log_info("unsubscribed from NETDRV_NETWORK_STATUS")
+        log_info("unsubscribed from EXLIB_NETDRV_NETWORK_STATUS")
     end
 
     local timeout = 1000
