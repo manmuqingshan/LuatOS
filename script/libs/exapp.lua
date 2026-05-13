@@ -204,7 +204,7 @@ local function iot_gen_device_uid()
     else
         device_uid = mcu.unique_id() or "unknown"
     end
-    log.info("ea", "device_uid generated:", model, device_uid)
+    -- log.info("ea", "device_uid generated:", model, device_uid)
     return device_uid
 end
 
@@ -431,14 +431,14 @@ local function app_task(app_path)
     local app_id = meta_appid or app_name
     my_env.log.info("ea", "DB appid:", app_id)
 
-    my_env.exapp.add_record = function(params)
-        return exapp.add_record(params, app_id)
+    my_env.exapp.add_record = function(params, callback)
+        return exapp.add_record(params, app_id, callback)
     end
-    my_env.exapp.list_record = function(params)
-        return exapp.list_record(params, app_id)
+    my_env.exapp.list_record = function(params, callback)
+        return exapp.list_record(params, app_id, callback)
     end
-    my_env.exapp.delete_record = function(params)
-        return exapp.delete_record(params, app_id)
+    my_env.exapp.delete_record = function(params, callback)
+        return exapp.delete_record(params, app_id, callback)
     end
 
     -- ==============================================
@@ -2480,7 +2480,7 @@ local function http_request(params)
         ["Content-Type"] = "application/json"
     }, body, { timeout = 10000 }).wait()
 
-    log.info("ea", json.encode(body))
+    -- log.info("ea", json.encode(body))
 
     -- 处理通信异常（code < 0）
     if code < 0 then
@@ -3264,7 +3264,7 @@ local function db_request(endpoint, body_params, appid, callback)
     headers["Content-Type"] = "application/json"
     log.info("db", ">>> REQ", url)
     log.info("db", ">>> BODY", body)
-    log.info("db", ">>> HEADERS", json.encode(headers))
+    -- log.info("db", ">>> HEADERS", json.encode(headers))
     sys.taskInit(function()
         local code, _, resp_body = http.request("POST", url, headers, body, { timeout = 10000 }).wait()
         log.info("db", "<<< RESP code", code)
@@ -3296,21 +3296,27 @@ end
 --[[
 添加或更新一条数据记录
 
-@api exapp.add_record(params)
+@api exapp.add_record(params, callback)
 @table params 记录参数表
 @int params.cls 业务表标识（必填）
 @string params.uni_key 业务主键（可选，同名则覆盖更新）
 @string params.s1-s4 字符串字段
 @int params.i1-i4 整数字段
 @int params.d1-d2 时间戳字段
-@return nil 无返回值
+@function[opt] callback 结果回调 function(success, result) end，可选
 
 @usage
+-- 无回调
 exapp.add_record({cls = 2, uni_key = "user_001", i1 = 100, s1 = "玩家A"})
+-- 带回调
+exapp.add_record({cls = 2, uni_key = "user_001", i1 = 100, s1 = "玩家A"}, function(success, result)
+    if success then log.info("新建成功") else log.warn("新建失败", result) end
+end)
 ]]
-function exapp.add_record(params, appid)
+function exapp.add_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "add_record: network not ready")
+        if callback then callback(false, "网络未就绪") end
         return
     end
     local body = {
@@ -3340,13 +3346,14 @@ function exapp.add_record(params, appid)
         else
             log.warn("db", "add_record failed", result)
         end
+        if callback then callback(success, result) end
     end)
 end
 
 --[[
 查询记录列表
 
-@api exapp.list_record(params)
+@api exapp.list_record(params, callback)
 @table params 查询参数表
 @int params.cls 业务表标识（必填）
 @string params.uni_key 唯一键（可选）
@@ -3354,15 +3361,22 @@ end
 @int params.size 每页数量（可选，默认 20，最大 100）
 @string params.sort 排序字段（可选，如 "i1 desc"、"d1 asc"）
 @bool params.is_me 是否仅查询当前设备数据（可选，默认 false）
-@return nil 无返回值，结果通过 DB_RESULT 消息异步返回
+@function[opt] callback 结果回调 function(success, data) end，可选。data.records 为记录数组，每条含 id、uni_key、s1-s4、i1-i4、d1-d2
 
 @usage
 exapp.list_record({cls = 2, sort = "i1 desc", size = 10})
-exapp.list_record({cls = 2, filter = {aks = {"s1"}, acs = {"eq"}, avs = {"12"}}})
+exapp.list_record({cls = 2, sort = "i1 desc", size = 10}, function(success, data)
+    if success and data.records then
+        for _, rec in ipairs(data.records) do
+            log.info("id=" .. rec.id, "i1=" .. rec.i1)
+        end
+    end
+end)
 ]]
-function exapp.list_record(params, appid)
+function exapp.list_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "list_record: network not ready")
+        if callback then callback(false, "网络未就绪") end
         return
     end
     local body = {
@@ -3388,28 +3402,34 @@ function exapp.list_record(params, appid)
         else
             log.warn("db", "list_record failed", result)
         end
+        if callback then callback(success, result) end
     end)
 end
 
 --[[
 删除指定记录
 
-@api exapp.delete_record(params)
+@api exapp.delete_record(params, callback)
 @table params 删除参数表
 @int params.cls 业务表标识（必填）
 @string params.id 服务端记录 ID（必填，来自 list_record 返回的 records[i].id）
-@return nil 无返回值
+@function[opt] callback 结果回调 function(success, result) end，可选
 
 @usage
 exapp.delete_record({cls = 2, id = "2053765709500825602"})
+exapp.delete_record({cls = 2, id = "2053765709500825602"}, function(success, result)
+    if success then log.info("删除成功") else log.warn("删除失败", result) end
+end)
 ]]
-function exapp.delete_record(params, appid)
+function exapp.delete_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "delete_record: network not ready")
+        if callback then callback(false, "网络未就绪") end
         return
     end
     if not params.id then
         log.warn("db", "delete_record: id is required")
+        if callback then callback(false, "id为空") end
         return
     end
     local body = {
@@ -3422,6 +3442,7 @@ function exapp.delete_record(params, appid)
         else
             log.warn("db", "delete_record failed", result)
         end
+        if callback then callback(success, result) end
     end)
 end
 
