@@ -1,3 +1,6 @@
+#ifndef __LUAT_AUDIO_DSP__
+#define __LUAT_AUDIO_DSP__
+
 /**
  * @file luat_audio_dsp.h
  * @brief LuatOS 音频DSP处理模块接口定义
@@ -9,9 +12,6 @@
  * @ingroup audio
  * @{
  */
-
-#ifndef __LUAT_AUDIO_DSP__
-#define __LUAT_AUDIO_DSP__
 
 #include "luat_base.h"
 #include "luat_rtos.h"

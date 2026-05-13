@@ -134,7 +134,7 @@ typedef struct luat_audio_data_codec_opts {
      * @param user_data 用户自定义数据指针，用于传递额外信息
      * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
      */
-    int (*tts_decode)(struct luat_audio_data_codec* codec, const void *text, uint32_t len, void *user_data);
+    int (*tts_decode)(struct luat_audio_data_codec* codec, const char *text, uint32_t len, void *user_data);
 
     /**
      * @brief 设置TTS参数

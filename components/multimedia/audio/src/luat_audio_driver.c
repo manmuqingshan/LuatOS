@@ -152,39 +152,86 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, uint8_t mode, u
             return -LUAT_ERROR_OPERATION_FAILED;
         }
         ctrl->state = LUAT_AUDIO_DRIVER_STATE_ACTIVE;
+        ctrl->tx_is_work = 0;
+        ctrl->rx_is_work = 0;
     }
+    LLOGC(luat_audio_debug_flag, "audio driver tx is work %d rx is work %d ", ctrl->tx_is_work, ctrl->rx_is_work);
     if (LUAT_AUDIO_DRIVER_STATE_ACTIVE == ctrl->state) {
         switch (mode) {
             case LUAT_AUDIO_DRIVER_MODE_PLAY:
-                if (ctrl->opts->support_full_loop) {
+                if (ctrl->tx_is_work) { // 已经在发送音频数据，不需要重新启动
+                    if (ctrl->opts->rx_interrupt_switch) {
+                        ctrl->opts->rx_interrupt_switch(ctrl, 0);
+                    }
+                    ret = LUAT_ERROR_NONE;
+                    break;
+                }
+                if (ctrl->opts->support_full_loop) { // 支持全双工模式
                     ret = ctrl->opts->start_full_loop(ctrl, &ctrl->play_buff, one_block_len, block_nums, &ctrl->record_buff, one_block_len, block_nums);
-                } else if (ctrl->opts->support_tx_loop){
+                    if (!ret) {
+                        ctrl->tx_is_work = 1;
+                        ctrl->rx_is_work = 1;
+                    }
+                    if (ctrl->opts->rx_interrupt_switch) {
+                        ctrl->opts->rx_interrupt_switch(ctrl, 0);
+                    }
+                } else if (ctrl->opts->support_tx_loop){  // 支持单向发送模式
                     ret = ctrl->opts->start_tx_loop(ctrl, &ctrl->play_buff, one_block_len, block_nums);
+                    if (!ret) {
+                        ctrl->tx_is_work = 1;
+                    }
                 } else {
-                    ret = -LUAT_ERROR_CMD_NOT_SUPPORT;
+                    ret = -LUAT_ERROR_PERMISSION_DENIED;
                 }
                 break;
             case LUAT_AUDIO_DRIVER_MODE_RECORD:
-                if (ctrl->opts->support_full_loop) {
+                if (ctrl->rx_is_work) { // 已经在接收音频数据，不需要重新启动
+                    ret = LUAT_ERROR_NONE;
+                    break;
+                }
+                if (ctrl->opts->support_full_loop) { // 支持全双工模式
                     ret = ctrl->opts->start_full_loop(ctrl, &ctrl->play_buff, one_block_len, block_nums, &ctrl->record_buff, one_block_len, block_nums);
-                } else if (ctrl->opts->support_rx_loop){
+                    if (!ret) {
+                        ctrl->tx_is_work = 1;
+                        ctrl->rx_is_work = 1;
+                    }
+                } else if (ctrl->opts->support_rx_loop){  // 支持单向接收模式
                     ret = ctrl->opts->start_rx_loop(ctrl, &ctrl->record_buff, one_block_len, block_nums);
+                    if (!ret) {
+                        ctrl->rx_is_work = 1;
+                    }
                 } else {
-                    ret = -LUAT_ERROR_CMD_NOT_SUPPORT;
+                    ret = -LUAT_ERROR_PERMISSION_DENIED;
                 }
                 break;
             case LUAT_AUDIO_DRIVER_MODE_CALL:
-                if (ctrl->opts->support_full_loop) {
+                if (ctrl->tx_is_work && ctrl->rx_is_work) { // 已经在双工模式中，不需要重新启动
+                    ret = LUAT_ERROR_NONE;
+                    break;
+                }
+                if (ctrl->opts->support_full_loop) { // 支持全双工模式
                     ret = ctrl->opts->start_full_loop(ctrl, &ctrl->play_buff, one_block_len, block_nums, &ctrl->record_buff, one_block_len, block_nums);
+                    if (!ret) {
+                        ctrl->tx_is_work = 1;
+                        ctrl->rx_is_work = 1;
+                    }
                 } else {
-                    ret = -LUAT_ERROR_CMD_NOT_SUPPORT;
+                    ret = -LUAT_ERROR_PERMISSION_DENIED;
                 }
                 break;
             case LUAT_AUDIO_DRIVER_MODE_CALL_WITH_BUFFER:
-                if (ctrl->opts->support_full_loop) {
+                if (ctrl->tx_is_work && ctrl->rx_is_work) { // 已经在双工模式中，不需要重新启动
+                    ret = LUAT_ERROR_NONE;
+                    break;
+                }
+                if (ctrl->opts->support_full_loop) { // 支持全双工模式
                     ret = ctrl->opts->start_full_loop_with_play_buff(ctrl, play_buff, one_block_len, block_nums, &ctrl->record_buff, one_block_len, block_nums);
+                    if (!ret) {
+                        ctrl->tx_is_work = 1;
+                        ctrl->rx_is_work = 1;
+                    }
                 } else {
-                    ret = -LUAT_ERROR_CMD_NOT_SUPPORT;
+                    ret = -LUAT_ERROR_PERMISSION_DENIED;
                 }
                 break;
         }
@@ -196,17 +243,15 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, uint8_t mode, u
         }
         ctrl->state = LUAT_AUDIO_DRIVER_STATE_RUNNING;
     }
+    LLOGC(luat_audio_debug_flag, "audio driver tx is work %d rx is work %d ", ctrl->tx_is_work, ctrl->rx_is_work);
     LLOGC(luat_audio_debug_flag, "audio driver check codec power %d , param %d %d %d", ctrl->codec_power_state,
         ctrl->codec_power_ctrl_enable, ctrl->codec_power_pin, ctrl->codec_power_on_level);
     if (!ctrl->codec_power_state) {
         if (ctrl->codec_power_ctrl_enable) {
             luat_gpio_set(ctrl->codec_power_pin, ctrl->codec_power_on_level);
-            ctrl->codec_power_state = 1;
-            ctrl->codec_ready_state = 0;
-        } else {
-            ctrl->codec_ready_state = 1;
-            ctrl->codec_power_state = 1;
         }
+        ctrl->codec_power_state = 1;
+        ctrl->codec_ready_state = 0;
     }
     LLOGC(luat_audio_debug_flag, "audio driver check codec ready %d , param %u", ctrl->codec_ready_state,
         ctrl->codec_ready_after_wakeup_time_ms);

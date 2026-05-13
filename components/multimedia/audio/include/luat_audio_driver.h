@@ -51,28 +51,31 @@ struct luat_audio_driver_ctrl
     uint32_t one_play_block_len;  /**< 1个block播放的音频数据长度 */
     uint32_t one_record_block_len;  /**< 1个block录音的音频数据长度 */
 
-    // 软件消除爆破音相关参数
-    luat_rtos_timer_t pa_power_on_delay_timer; /**< pa电源使能延时定时器 */
-    luat_rtos_timer_t codec_ready_after_wakeup_timer; /**< codec唤醒后不稳定定时器 */
-    uint16_t pa_power_on_delay_time_ms; /**< pa电源使能延时时间，单位：毫秒 */
-	uint16_t codec_power_off_delay_time_ms;   /**< codec电源关闭后延时时间，单位：毫秒 */
-    uint32_t codec_ready_after_wakeup_time_ms; /**< codec唤醒后不稳定时间，单位：毫秒 */
-    uint8_t pa_power_pin; /**< pa电源控制引脚 */
-    uint8_t codec_power_pin; /**< codec电源控制引脚 */
-    uint8_t pa_power_ctrl_enable:1;   /**< 是否使能pa电源控制 */
-    uint8_t codec_power_ctrl_enable:1; /**< 是否使能codec电源控制 */
-	uint8_t pa_power_on_level:1; /**< pa电源使能电平 */
-	uint8_t codec_power_on_level:1; /**< codec电源使能电平 */
-    uint8_t pa_power_state:1; /**< pa电源状态 */
-    uint8_t codec_power_state:1; /**< codec电源状态 */
-    uint8_t codec_ready_state:1; /**< codec是否稳定 */
-    uint8_t audio_output_enable:1; /**< 是否使能音频输出 */
-    // 音频参数
-    uint8_t data_align;  /**< 数据对齐方式 */
-    uint8_t channel_nums;  /**< 声道数量 */
+    /** 软件消除爆破音相关参数 */
+    luat_rtos_timer_t pa_power_on_delay_timer;          /**< PA电源使能延时定时器 */
+    luat_rtos_timer_t codec_ready_after_wakeup_timer;   /**< CODEC唤醒后不稳定定时器 */
+    uint16_t pa_power_on_delay_time_ms;                 /**< PA电源使能延时时间，单位：毫秒 */
+    uint16_t codec_power_off_delay_time_ms;             /**< CODEC电源关闭后延时时间，单位：毫秒 */
+    uint32_t codec_ready_after_wakeup_time_ms;          /**< CODEC唤醒后不稳定时间，单位：毫秒 */
+    uint8_t pa_power_pin;                               /**< PA电源控制引脚 */
+    uint8_t codec_power_pin;                            /**< CODEC电源控制引脚 */
+    uint8_t pa_power_ctrl_enable:1;                     /**< 是否使能PA电源控制 */
+    uint8_t codec_power_ctrl_enable:1;                  /**< 是否使能CODEC电源控制 */
+    uint8_t pa_power_on_level:1;                        /**< PA电源使能电平 */
+    uint8_t codec_power_on_level:1;                     /**< CODEC电源使能电平 */
+    uint8_t pa_power_state:1;                           /**< PA电源状态 */
+    uint8_t codec_power_state:1;                        /**< CODEC电源状态 */
+    uint8_t codec_ready_state:1;                        /**< CODEC是否稳定 */
+    uint8_t audio_output_enable:1;                      /**< 是否使能音频输出 */
 
-    // 状态参数
-    volatile uint8_t state;  /**< 驱动状态 */
+    /** 音频参数 */
+    uint8_t data_align;                                 /**< 数据对齐方式 */
+    uint8_t channel_nums;                               /**< 声道数量 */
+
+    /** 状态参数 */
+    volatile uint8_t state;                             /**< 驱动状态 */
+    uint8_t tx_is_work:1;                               /**< 是否正在发送音频数据 */
+    uint8_t rx_is_work:1;                               /**< 是否正在接收音频数据 */
 };
 
 /**
@@ -163,6 +166,13 @@ typedef struct luat_audio_driver_opts {
      */
     int (*start_full_loop)(struct luat_audio_driver_ctrl *ctrl, uint32_t **play_buff, uint32_t one_play_block_len, uint32_t play_block_num,uint32_t **record_buff, uint32_t one_record_block_len, uint32_t record_block_num);
     
+    /**
+     * @brief 切换录音中断使能
+     * @param ctrl 驱动控制器指针
+     * @param enable 使能录音中断
+     * @return int 成功返回0，失败返回负值错误码
+     */
+    int (*rx_interrupt_switch)(struct luat_audio_driver_ctrl *ctrl, uint8_t enable);
     /**
      * @brief 启动全双工循环 (同时播放和录音), 提供播放缓冲区，录音缓存区由驱动生成，目前只有Air780EXX系列在通话时需要
      * @param ctrl 驱动控制器指针
