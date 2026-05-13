@@ -22,6 +22,8 @@ local screen_w, screen_h = 480, 800
 local margin = 15
 local card_w = 460
 
+local titlebar = require "settings_titlebar"
+
 local COLOR_PRIMARY        = 0x007AFF
 local COLOR_PRIMARY_DARK   = 0x0056B3
 local COLOR_BG             = 0xF5F5F5
@@ -269,39 +271,8 @@ local function build_ui()
         parent = airui.screen
     })
 
-    local title_bar = airui.container({
-        parent = main_container,
-        x = 0, y = 0,
-        w = screen_w, h = math.floor(60 * _G.density_scale),
-        color = COLOR_PRIMARY
-    })
-    local back_btn = airui.container({
-        parent = title_bar,
-        x = 10, y = 10,
-        w = math.floor(50 * _G.density_scale), h = math.floor(40 * _G.density_scale),
-        color = COLOR_PRIMARY,
-        on_click = function() exwin.close(window_id) end
-    })
-    airui.label({
-        parent = back_btn,
-        x = 0, y = math.floor(5 * _G.density_scale),
-        w = math.floor(50 * _G.density_scale), h = math.floor(30 * _G.density_scale),
-        text = "<",
-        font_size = math.floor(28 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_CENTER
-    })
-    airui.label({
-        parent = title_bar,
-        x = math.floor(60 * _G.density_scale), y = math.floor(10 * _G.density_scale),
-        w = math.floor(200 * _G.density_scale), h = math.floor(40 * _G.density_scale),
-        text = "关于设备",
-        font_size = math.floor(32 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_LEFT
-    })
+    local _, th = titlebar.create(main_container, "关于设备", screen_w, function() exwin.close(window_id) end)
 
-    local th = math.floor(60 * _G.density_scale)
     local ct = airui.container({
         parent = main_container,
         x = 0, y = th,

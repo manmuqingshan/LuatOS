@@ -13,7 +13,6 @@
 
 本文件没有对外接口，直接在其他功能模块中require "netdrv_wifi"就可以加载运行；
 ]]
-local exnetif = require "exnetif"
 
 local function irf(ip, ad)
     if ad == socket.LWIP_STA then
@@ -59,16 +58,5 @@ end
 -- wifi的STA相关事件
 sys.subscribe("WLAN_STA_INC", wsf)
 
--- 配置WiFi设备模式的单网卡，exnetif.set_priority_order使用的网卡编号为socket.LWIP_STA
--- ssid为要连接的WiFi路由器名称；
--- password为要连接的WiFi路由器密码；
--- 注意：仅支持2.4G的WiFi，不支持5G的WiFi；
--- 实际测试时，根据自己要连接的WiFi热点信息修改以下参数
-exnetif.set_priority_order({
-    {
-        WIFI = {
-            ssid = "茶室-降功耗,找合宙!",
-            password = "Air123456"
-        }
-    }
-})
+-- WiFi 连接由 wifi_app 模块通过 wifi_storage 中的配置统一管理
+-- 不再在驱动层硬编码 WiFi 凭证

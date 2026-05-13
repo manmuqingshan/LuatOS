@@ -308,6 +308,9 @@ int luat_audio_driver_fill_default(struct luat_audio_driver_ctrl *ctrl, uint8_t 
         memset(play_buff, 0, len_bytes);
     } else {
         switch (align) {
+            case 1:
+                memset(play_buff, 0x80, len_bytes);
+                break;
             case 2:
                 data_address &= ~0x1;
                 data.p16 = (uint16_t *)data_address;

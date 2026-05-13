@@ -109,11 +109,12 @@ local function build_ui()
         color = COLOR_CARD, radius = br
     })
 
-    local ic = math.floor(math.max(28, bh * 0.7) * _G.density_scale)
+    local ds = _G.density_scale or 1.0
+    local ic = math.floor(math.max(28, bh * 0.7) * ds)
     local ipd = math.floor(bh * 0.15)
     local ix = bw - ic - ipd
     local iy = math.floor((bh - ic) / 2)
-    local lf = math.floor(math.max(16, bh * 0.4) * _G.density_scale)
+    local lf = math.floor(math.max(16, bh * 0.4) * ds)
 
     airui.label({
         parent = search_bar, x = math.floor(bh * 0.3), y = math.floor((bh - lf) / 2),

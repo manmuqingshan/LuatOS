@@ -17,6 +17,8 @@ local margin = 20
 local card_w = 440
 local timer_id = nil
 
+local titlebar = require "settings_titlebar"
+
 local COLOR_PRIMARY        = 0x007AFF
 local COLOR_BG             = 0xF5F5F5
 local COLOR_CARD           = 0xFFFFFF
@@ -85,11 +87,11 @@ local function update_memory_info(info)
         sys_percent:set_text(string.format("%.1f%% 占用", percent))
         if sys_bar then sys_bar:set_value(math.floor(percent), false) end
     end
-    if info.vm_result and vm_total then
-        local percent = calc_percent(info.vm_result.used, info.vm_result.total)
-        vm_total:set_text(format_bytes(info.vm_result.total))
-        vm_used:set_text(format_bytes(info.vm_result.used))
-        vm_max:set_text(format_bytes(info.vm_result.max))
+    if info.vm and vm_total then
+        local percent = calc_percent(info.vm.used, info.vm.total)
+        vm_total:set_text(format_bytes(info.vm.total))
+        vm_used:set_text(format_bytes(info.vm.used))
+        vm_max:set_text(format_bytes(info.vm.max))
         vm_percent:set_text(string.format("%.1f%% 占用", percent))
         if vm_bar then vm_bar:set_value(math.floor(percent), false) end
     end
@@ -225,44 +227,12 @@ local function build_ui()
         color = COLOR_BG
     })
 
-    local title_bar = airui.container({
-        parent = main_container,
-        x = 0, y = 0,
-        w = screen_w, h = math.floor(60 * _G.density_scale),
-        color = COLOR_PRIMARY
-    })
+    local _, th = titlebar.create(main_container, "存储", screen_w, function() exwin.close(window_id) end)
 
-    local back_btn = airui.container({
-        parent = title_bar,
-        x = 10, y = 10,
-        w = math.floor(50 * _G.density_scale), h = math.floor(40 * _G.density_scale),
-        color = COLOR_PRIMARY,
-        on_click = function() exwin.close(window_id) end
-    })
-    airui.label({
-        parent = back_btn,
-        x = 0, y = math.floor(5 * _G.density_scale),
-        w = math.floor(50 * _G.density_scale), h = math.floor(30 * _G.density_scale),
-        text = "<",
-        font_size = math.floor(28 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_CENTER
-    })
-    airui.label({
-        parent = title_bar,
-        x = math.floor(60 * _G.density_scale), y = math.floor(10 * _G.density_scale),
-        w = math.floor(200 * _G.density_scale), h = math.floor(40 * _G.density_scale),
-        text = "存储",
-        font_size = math.floor(32 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_LEFT
-    })
-
-    local title_h2 = math.floor(60 * _G.density_scale)
     local content_area = airui.container({
         parent = main_container,
-        x = 0, y = title_h2,
-        w = screen_w, h = screen_h - title_h2,
+        x = 0, y = th,
+        w = screen_w, h = screen_h - th,
         color = COLOR_BG,
         scrollable = true
     })

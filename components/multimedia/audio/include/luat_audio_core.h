@@ -1,13 +1,13 @@
-#ifndef __LUAT_AUDIO_API__
-#define __LUAT_AUDIO_API__
+#ifndef __LUAT_AUDIO_CORE__
+#define __LUAT_AUDIO_CORE__
 
 /**
- * @file luat_audio_api.h
- * @brief LuatOS 音频框架公共API头文件
+ * @file luat_audio_core.h
+ * @brief LuatOS 音频框架核心API头文件
  * 
  * 提供音频框架的初始化和核心接口声明。
  * 
- * @defgroup luat_audio_api 音频公共API
+ * @defgroup luat_audio_core 音频核心API组
  * @ingroup audio
  * @{
  */
@@ -19,7 +19,7 @@
 #include "luat_audio_request.h"
 
 /**
- * @brief 初始化音频框架基础模块
+ * @brief 初始化音频框架基础模块，必须在BSP里，并且在luavm初始化前调用
  * 
  * 此函数负责初始化音频框架的核心组件，包括通道管理、编解码器注册等。
  * 应在系统启动时调用一次。
@@ -44,7 +44,7 @@ void luat_audio_debug_switch(uint8_t on_off);
  * @param driver_data 驱动私有数据指针，用于存储驱动的私有数据
  * @return 0 表示成功，其他值表示失败
  */
-int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, struct luat_audio_driver_probe probe, void *driver_data);
+int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, luat_audio_driver_probe_t probe, void *driver_data);
 
 /**
  * @brief 探测音频驱动
@@ -54,8 +54,17 @@ int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, struct luat
  * @param probe 音频驱动匹配结构，用于描述驱动的匹配条件，如果为NULL，则返回第一个注册的驱动控制器。
  * @return 驱动控制器指针，成功返回非NULL，失败返回NULL
  */
-luat_audio_driver_ctrl_t *luat_audio_driver_probe(struct luat_audio_driver_probe *probe);
+luat_audio_driver_ctrl_t *luat_audio_driver_probe(luat_audio_driver_probe_t *probe);
 
+/**
+ * @brief 设置默认音频驱动
+ * 
+ * 此函数用于设置音频框架的默认音频驱动，后续的音频请求会使用该驱动。
+ * 
+ * @param probe 音频驱动匹配结构，用于描述驱动的匹配条件
+ * @return LUAT_ERROR_NONE 表示成功，其他值表示失败
+ */
+int luat_audio_driver_set_default(luat_audio_driver_probe_t *probe);
 /**
  * @brief 初始化音频请求
  * 
@@ -94,7 +103,17 @@ int luat_audio_request(luat_audio_request_block_t *req);
  */
 int luat_audio_request_cancel(luat_audio_request_block_t *req);
 
-void luat_audio_driver_event_callback(uint32_t event, uint8_t *rx_data, uint32_t param, struct luat_audio_driver_ctrl *ctrl);
+/**
+ * @brief 音频驱动事件回调函数，已经有默认实现，CSDK用户可以自定义实现，但是不建议修改默认实现的基本逻辑，除非打算自己实现audio功能
+ * 
+ * 此函数用于处理音频驱动的事件，如数据接收、错误通知等。
+ * 
+ * @param event 音频驱动事件类型
+ * @param rx_data 接收的音频数据指针
+ * @param param 事件参数
+ * @param ctrl 音频驱动控制器指针
+ */
+void luat_audio_driver_event_callback(uint32_t event, uint8_t *rx_data, uint32_t param, luat_audio_driver_ctrl_t *ctrl);
 #endif
 
 /** @} */

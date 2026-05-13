@@ -42,11 +42,11 @@ end
 -- ==================== PWM 控制 ====================
 
 local function buzz_on(duty)
-    pwm.open(PWM_CHANNEL, PWM_FREQ, math.floor(duty))
+    pcall(pwm.open, PWM_CHANNEL, PWM_FREQ, math.floor(duty))
 end
 
 local function buzz_off()
-    pwm.open(PWM_CHANNEL, PWM_FREQ, 0)
+    pcall(pwm.open, PWM_CHANNEL, PWM_FREQ, 0)
 end
 
 -- ==================== 触摸反馈处理 ====================
@@ -112,7 +112,7 @@ end
 -- ==================== 初始化 ====================
 
 local function init()
-    pwm.setup(PWM_CHANNEL, PWM_FREQ, 0)
+    pcall(pwm.setup, PWM_CHANNEL, PWM_FREQ, 0)
 
     buzz_enabled  = fskv.get(CONFIG_KEYS.ENABLED)
     if buzz_enabled == nil then buzz_enabled = DEFAULT_ENABLED end

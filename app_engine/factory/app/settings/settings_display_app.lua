@@ -31,8 +31,16 @@ end
 ]]
 local function init_pwm()
     if not pwm_initialized then
-        pwm.setup(pwm_channel, pwm_freq, current_brightness)
-        pwm.start(pwm_channel)
+        local ok, err = pcall(pwm.setup, pwm_channel, pwm_freq, current_brightness)
+        if not ok then
+            log.error("settings_display", "PWM setup 失败:", err)
+            return
+        end
+        ok, err = pcall(pwm.start, pwm_channel)
+        if not ok then
+            log.error("settings_display", "PWM start 失败:", err)
+            return
+        end
         pwm_initialized = true
         log.info("settings_display", "PWM 初始化完成，初始亮度: " .. current_brightness)
     end
@@ -53,7 +61,10 @@ local function set_brightness(level)
         level = 100
     end
     current_brightness = level
-    pwm.setDuty(pwm_channel, level)
+    local ok, err = pcall(pwm.setDuty, pwm_channel, level)
+    if not ok then
+        log.error("settings_display", "PWM setDuty 失败:", err)
+    end
     log.info("settings_display", "亮度设置为: " .. level .. "%")
     -- 上报亮度变化事件
     sys.publish("DISPLAY_BRIGHTNESS_CHANGED", current_brightness)

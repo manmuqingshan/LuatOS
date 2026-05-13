@@ -321,6 +321,11 @@ end
 local function on_scan_request()
     log.info("wifi_app", "收到扫描请求")
 
+    if scan_timer then
+        log.info("wifi_app", "扫描已在进行中，跳过重复请求")
+        return
+    end
+
     if _G.model_str:find("PC") then
         sys.publish("WIFI_SCAN_STARTED")
         sys.taskInit(function()
@@ -328,6 +333,7 @@ local function on_scan_request()
             local mock_results = { { ssid = "ChinaNet-5G", rssi = -45, channel = 149 }, { ssid = "TP-LINK_ABC", rssi = -62, channel = 6 }, { ssid = "CMCC-8888", rssi = -58, channel = 11 }, { ssid = "HUAWEI-1234", rssi = -70, channel = 1 } }
             wifi_state.scan_results = mock_results
             sys.publish("WIFI_SCAN_DONE", mock_results)
+            scan_timer = nil
         end)
         return
     end
@@ -335,9 +341,6 @@ local function on_scan_request()
     wlan.init()
     wlan.scan()
 
-    if scan_timer then
-        sys.timerStop(scan_timer)
-    end
     scan_timer = sys.timerStart(handle_scan_timeout, SCTO)
 
     sys.publish("WIFI_SCAN_STARTED")
