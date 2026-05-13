@@ -19,6 +19,7 @@
 #include "luat_common_api.h"
 #include "luat_fs.h"
 
+
 /**
  * @brief 播放信息结构
  * 
@@ -28,7 +29,8 @@ typedef struct {
     uint32_t frame_size;        /**< 帧大小 (bytes)，文件没有到尾部前，至少需要frame_size数量的数据才可以开始解码 */
     uint32_t sample_rate;       /**< 采样率 (Hz) */
     uint8_t channels;           /**< 声道数 (1=mono, 2=stereo) */
-    uint8_t bits_per_sample;    /**< 采样位宽 (bits) */
+    uint8_t data_align;         /**< 数据对齐方式 */
+    uint8_t is_signed;          /**< 是否有符号数据 */
 } luat_audio_play_info_t;
 
 /**
@@ -41,6 +43,16 @@ typedef union {
         uint8_t speed;  /**< AMR编码速率参数 */
         uint8_t is_wb;
     } amr_param;
+    /**
+    * @brief tts输出回调函数
+    * 
+    * 用于在tts解码完成后调用，将解码后的音频数据传递给播放器。
+    * @param data 解码后的音频数据指针
+    * @param param 解码参数，如果data为null，param为播放采样率，否则为解码后的音频数据大小
+    * @param user_data 用户自定义数据指针，用于传递额外信息
+    * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
+    */
+    int (*tts_output_callback_t)(void *data, uint32_t param, void *user_data);
 } luat_audio_data_codec_param_u;
 
 
@@ -62,22 +74,17 @@ typedef struct luat_audio_data_codec_opts {
      * @param codec 编解码器上下文指针
      */
     void (*destroy)(struct luat_audio_data_codec *codec);
-    
+
     /**
-     * @brief 探测文件是否能被解码
-     * @param file 文件指针
-     * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
-     */
-    int (*probe)(FILE* file);
-    
-    /**
-     * @brief 从文件获取播放信息
+     * @brief 获取播放信息，如果信息不够，需要跳过偏移量和需要长度来获取完整信息
      * @param codec 编解码器上下文指针
-     * @param file 文件指针
-     * @param info 指向存储播放信息的结构
+     * @param input_buffer 输入缓冲区指针
+     * @param jump_offset_bytes 跳过偏移量指针，单位字节
+     * @param need_bytes 需要长度指针
+     * @param info 指向存储播放信息的结构，如果信息不够，返回的sample_rate为0
      * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
      */
-    int (*get_play_info_from_file)(struct luat_audio_data_codec *codec, FILE* file, luat_audio_play_info_t *info);
+    int (*get_play_info)(struct luat_audio_data_codec *codec, luat_buffer_t *input_buffer, uint32_t *jump_offset_bytes, uint32_t *need_bytes, luat_audio_play_info_t *info);
 
     /**
      * @brief 解码音频数据
@@ -108,6 +115,7 @@ typedef struct luat_audio_data_codec_opts {
     /**
      * @brief 编码音频数据
      * @param codec 编解码器上下文指针
+     * @param info 播放信息结构指针
      * @param input 输入原始音频数据缓冲区
      * @param input_size 输入数据大小（字节）
      * @param output 输出编码数据缓冲区
@@ -115,18 +123,18 @@ typedef struct luat_audio_data_codec_opts {
      * @param encoded_size 实际编码的数据大小（字节）
      * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
      */
-    int (*encode)(struct luat_audio_data_codec* codec,
+    int (*encode)(struct luat_audio_data_codec* codec, luat_audio_play_info_t *info,
                   const uint8_t *input, uint32_t input_size,
-                  uint8_t *output, uint32_t output_size,
-                  uint32_t *encoded_size);
+                  uint8_t *output, uint32_t *encoded_size);
     /**
      * @brief TTS解码音频数据
      * @param codec 编解码器上下文指针
      * @param text 输入文本指针
      * @param len 输入文本长度（字节）
+     * @param user_data 用户自定义数据指针，用于传递额外信息
      * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
      */
-    int (*tts_decode)(struct luat_audio_data_codec* codec, const void *text, uint32_t len);
+    int (*tts_decode)(struct luat_audio_data_codec* codec, const void *text, uint32_t len, void *user_data);
 
     /**
      * @brief 设置TTS参数
@@ -137,10 +145,13 @@ typedef struct luat_audio_data_codec_opts {
      */
     int (*tts_set_param)(struct luat_audio_data_codec* codec, uint32_t param, uint32_t value);
 
-    uint32_t encode_min_input_len;              /**< 编码最小输入长度 (字节) */
-    uint32_t encode_max_output_len;             /**< 编码最大输出长度 (字节) */
+    uint32_t encode_min_input_len;              /**< 编码1帧需要的输入长度 (字节) */
+    uint32_t encode_max_output_len;             /**< 编码1帧输出的最大长度 (字节) */
     uint32_t decode_min_input_len;              /**< 解码最小输入长度 (字节) */
     uint32_t decode_max_output_len;             /**< 解码最大输出长度 (字节) */
+    uint8_t type:6;                             /**< 编解码器类型 */
+    uint8_t is_reentrant:1;                       /**< 是否可重入 */
+    uint8_t is_hardware:1;                       /**< 是否硬件编解码器 */
 } luat_audio_data_codec_opts_t;
 
 /**
@@ -153,33 +164,45 @@ struct luat_audio_data_codec {
     luat_audio_play_info_t play_info;           /**< 播放信息结构 */
     luat_audio_data_codec_param_u param;        /**< 编解码器参数联合体 */
     uint8_t *input_buffer;                      /**< 输入数据缓冲区 */
-    uint8_t is_tts;                             /**< 是否为TTS (1=tts, 0=not tts) */
 };
 
 
 typedef struct luat_audio_data_codec luat_audio_data_codec_t;
 
 /**
- * @brief 初始化音频编解码器
- * @param codec 编解码器上下文指针
+ * @brief 绑定音频编解码控制器到一个具体的编解码器
+ * @param codec 编解码控制器上下文指针
  * @param opts 编解码器选项指针
  * @param user_data 用户自定义数据指针
- * @param is_tts 是否为TTS
- * @note 1=tts, 0=not tts
  * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
  */
-int luat_audio_data_codec_init(luat_audio_data_codec_t *codec, const luat_audio_data_codec_opts_t *opts, void *user_data, uint8_t is_tts);
+int luat_audio_data_codec_bind(luat_audio_data_codec_t *codec, const luat_audio_data_codec_opts_t *opts, void *user_data);
 
 /**
- * @brief 销毁音频编解码器上下文
- * @param codec 编解码器上下文指针
+ * @brief 初始化音频编解码控制器
+ * @param codec 编解码控制器上下文指针
+ * @param param 编解码器参数联合体指针
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
+ */
+int luat_audio_data_codec_init(luat_audio_data_codec_t *codec, luat_audio_data_codec_param_u *param);
+
+/**
+ * @brief 去初始化音频编解码控制器，但是不解绑编解码器
+ * @param codec 编解码控制器上下文指针
  * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
  */
 int luat_audio_data_codec_deinit(luat_audio_data_codec_t *codec);
 
 /**
+ * @brief 解绑音频编解码控制器，如果是软件编解码器，可以跳过这个步骤
+ * @param codec 编解码控制器上下文指针
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
+ */
+int luat_audio_data_codec_unbind(luat_audio_data_codec_t *codec);
+
+/**
  * @brief 解码音频数据一次
- * @param codec 编解码器上下文指针
+ * @param codec 编解码控制器上下文指针
  * @param input_data_fifo 输入数据fifo指针
  * @param output_data_buffer 输出数据缓冲区指针
  * @param is_end 是否为最后一帧数据
@@ -187,6 +210,37 @@ int luat_audio_data_codec_deinit(luat_audio_data_codec_t *codec);
  * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
  */
 int luat_audio_data_codec_decode_once(luat_audio_data_codec_t *codec, luat_fifo_t *input_data_fifo, luat_buffer_t *output_data_buffer, uint8_t is_end);
+
+/**
+ * @brief 编码音频数据一次
+ * @param codec 编解码控制器上下文指针
+ * @param input_data_fifo 输入数据fifo指针
+ * @param output_data_buffer 输出数据缓冲区指针
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
+ */
+int luat_audio_data_codec_encode_once(luat_audio_data_codec_t *codec, luat_fifo_t *input_data_fifo, luat_buffer_t *output_data_buffer);
+
+/**
+ * @brief 注册音频编解码器，必须在BSP里，并且在luavm初始化前调用
+ * @param opts 编解码器选项指针
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
+ */
+int luat_audio_data_codec_register(const luat_audio_data_codec_opts_t *opts);
+
+/**
+ * @brief 查找音频编解码器
+ * @param type 编解码器类型
+ * @return const luat_audio_data_codec_opts_t* 编解码器选项指针，失败返回 NULL
+ */
+const luat_audio_data_codec_opts_t* luat_audio_data_codec_find(uint8_t type);
+
+/**
+ * @brief 从文件获取音频信息
+ * @param codec 编解码控制器上下文指针
+ * @param fd 文件指针
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
+ */
+int luat_audio_data_codec_get_play_info_from_file(luat_audio_data_codec_t *codec, FILE* fd);
 #endif
 
 /** @} */

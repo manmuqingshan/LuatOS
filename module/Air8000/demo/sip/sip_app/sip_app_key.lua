@@ -2,6 +2,7 @@
 local g_tag = "sip_app_key"
 local g_sip_app_ready = false
 local g_sip_incoming = false
+local exsip = require "exsip"
 
 
 
@@ -40,7 +41,8 @@ local function boot_key_handler()
         return
     end
 
-    sys.publish("SIP_APP_MAIN_DIAL_REQ", g_tag, "100000")
+    sys.publish("SIP_APP_MAIN_DIAL_REQ", g_tag, "100001")
+    -- sys.publish("SIP_APP_MAIN_DIAL_REQ", g_tag, "100000")
 end
 
 local function dial_rsp(tag, success, reason)
@@ -62,8 +64,9 @@ local function disconnected_ind()
 end
 
 local function incoming_ind()
-    log.info(g_tag, "呼入中")
-    g_sip_incoming = true
+    local incoming_number = exsip.get_current_call()
+     log.info(g_tag, "呼入中，来电号码：", incoming_number)
+     g_sip_incoming = true
 end
 
 

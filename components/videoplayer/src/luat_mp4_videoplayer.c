@@ -9,7 +9,7 @@
  */
 #include "luat_base.h"
 #ifdef LUAT_USE_MP4PLAYER
-
+#include "luat_mcu.h"
 #include "luat_mp4_videoplayer.h"
 #include "luat_videoplayer.h"
 /* minimp4 public API types — implementation symbols come from mp4_decode.c */
@@ -397,3 +397,14 @@ void luat_mp4_vctx_get_dims(luat_mp4_vctx_t *ctx, int *w, int *h)
 }
 
 #endif /* LUAT_USE_MP4PLAYER */
+
+uint64_t sys_get_time(void)
+{
+    return luat_mcu_tick64_ms();
+}
+
+uint64_t sys_get_time_elaps(uint64_t prev_tick)
+{
+    uint64_t tnow = luat_mcu_tick64_ms();
+    return tnow - prev_tick;
+}

@@ -81,7 +81,6 @@ add_includedirs("include",{public = true})
 add_includedirs(luatos.."lua/include",{public = true})
 add_includedirs(luatos.."luat/include",{public = true})
 add_includedirs("port/posix",{public = true})
--- add_includedirs("libuv/include",{public = true})
 
 
 target("luatos-lua")
@@ -100,8 +99,6 @@ target("luatos-lua")
 
     add_files("src/*.c",{public = true})
     add_files("port/**.c")
-    remove_files("port/network/luat_network_adapter_libuv.c")
-    remove_files("port/network/sys_arch_uv.c")
 
     add_thirdparty_files(luatos.."lua/src/*.c")
     -- printf
@@ -201,9 +198,11 @@ target("luatos-lua")
     -- rsa
     add_files(luatos.."components/rsa/**.c")
 
-    -- gmssl
-    -- add_includedirs(luatos.."components/gmssl/include")
-    -- add_files(luatos.."components/gmssl/src/**.c")
+    -- gmssl: use local include (new uint32_t ciphertext_size) + local sm2_lib.c (new 16KB limit).
+    -- The package lib provides all other gmssl symbols (aes, sha, x509, format_*, etc.).
+    -- MSVC linker prefers .obj files over .lib for duplicate symbols, so our local sm2_lib.c wins.
+    add_includedirs(luatos.."components/gmssl/include")
+    add_files(luatos.."components/gmssl/src/sm2_lib.c")
     add_files(luatos.."components/gmssl/bind/*.c")
 
     -- iconv
@@ -750,8 +749,8 @@ target("luatos-lua")
         add_files("stubs/mp4player/dac_sound_pc.c")
         add_files("stubs/mp4player/sys_dac_pc.c")
 
-        -- ---- PC-side MP4 videoplayer integration ----
-        -- add_includedirs(path.join(os.scriptdir(), "port/mp4player"))
-        -- add_files(path.join(os.scriptdir(), "port/mp4player/luat_mp4_videoplayer.c"))
+        -- mp3
+        add_includedirs(mp4player_src .. "/audio_decode/mp3")
+        add_files(mp4player_src .. "/audio_decode/mp3/*.c")
     end
 target_end()

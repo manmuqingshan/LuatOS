@@ -1,0 +1,23 @@
+{
+    "app_name_cn": "MB TCP主站",
+    "app_name_en": "modbus_tcp_master",
+    "version": "1.0.0",
+    "publish_time": "2026-05-11 12:00:00",
+    "category": "工业",
+    "description": "Modbus TCP 主站应用，支持标准功能码0x01/02/03/04/05/06/0F/10，可配置目标从站IP、端口、从站地址，内置轮询配置和通讯日志。",
+    "resolution": "320x480",
+    "supported_models": {
+        "Air8101": [
+            {
+                "firmware_id": 104,
+                "min_firmware_version": 2010
+            },
+            {
+                "firmware_id": 105,
+                "min_firmware_version": 2010
+            }
+        ]
+    },
+    "zip_size_kb": 50,
+    "origin_size_kb": 120
+}
