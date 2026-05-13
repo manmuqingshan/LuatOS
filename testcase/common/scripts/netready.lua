@@ -42,15 +42,15 @@ function netready.exec(ctx, timeout)
         -- airlink.start(airlink.MODE_SPI_MASTER)
         -- sys.wait(1000)
 
-        uart_setup()
-        airlink.init() -- 初始化airlink
-        airlink.config(airlink.CONF_UART_ID, uartid) -- 配置airlink的串口3
+        -- uart_setup()
+        -- airlink.init() -- 初始化airlink
+        -- airlink.config(airlink.CONF_UART_ID, uartid) -- 配置airlink的串口3
 
-        netdrv.setup(socket.LWIP_STA, netdrv.WHALE)
-        netdrv.setup(socket.LWIP_AP, netdrv.WHALE)
+        -- netdrv.setup(socket.LWIP_STA, netdrv.WHALE)
+        -- netdrv.setup(socket.LWIP_AP, netdrv.WHALE)
 
-        airlink.start(airlink.MODE_UART) -- 启动airlink的串口模式
-        sys.wait(100)
+        -- airlink.start(airlink.MODE_UART) -- 启动airlink的串口模式
+        -- sys.wait(100)
     end
     -- 应该 根据 型号和上下文, 进行联网操作
     if mobile then
@@ -64,7 +64,7 @@ function netready.exec(ctx, timeout)
             wlan.setMode(wlan.STATION) -- 默认也是这个模式,不调用也可以
             wlan.connect(ssid, password, 1)
         end
-    elseif wlan and wlan.init and hmeta.model() ~= "Air1601" then
+    elseif wlan and wlan.init and hmeta.model() ~= "Air1601" and hmeta.model() ~= "Air1602" then
         log.info("netready", "使用 WiFi 网络开始初始化")
         local ssid = ctx.wifi_ssid
         local password = ctx.wifi_password
@@ -75,7 +75,7 @@ function netready.exec(ctx, timeout)
         socket.dft(socket.LWIP_STA)
     elseif socket then
         -- 1601的话初始化以太网
-        if hmeta.model() == "Air1601" then
+        if hmeta.model() == "Air1601" or hmeta.model() == "Air1602" then
             log.info("netready_1601", "使用以太网，开始初始化")
             local result = spi.setup(1, -- spi_id
             nil, 0, -- CPHA
