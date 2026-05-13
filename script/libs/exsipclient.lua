@@ -659,12 +659,18 @@ local function sip_task(opts)
         net_send_on(state.netc, data)
     end
 
-    local function stop_call_timeout()
+    -- 强制停止所有与通话相关的定时器，包括超时定时器
+    -- 在SIP连接断开、网络切换、stop()等场景下调用，防止定时器泄漏
+    local function stop_all_call_timers()
         if state.dialog and state.dialog.timeout_timer then
-            log.info("sip", "stopping call timeout timer")
+            log.info("sip", "stopping all call timers, clearing timeout_timer")
             sys.timerStop(state.dialog.timeout_timer)
             state.dialog.timeout_timer = nil
         end
+    end
+
+    local function stop_call_timeout()
+        stop_all_call_timers()
     end
 
     local function on_call_timeout()
@@ -674,9 +680,12 @@ local function sip_task(opts)
             return
         end
         if not state.dialog or state.dialog.direction ~= "out" or state.dialog.established then
+            log.warn("sip", "call timeout ignored - no active outgoing call or already established")
             return
         end
         log.warn("sip", "outgoing call timeout, canceling")
+        -- 超时前清空定时器引用，避免重复触发
+        state.dialog.timeout_timer = nil
         local cancel = build_cancel(state, state.dialog)
         net_send(cancel)
         local failed_dialog = state.dialog
@@ -994,6 +1003,7 @@ local function sip_task(opts)
         if param ~= 0 then
             log.warn("sip", "net error", event, param)
             stop_reg_timer()
+            stop_all_call_timers()
             emit_event(SIP_EVENT.ERROR, "net", {
                 event = event,
                 param = param
@@ -1556,6 +1566,12 @@ local function sip_task(opts)
             stop_call_timeout()
             state.online = false
             stop_media("socket_closed")
+            -- 清理dialog前先停止超时定时器，防止定时器在dialog清空后仍触发
+            if state.dialog and state.dialog.timeout_timer then
+                log.info("sip", "socket closed, clearing call timeout timer")
+                sys.timerStop(state.dialog.timeout_timer)
+                state.dialog.timeout_timer = nil
+            end
             state.dialog = nil
             state.incoming_invite = nil
             state.msg_tx = nil
@@ -1584,6 +1600,8 @@ local function sip_task(opts)
         else
             sys.waitUntil(TOPIC_DISCONNECT)
             stop_reg_timer()
+            -- 断开连接时强制停止所有通话定时器，防止旧task的定时器泄漏到新实例
+            stop_all_call_timers()
             socket.close(netc)
             socket.release(netc)
             state.netc = nil
