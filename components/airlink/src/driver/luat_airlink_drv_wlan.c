@@ -205,20 +205,27 @@ int luat_airlink_drv_wlan_scan_result_cb(void) {
         if (mode >= 0) {
             uint8_t* scan_buf = (uint8_t*)luat_heap_opt_malloc(AIRLINK_MEM_TYPE, MAX_SCAN_RESULT_BUFF_SIZE);
             if (scan_buf != NULL) {
-                drv_wlan_WlanScanResultNotify notify = drv_wlan_WlanScanResultNotify_init_zero;
-                notify.count = (uint32_t)luat_wlan_scan_get_result(
-                    (luat_wlan_scan_result_t*)scan_buf, MAX_SCAN_RESULT_SIZE);
-                if (notify.count > 0) {
-                    notify.data.size = (pb_size_t)(notify.count * sizeof(luat_wlan_scan_result_t));
-                    memcpy(notify.data.bytes, scan_buf, notify.data.size);
-                }
-                luat_heap_opt_free(AIRLINK_MEM_TYPE, scan_buf);
+                int rc = -1;
+                drv_wlan_WlanScanResultNotify* notify = (drv_wlan_WlanScanResultNotify*)luat_heap_opt_zalloc(AIRLINK_MEM_TYPE, sizeof(drv_wlan_WlanScanResultNotify));
+                if (notify != NULL) {
+                    notify->count = (uint32_t)luat_wlan_scan_get_result(
+                        (luat_wlan_scan_result_t*)scan_buf, MAX_SCAN_RESULT_SIZE);
+                    if (notify->count > 0) {
+                        notify->data.size = (pb_size_t)(notify->count * sizeof(luat_wlan_scan_result_t));
+                        memcpy(notify->data.bytes, scan_buf, notify->data.size);
+                    }
+                    luat_heap_opt_free(AIRLINK_MEM_TYPE, scan_buf);
 
-                int rc = luat_airlink_rpc_nb_notify((uint8_t)mode, 0x0301,
-                                                     drv_wlan_WlanScanResultNotify_fields, &notify);
-                if (rc == 0) {
-                    LLOGD("扫描结果通过 RPC NOTIFY 发送 count=%d", (int)notify.count);
-                    return 0;
+                    uint32_t count = notify->count;
+                    rc = luat_airlink_rpc_nb_notify((uint8_t)mode, 0x0301,
+                                                     drv_wlan_WlanScanResultNotify_fields, notify);
+                    luat_heap_opt_free(AIRLINK_MEM_TYPE, notify);
+                    if (rc == 0) {
+                        LLOGD("扫描结果通过 RPC NOTIFY 发送 count=%d", (int)count);
+                        return 0;
+                    }
+                } else {
+                    luat_heap_opt_free(AIRLINK_MEM_TYPE, scan_buf);
                 }
                 LLOGD("RPC NOTIFY 失败 rc=%d, 回退到 raw cmd", rc);
             }
