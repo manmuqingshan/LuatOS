@@ -23,6 +23,7 @@
 #include "lvgl9/src/core/lv_obj_style_gen.h"
 #if LV_USE_IME_PINYIN
     #include "lvgl9/src/others/ime/lv_ime_pinyin.h"
+    #include "lvgl9/src/widgets/buttonmatrix/lv_buttonmatrix.h"
     // 如果定义了LUAT_USE_PINYIN，则使用自己的pinyin字典
     #if defined(LUAT_USE_PINYIN)
         #include "luat_pinyin.h"
@@ -225,6 +226,20 @@ static void airui_keyboard_session_sync_cand_panel(airui_keyboard_data_t *data)
 }
 
 #if LV_USE_IME_PINYIN
+static void airui_keyboard_configure_cand_panel(lv_obj_t *cand_panel)
+{
+    if (cand_panel == NULL || !lv_obj_is_valid(cand_panel)) {
+        return;
+    }
+
+    /* Candidate commit should happen on release/click. The default buttonmatrix
+     * behavior emits VALUE_CHANGED on press, which clears candidates while the
+     * pointer is still held down. */
+    lv_buttonmatrix_set_button_ctrl_all(
+        cand_panel,
+        (lv_buttonmatrix_ctrl_t)(LV_BUTTONMATRIX_CTRL_CLICK_TRIG | LV_BUTTONMATRIX_CTRL_NO_REPEAT));
+}
+
 static void airui_keyboard_ime_delete_event_cb(lv_event_t *e)
 {
     if (e == NULL || lv_event_get_code(e) != LV_EVENT_DELETE) {
@@ -1209,6 +1224,7 @@ lv_obj_t *airui_keyboard_create_from_config(void *L, int idx)
         airui_keyboard_session_set_ime(data, data->ime);
         lv_ime_pinyin_set_keyboard(data->ime, keyboard);
         lv_obj_add_event_cb(data->ime, airui_keyboard_ime_delete_event_cb, LV_EVENT_DELETE, data);
+        airui_keyboard_configure_cand_panel(lv_ime_pinyin_get_cand_panel(data->ime));
 
         // 如果定义了LUAT_USE_PINYIN，则使用自己的pinyin字典
 #if defined(LUAT_USE_PINYIN)
