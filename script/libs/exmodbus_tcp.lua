@@ -45,6 +45,8 @@ function modbus:new(config, TASK_NAME)
     obj.pending_transaction = nil
     -- socket 对象引用
     obj.netc = nil
+    -- 退出标志
+    obj.should_exit = false
 
     -- 设置原表；
     setmetatable(obj, modbus)
@@ -649,6 +651,14 @@ local function tcp_master_main_task_func(instance)
     local result, param
 
     while true do
+        -- 检查是否需要退出
+        if instance.should_exit then
+            if debug_enabled then
+                log.info("exmodbus", "收到退出信号")
+            end
+            break
+        end
+
         -- 创建 socket 客户端
         instance.socket_client = socket.create(instance.adapter, instance.TASK_NAME)
         if not instance.socket_client then
@@ -698,6 +708,14 @@ local function tcp_master_main_task_func(instance)
         -- 异常处理
         ::EXCEPTION_PROC::
 
+        -- 检查是否需要退出
+        if instance.should_exit then
+            if debug_enabled then
+                log.info("exmodbus", "收到退出信号，停止重连")
+            end
+            break
+        end
+
         -- 关闭连接
         if instance.socket_client then
             libnet.close(instance.TASK_NAME, 5000, instance.socket_client)
@@ -709,6 +727,10 @@ local function tcp_master_main_task_func(instance)
         -- 等待 5 秒后重试
         sys.wait(5000)
     end
+
+    -- 释放资源
+    sys.cleanMsg(instance.TASK_NAME)
+    sys.taskDel(instance.TASK_NAME)
 end
 
 -- 解析 TCP 请求帧（从站使用）
@@ -1055,6 +1077,14 @@ local function tcp_slave_main_task_func(instance)
     local result, param
 
     while true do
+        -- 检查是否需要退出
+        if instance.should_exit then
+            if debug_enabled then
+                log.info("exmodbus", "收到退出信号")
+            end
+            break
+        end
+
         -- 创建 TCP 服务器
         instance.netc = socket.create(instance.adapter, instance.TASK_NAME)
         if not instance.netc then
@@ -1097,6 +1127,14 @@ local function tcp_slave_main_task_func(instance)
         -- 异常处理
         ::EXCEPTION_PROC::
 
+        -- 检查是否需要退出
+        if instance.should_exit then
+            if debug_enabled then
+                log.info("exmodbus", "收到退出信号，停止重连")
+            end
+            break
+        end
+
         -- 关闭连接
         if instance.netc then
             libnet.close(instance.TASK_NAME, 5000, instance.netc)
@@ -1107,6 +1145,10 @@ local function tcp_slave_main_task_func(instance)
         -- 等待 5 秒后重试
         sys.wait(5000)
     end
+
+    -- 释放资源
+    sys.cleanMsg(instance.TASK_NAME)
+    sys.taskDel(instance.TASK_NAME)
 end
 
 -- 创建一个新的实例；
@@ -1143,16 +1185,26 @@ local function create(config, exmodbus, gen_request_id, debug_flag)
 end
 
 function modbus:destroy()
-    -- 停止任务
-    sys.taskDel(self.TASK_NAME)
+    -- 设置退出标志，让主任务循环检测后主动退出
+    self.should_exit = true
 
-    -- 关闭 TCP 连接
+    -- 关闭 TCP 连接（从站）
     if self.netc then
         -- 断开 socket 链接
         libnet.close(self.TASK_NAME, 5000, self.netc)
         -- 释放 socket 对象
         socket.release(self.netc)
         self.netc = nil
+    end
+    
+    -- 关闭 TCP 连接（主站）
+    if self.socket_client then
+        -- 断开 socket 链接
+        libnet.close(self.TASK_NAME, 5000, self.socket_client)
+        -- 释放 socket 对象
+        socket.release(self.socket_client)
+        self.socket_client = nil
+        self.is_connected = false
     end
     -- 释放缓冲区
     if self.recv_buff then
@@ -1192,6 +1244,7 @@ function modbus:read_internal(config)
             -- 解析响应数据；
             parsed_data = parse_tcp_response(response, config, function_code, transaction_id)
             parsed_data.raw_response = response
+            parsed_data.raw_request = request_frame
         end
     elseif config.raw_request then
         -- 发送请求并等待响应；
@@ -1202,6 +1255,7 @@ function modbus:read_internal(config)
             -- 直接返回响应结果和原始响应数据；
             parsed_data.status = exmodbus_ref.STATUS_SUCCESS
             parsed_data.raw_response = response
+            parsed_data.raw_request = config.raw_request
         end
     end
 
@@ -1237,6 +1291,7 @@ function modbus:write_internal(config)
             -- 解析响应数据；
             parsed_data = parse_tcp_response(response, config, function_code, transaction_id)
             parsed_data.raw_response = response
+            parsed_data.raw_request = request_frame
         end
     elseif config.raw_request then
         -- 发送请求并等待响应；
@@ -1247,6 +1302,7 @@ function modbus:write_internal(config)
             -- 直接返回响应结果和原始响应数据；
             parsed_data.status = exmodbus_ref.STATUS_SUCCESS
             parsed_data.raw_response = response
+            parsed_data.raw_request = config.raw_request
         end
     end
 
