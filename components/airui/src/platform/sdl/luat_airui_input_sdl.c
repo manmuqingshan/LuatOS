@@ -121,7 +121,7 @@ static sdl_keypad_cfg_t g_keypad_cfg = {
     .left = SDLK_LEFT,
     .right = SDLK_RIGHT,
     .ok = SDLK_RETURN,
-    .back = SDLK_ESCAPE
+    .back = SDLK_BACKSPACE
 };
 
 // 按键队列推入
@@ -201,8 +201,11 @@ static uint32_t sdl_map_to_lvgl_key(SDL_Keycode key)
     if (key == g_keypad_cfg.ok || key == SDLK_KP_ENTER) {
         return LV_KEY_ENTER;
     }
-    if (key == g_keypad_cfg.back) {
+    if (key == SDLK_ESCAPE) {
         return LV_KEY_ESC;
+    }
+    if (key == g_keypad_cfg.back) {
+        return LV_KEY_BACKSPACE;
     }
     return 0;
 }
@@ -312,7 +315,7 @@ void airui_platform_sdl2_bind_keypad_cfg(const void *cfg_ptr)
         g_keypad_cfg.left = SDLK_LEFT;
         g_keypad_cfg.right = SDLK_RIGHT;
         g_keypad_cfg.ok = SDLK_RETURN;
-        g_keypad_cfg.back = SDLK_ESCAPE;
+        g_keypad_cfg.back = SDLK_BACKSPACE;
     }
     g_keypad_enabled = true;
 }

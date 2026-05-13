@@ -114,7 +114,8 @@ typedef struct {
 #define AIRUI_LUA_KEY_LEFT    SDLK_LEFT
 #define AIRUI_LUA_KEY_RIGHT   SDLK_RIGHT
 #define AIRUI_LUA_KEY_OK      SDLK_RETURN
-#define AIRUI_LUA_KEY_BACK    SDLK_ESCAPE
+#define AIRUI_LUA_KEY_BACK    SDLK_BACKSPACE
+#define AIRUI_LUA_KEY_ESC     SDLK_ESCAPE
 #else
 #define AIRUI_LUA_KEY_0       '0'
 #define AIRUI_LUA_KEY_1       '1'
@@ -131,7 +132,8 @@ typedef struct {
 #define AIRUI_LUA_KEY_LEFT    1003
 #define AIRUI_LUA_KEY_RIGHT   1004
 #define AIRUI_LUA_KEY_OK      1005
-#define AIRUI_LUA_KEY_BACK    1006
+#define AIRUI_LUA_KEY_BACK    8
+#define AIRUI_LUA_KEY_ESC     27
 #endif
 
 /**
