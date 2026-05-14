@@ -18,7 +18,7 @@ local RTMP_TASK_NAME = "rtmp_app_task" -- RTMP任务名称
 
 -- HTTP请求获取RTMP服务器地址函数
 local function rtmp_http_request()
-    local get_device_id = netdrv.mac(socket.LWIP_STA) -- Air8101用STA MAC作为设备ID
+    local get_device_id = netdrv.mac(socket.LWIP_STA) -- Air8101用STA MAC作为设备ID，在合宙音视频平台创建设备时的接入id即为此值
     log.info("打印设备的ID号", get_device_id)
 
     local url = "https://video.luatos.com/api-system/deviceVideo/get" .. "/" .. get_device_id
