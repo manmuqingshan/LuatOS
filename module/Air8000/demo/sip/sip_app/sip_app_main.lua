@@ -8,8 +8,8 @@ local SIP_CONFIG = {
     sip_server_addr = "180.152.6.34",
     sip_server_port = 8910,
     sip_domain = "180.152.6.34",
-    sip_username = "100001",
-    sip_password = "Mm123..",
+    sip_username = "100000",
+    sip_password = "Mm123.",
     sip_transport = exsip.TRANSPORT_UDP,
     auto_answer = false,
 }
@@ -115,7 +115,7 @@ local function sip_callback(event, arg1, arg2, arg3)
         local sub_event, data = arg1, arg2
         log.info("sip_callback", "call event sub_event=", sub_event)
         if sub_event == "incoming" then
-            log.info("sip_callback", "来电:", data.from, data.call_id, data.uri, data.headers, data.remote_sdp)
+            log.info("sip_callback", "来电:", data.from, data.uri, data.headers["to"])
             sys.sendMsg(TASK_NAME, tag, "MSG_INCOMING", data.from)
         elseif sub_event == "ringing" then
             log.info("sip_callback", "对方响铃中")

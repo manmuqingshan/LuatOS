@@ -91,13 +91,13 @@ static void display_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t 
  */
 static void input_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
-    airui_ctx_t *ctx = (airui_ctx_t *)lv_indev_get_user_data(indev);
-    if (ctx == NULL || ctx->ops == NULL || ctx->ops->input_ops == NULL) {
+    airui_indev_udata_t *ud = (airui_indev_udata_t *)lv_indev_get_user_data(indev);
+    if (ud == NULL || ud->ctx == NULL || ud->ctx->ops == NULL || ud->ctx->ops->input_ops == NULL) {
         return;
     }
     
-    if (ctx->ops->input_ops->read_pointer) {
-        ctx->ops->input_ops->read_pointer(ctx, data);
+    if (ud->ctx->ops->input_ops->read_pointer) {
+        ud->ctx->ops->input_ops->read_pointer(ud->ctx, indev, data);
     }
 }
 
@@ -297,10 +297,12 @@ static void airui_pause_lvgl_timers(airui_ctx_t *ctx)
         }
     }
 
-    if (ctx->indev != NULL) {
-        timer = lv_indev_get_read_timer(ctx->indev);
-        if (timer != NULL) {
-            lv_timer_pause(timer);
+    for (uint8_t i = 0; i < ctx->indev_ptr_count; i++) {
+        if (ctx->indev_ptrs[i] != NULL) {
+            timer = lv_indev_get_read_timer(ctx->indev_ptrs[i]);
+            if (timer != NULL) {
+                lv_timer_pause(timer);
+            }
         }
     }
 
@@ -328,12 +330,15 @@ static void airui_resume_lvgl_timers(airui_ctx_t *ctx)
         }
     }
 
-    if (ctx->indev != NULL) {
-        timer = lv_indev_get_read_timer(ctx->indev);
-        if (timer != NULL) {
-            lv_timer_resume(timer);
+    for (uint8_t i = 0; i < ctx->indev_ptr_count; i++) {
+        if (ctx->indev_ptrs[i] != NULL) {
+            timer = lv_indev_get_read_timer(ctx->indev_ptrs[i]);
+            if (timer != NULL) {
+                lv_timer_resume(timer);
+            }
         }
     }
+
 
     if (ctx->indev_keypad != NULL) {
         timer = lv_indev_get_read_timer(ctx->indev_keypad);
@@ -483,16 +488,31 @@ int airui_init(airui_ctx_t *ctx, uint16_t width, uint16_t height, lv_color_forma
     // 设置缓冲
     airui_display_set_buffers(ctx, buf1, buf2, buf_size, AIRUI_BUFFER_MODE_DOUBLE);
     
-    // 创建输入设备
-    ctx->indev = lv_indev_create();
-    if (ctx->indev == NULL) {
-        LLOGE("airui_init failed: lv_indev_create failed");
-        airui_deinit(ctx);
-        return AIRUI_ERR_INIT_FAILED;
+    // 创建多个指针输入设备（多点触控支持）
+    // 默认创建 2 个；SDL 平台仅需 1 个
+#ifdef LUAT_USE_AIRUI_SDL2
+    ctx->indev_ptr_count = 1;
+#else
+    ctx->indev_ptr_count = 2;
+#endif
+    if (ctx->indev_ptr_count > AIRUI_POINTER_INDEV_MAX) {
+        ctx->indev_ptr_count = AIRUI_POINTER_INDEV_MAX;
     }
-    lv_indev_set_type(ctx->indev, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_user_data(ctx->indev, ctx);
-    lv_indev_set_read_cb(ctx->indev, input_read_cb);
+    for (uint8_t i = 0; i < ctx->indev_ptr_count; i++) {
+        ctx->indev_ptrs[i] = lv_indev_create();
+        if (ctx->indev_ptrs[i] == NULL) {
+            LLOGE("airui_init failed: lv_indev_create[%d] failed", i);
+            airui_deinit(ctx);
+            return AIRUI_ERR_INIT_FAILED;
+        }
+        lv_indev_set_type(ctx->indev_ptrs[i], LV_INDEV_TYPE_POINTER);
+        ctx->indev_udata[i].ctx = ctx;
+        ctx->indev_udata[i].slot = i;
+        lv_indev_set_user_data(ctx->indev_ptrs[i], &ctx->indev_udata[i]);
+        lv_indev_set_read_cb(ctx->indev_ptrs[i], input_read_cb);
+    }
+    // 保持 ctx->indev 指向第一个（向后兼容）
+    ctx->indev = ctx->indev_ptrs[0];
 
     // 创建按键输入设备（用于物理按键/键盘/方向键）
     ctx->indev_keypad = lv_indev_create();
@@ -693,10 +713,14 @@ void airui_deinit(airui_ctx_t *ctx)
     }
     
     // 删除输入设备
-    if (ctx->indev != NULL) {
-        lv_indev_delete(ctx->indev);
-        ctx->indev = NULL;
+    for (uint8_t i = 0; i < ctx->indev_ptr_count; i++) {
+        if (ctx->indev_ptrs[i] != NULL) {
+            lv_indev_delete(ctx->indev_ptrs[i]);
+            ctx->indev_ptrs[i] = NULL;
+        }
     }
+    ctx->indev = NULL;
+    ctx->indev_ptr_count = 0;
 
     // 删除按键输入设备
     if (ctx->indev_keypad != NULL) {

@@ -13,6 +13,8 @@
 
 #ifdef LUAT_USE_AIRLINK_EXEC_GPIO
 extern const luat_airlink_rpc_nb_reg_t luat_airlink_rpc_gpio_reg;
+#else
+extern const luat_airlink_rpc_nb_reg_t luat_airlink_rpc_gpio_event_reg;
 #endif
 #ifdef LUAT_USE_AIRLINK_EXEC_UART
 extern const luat_airlink_rpc_nb_reg_t luat_airlink_rpc_uart_reg;
@@ -40,6 +42,8 @@ extern const luat_airlink_rpc_nb_reg_t luat_airlink_rpc_bluetooth_event_reg;
 const luat_airlink_rpc_nb_reg_t* const luat_airlink_rpc_nb_static_table[] = {
 #ifdef LUAT_USE_AIRLINK_EXEC_GPIO
     &luat_airlink_rpc_gpio_reg,
+#else
+    &luat_airlink_rpc_gpio_event_reg,
 #endif
 #ifdef LUAT_USE_AIRLINK_EXEC_UART
     &luat_airlink_rpc_uart_reg,

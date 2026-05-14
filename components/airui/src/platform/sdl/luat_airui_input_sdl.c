@@ -121,7 +121,7 @@ static sdl_keypad_cfg_t g_keypad_cfg = {
     .left = SDLK_LEFT,
     .right = SDLK_RIGHT,
     .ok = SDLK_RETURN,
-    .back = SDLK_ESCAPE
+    .back = SDLK_BACKSPACE
 };
 
 // 按键队列推入
@@ -152,18 +152,29 @@ static bool airui_keypad_queue_pop(lv_indev_data_t *data)
 // 通知触摸事件
 static void airui_sdl_notify_touch_state(airui_ctx_t *ctx, bool button_down, bool down_event, bool up_event, lv_coord_t x, lv_coord_t y)
 {
+    airui_touch_point_t pt;
+
     if (ctx == NULL) {
         return;
     }
 
     if (button_down) {
-        airui_touch_notify(ctx, (down_event || !ctx->touch_pressed) ? AIRUI_TOUCH_STATE_DOWN : AIRUI_TOUCH_STATE_HOLD,
-                           x, y, 0, lv_tick_get());
+        pt.state = (down_event || !ctx->touch_pressed) ? AIRUI_TOUCH_STATE_DOWN : AIRUI_TOUCH_STATE_HOLD;
+        pt.x = x;
+        pt.y = y;
+        pt.track_id = 0;
+        pt.timestamp = lv_tick_get();
+        airui_touch_notify(ctx, &pt, 1);
         return;
     }
 
     if (up_event || ctx->touch_pressed) {
-        airui_touch_notify(ctx, AIRUI_TOUCH_STATE_UP, x, y, 0, lv_tick_get());
+        pt.state = AIRUI_TOUCH_STATE_UP;
+        pt.x = x;
+        pt.y = y;
+        pt.track_id = 0;
+        pt.timestamp = lv_tick_get();
+        airui_touch_notify(ctx, &pt, 1);
     }
 }
 
@@ -190,8 +201,11 @@ static uint32_t sdl_map_to_lvgl_key(SDL_Keycode key)
     if (key == g_keypad_cfg.ok || key == SDLK_KP_ENTER) {
         return LV_KEY_ENTER;
     }
-    if (key == g_keypad_cfg.back) {
+    if (key == SDLK_ESCAPE) {
         return LV_KEY_ESC;
+    }
+    if (key == g_keypad_cfg.back) {
+        return LV_KEY_BACKSPACE;
     }
     return 0;
 }
@@ -301,7 +315,7 @@ void airui_platform_sdl2_bind_keypad_cfg(const void *cfg_ptr)
         g_keypad_cfg.left = SDLK_LEFT;
         g_keypad_cfg.right = SDLK_RIGHT;
         g_keypad_cfg.ok = SDLK_RETURN;
-        g_keypad_cfg.back = SDLK_ESCAPE;
+        g_keypad_cfg.back = SDLK_BACKSPACE;
     }
     g_keypad_enabled = true;
 }
@@ -454,8 +468,9 @@ static void sdl_process_keyboard_event(const SDL_Event *event, airui_ctx_t *ctx)
  * @param data 输入数据（输出）
  * @return true 有数据，false 无数据
  */
-static bool sdl_input_read_pointer(airui_ctx_t *ctx, lv_indev_data_t *data)
+static bool sdl_input_read_pointer(airui_ctx_t *ctx, lv_indev_t *indev, lv_indev_data_t *data)
 {
+    (void)indev;  // SDL 单鼠标，不需要区分 indev
     if (ctx == NULL || ctx->platform_data == NULL || data == NULL) {
         return false;
     }

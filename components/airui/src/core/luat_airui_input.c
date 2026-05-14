@@ -9,6 +9,7 @@
 #include "lua.h"
 #include "lauxlib.h"
 #include <stdint.h>
+#include <string.h>
 #define LUAT_LOG_TAG "airui_input"
 #include "luat_log.h"
 
@@ -107,6 +108,8 @@ int airui_touch_subscribe(airui_ctx_t *ctx, void *L, int callback_ref) {
     ctx->touch_last_point.y = 0;
     ctx->touch_last_track_id = 0;
     ctx->touch_last_timestamp = 0;
+    memset(ctx->touch_active, 0, sizeof(ctx->touch_active));
+    ctx->touch_active_count = 0;
     return AIRUI_OK;
 }
 
@@ -129,6 +132,8 @@ void airui_touch_unsubscribe(airui_ctx_t *ctx, void *L) {
     ctx->touch_last_point.y = 0;
     ctx->touch_last_track_id = 0;
     ctx->touch_last_timestamp = 0;
+    memset(ctx->touch_active, 0, sizeof(ctx->touch_active));
+    ctx->touch_active_count = 0;
 }
 
 // 触摸事件坐标转换为逻辑坐标
@@ -170,9 +175,9 @@ static void airui_touch_map_to_logical(airui_ctx_t *ctx, lv_coord_t *x, lv_coord
     *y = (lv_coord_t)mapped_y;
 }
 
-// 通知触摸事件
-void airui_touch_notify(airui_ctx_t *ctx, airui_touch_state_t state, lv_coord_t x, lv_coord_t y, uint8_t track_id, uint32_t timestamp) {
+void airui_touch_notify(airui_ctx_t *ctx, const airui_touch_point_t *points, uint8_t count) {
     lua_State *L_state;
+    uint8_t i;
 
     if (ctx == NULL || ctx->L == NULL) {
         return;
@@ -183,29 +188,88 @@ void airui_touch_notify(airui_ctx_t *ctx, airui_touch_state_t state, lv_coord_t 
         return;
     }
 
-    // 与 LVGL pointer 处理保持一致，订阅回调也返回旋转后的逻辑坐标。
-    airui_touch_map_to_logical(ctx, &x, &y);
+    if (count > AIRUI_TOUCH_MAX_POINTS) {
+        count = AIRUI_TOUCH_MAX_POINTS;
+    }
 
-    ctx->touch_last_state = state;
-    ctx->touch_last_point.x = x;
-    ctx->touch_last_point.y = y;
-    ctx->touch_last_track_id = track_id;
-    ctx->touch_last_timestamp = timestamp;
-    ctx->touch_pressed = (state == AIRUI_TOUCH_STATE_DOWN || state == AIRUI_TOUCH_STATE_HOLD);
+    ctx->touch_pressed = false;
+    for (i = 0; i < count; i++) {
+        if (points[i].state == AIRUI_TOUCH_STATE_DOWN || points[i].state == AIRUI_TOUCH_STATE_HOLD) {
+            ctx->touch_pressed = true;
+            break;
+        }
+    }
 
+    if (count > 0) {
+        ctx->touch_last_state = points[0].state;
+        ctx->touch_last_point.x = points[0].x;
+        ctx->touch_last_point.y = points[0].y;
+        ctx->touch_last_track_id = points[0].track_id;
+        ctx->touch_last_timestamp = points[0].timestamp;
+    } else {
+        ctx->touch_last_state = AIRUI_TOUCH_STATE_UP;
+        ctx->touch_last_timestamp = 0;
+    }
+
+    memset(ctx->touch_active, 0, sizeof(ctx->touch_active));
+    ctx->touch_active_count = count;
+    for (i = 0; i < count; i++) {
+        ctx->touch_active[i] = points[i];
+    }
+
+    // 调用 Lua 回调: fn(state, x, y, track_id, timestamp, touches)
     lua_rawgeti(L_state, LUA_REGISTRYINDEX, ctx->touch_callback_ref);
     if (lua_type(L_state, -1) != LUA_TFUNCTION) {
         lua_pop(L_state, 1);
         return;
     }
 
-    lua_pushinteger(L_state, state);
-    lua_pushinteger(L_state, x);
-    lua_pushinteger(L_state, y);
-    lua_pushinteger(L_state, track_id);
-    lua_pushinteger(L_state, timestamp);
+    // 先压入旧格式 5 个独立参数（向后兼容）
+    if (count > 0) {
+        lv_coord_t first_x = points[0].x;
+        lv_coord_t first_y = points[0].y;
+        airui_touch_map_to_logical(ctx, &first_x, &first_y);
+        lua_pushinteger(L_state, points[0].state);
+        lua_pushinteger(L_state, first_x);
+        lua_pushinteger(L_state, first_y);
+        lua_pushinteger(L_state, points[0].track_id);
+        lua_pushinteger(L_state, points[0].timestamp);
+    } else {
+        lv_coord_t last_x = ctx->touch_last_point.x;
+        lv_coord_t last_y = ctx->touch_last_point.y;
+        airui_touch_map_to_logical(ctx, &last_x, &last_y);
+        lua_pushinteger(L_state, AIRUI_TOUCH_STATE_UP);
+        lua_pushinteger(L_state, last_x);
+        lua_pushinteger(L_state, last_y);
+        lua_pushinteger(L_state, ctx->touch_last_track_id);
+        lua_pushinteger(L_state, ctx->touch_last_timestamp);
+    }
 
-    if (lua_pcall(L_state, 5, 0, 0) != LUA_OK) {
+    // 再构建多触点 table（作为第 6 个参数）
+    //   {[1]={state=1, x=100, y=200, track_id=0, timestamp=12345}, [2]=...}
+    lua_createtable(L_state, count, 0);
+    for (i = 0; i < count; i++) {
+        const airui_touch_point_t *pt = &points[i];
+        lv_coord_t x = pt->x;
+        lv_coord_t y = pt->y;
+        airui_touch_map_to_logical(ctx, &x, &y);
+
+        lua_createtable(L_state, 0, 5);
+        lua_pushinteger(L_state, pt->state);
+        lua_setfield(L_state, -2, "state");
+        lua_pushinteger(L_state, x);
+        lua_setfield(L_state, -2, "x");
+        lua_pushinteger(L_state, y);
+        lua_setfield(L_state, -2, "y");
+        lua_pushinteger(L_state, pt->track_id);
+        lua_setfield(L_state, -2, "track_id");
+        lua_pushinteger(L_state, pt->timestamp);
+        lua_setfield(L_state, -2, "timestamp");
+        lua_seti(L_state, -2, i + 1);
+    }
+
+    // 栈: [fn, state, x, y, track_id, timestamp, touches]
+    if (lua_pcall(L_state, 6, 0, 0) != LUA_OK) {
         const char *err = lua_tostring(L_state, -1);
         LLOGE("touch callback error: %s", err ? err : "unknown");
         lua_pop(L_state, 1);

@@ -1,26 +1,63 @@
 /*
- * AirLink GPIO nanopb RPC exec handler (服务端)
+ * AirLink GPIO nanopb RPC — NOTIFY handler (both sides) + exec handler (slave)
  *
- * 将 GpioRpcRequest 分发到对应的 luat_gpio_* 函数，填写 GpioRpcResponse。
  * proto enum 值 = C 宏值 + 1（0 保留给 UNSPECIFIED），转换时减 1。
  *
- * IRQ 通路: 从机 ISR → queue → task → nanopb NOTIFY → 主机 dispatch → luat_gpio_irq_default
+ * NOTIFY 通路 (0x0100): 从机 ISR → queue → task → nanopb NOTIFY → 主机 dispatch → luat_gpio_irq_default
+ * REQUEST 通路 (0x0100): 主机 → nanopb REQUEST → 从机 exec → luat_gpio_* → 从机 RESPONSE
  */
 
 #include "luat_base.h"
 
-#ifdef LUAT_USE_AIRLINK_EXEC_GPIO
+#ifdef LUAT_USE_AIRLINK_RPC
 
 #include "luat_airlink_rpc.h"
 #include "luat_gpio.h"
-#include "luat_rtos.h"
-#include "luat_mcu.h"
 #include "drv_gpio.pb.h"
 
 #define LUAT_LOG_TAG "airlink.rpc.gpio"
 #include "luat_log.h"
 
 #define AIRLINK_RPC_ID_GPIO  0x0100
+
+/* ------------------------------------------------------------------ */
+/* NOTIFY 接收处理              */
+/* ------------------------------------------------------------------ */
+
+/* NOTIFY 处理器: 对端上报的 GPIO IRQ 事件 → luat_gpio_irq_default 触发 Lua 回调 */
+static void gpio_rpc_notify_handler(uint16_t rpc_id, const void* msg, void* userdata) {
+    const drv_gpio_GpioRpcResponse* resp = (const drv_gpio_GpioRpcResponse*)msg;
+    if (resp->which_payload == drv_gpio_GpioRpcResponse_irq_event_tag) {
+        int pin = (int)resp->payload.irq_event.pin;
+        int level = (resp->payload.irq_event.level == drv_gpio_GpioLevel_GPIO_LEVEL_HIGH) ? 1 : 0;
+        // LLOGD("irq notify pin=%d level=%d", pin, level);
+        luat_gpio_irq_default(pin, (void*)(intptr_t)level);
+    }
+}
+
+/* 0x0100 NOTIFY 事件接收注册 (从机发送, 主机/从机均可接收) */
+const luat_airlink_rpc_nb_reg_t luat_airlink_rpc_gpio_event_reg = {
+    .rpc_id         = AIRLINK_RPC_ID_GPIO,
+    .active         = 1,
+    .req_desc       = NULL,
+    .req_size       = 0,
+    .resp_desc      = NULL,
+    .resp_size      = 0,
+    .notify_desc    = drv_gpio_GpioRpcResponse_fields,
+    .notify_size    = sizeof(drv_gpio_GpioRpcResponse),
+    .handler        = NULL,
+    .notify_handler = gpio_rpc_notify_handler,
+    .userdata       = NULL,
+};
+
+#ifdef LUAT_USE_AIRLINK_EXEC_GPIO
+
+/* ------------------------------------------------------------------ */
+/* 以下仅从机编译 (有 GPIO 硬件执行能力)                                  */
+/* ------------------------------------------------------------------ */
+
+#include "luat_rtos.h"
+#include "luat_mcu.h"
 
 /* ------------------------------------------------------------------ */
 /* 从机侧: IRQ 回调 → queue → task → NOTIFY                              */
@@ -40,7 +77,8 @@ static int rpc_gpio_irq_cb(int pin, void* args) {
 }
 
 /* 任务上下文: 从队列取出事件, 编码 GpioIrqEvent 并通过 NOTIFY 发给主机 */
-__AIRLINK_CODE_IN_RAM__ static int rpc_gpio_irq_cb_task(void* param) {
+__AIRLINK_CODE_IN_RAM__ static void rpc_gpio_irq_cb_task(void* param) {
+    luat_rtos_task_handle self = luat_rtos_get_current_handle();
     luat_event_t event = {0};
     luat_rtos_task_sleep(2);
 
@@ -63,13 +101,13 @@ __AIRLINK_CODE_IN_RAM__ static int rpc_gpio_irq_cb_task(void* param) {
         msg.payload.irq_event.has_tick_ms  = true;
         msg.payload.irq_event.tick_ms      = luat_mcu_tick64_ms();
 
-        LLOGW("rpc gpio irq notify pin=%d level=%d", pin, level);
+        // LLOGD("rpc gpio irq notify pin=%d level=%d", pin, level);
 
         int mode = luat_airlink_current_mode_get();
         luat_airlink_rpc_nb_notify((uint8_t)mode, AIRLINK_RPC_ID_GPIO,
                                    drv_gpio_GpioRpcResponse_fields, &msg);
     }
-    return 0;
+    luat_rtos_task_delete(self);
 }
 
 // proto enum (1-based) → C 宏 (0-based) 转换辅助
@@ -133,8 +171,8 @@ static int gpio_rpc_handler(uint16_t rpc_id,
                 luat_rtos_queue_create(&rpc_gpio_irq_queue, 1 * 1024, sizeof(luat_event_t));
             }
             if (rpc_gpio_irq_task_handle == NULL) {
-                luat_rtos_task_create(&rpc_gpio_irq_task_handle, 1 * 1024, 55, "airlink",
-                                      rpc_gpio_irq_cb_task, NULL, 1024);
+                luat_rtos_task_create(&rpc_gpio_irq_task_handle, 4 * 1024, 55, "airlink_gpio",
+                                      rpc_gpio_irq_cb_task, NULL, 0);
             }
             cfg.irq_cb   = rpc_gpio_irq_cb;
             cfg.irq_args = NULL;
@@ -208,18 +246,7 @@ static int gpio_rpc_handler(uint16_t rpc_id,
     return 0;
 }
 
-// NOTIFY 处理: 对端上报的 GPIO IRQ 事件 → 调用 luat_gpio_irq_default 触发 Lua 回调
-static void gpio_rpc_notify_handler(uint16_t rpc_id, const void* msg, void* userdata) {
-    const drv_gpio_GpioRpcResponse* resp = (const drv_gpio_GpioRpcResponse*)msg;
-    if (resp->which_payload == drv_gpio_GpioRpcResponse_irq_event_tag) {
-        int pin = (int)resp->payload.irq_event.pin;
-        // proto level: GPIO_LEVEL_LOW=1, GPIO_LEVEL_HIGH=2 → C level: 0/1
-        int level = (resp->payload.irq_event.level == drv_gpio_GpioLevel_GPIO_LEVEL_HIGH) ? 1 : 0;
-        LLOGW("irq notify pin=%d level=%d", pin, level);
-        luat_gpio_irq_default(pin, (void*)(intptr_t)level);
-    }
-}
-
+/* 0x0100 REQUEST 处理注册 (仅从机 — 有 GPIO 硬件执行能力) */
 const luat_airlink_rpc_nb_reg_t luat_airlink_rpc_gpio_reg = {
     .rpc_id         = AIRLINK_RPC_ID_GPIO,
     .active         = 1,
@@ -227,11 +254,12 @@ const luat_airlink_rpc_nb_reg_t luat_airlink_rpc_gpio_reg = {
     .req_size       = sizeof(drv_gpio_GpioRpcRequest),
     .resp_desc      = drv_gpio_GpioRpcResponse_fields,
     .resp_size      = sizeof(drv_gpio_GpioRpcResponse),
-    .notify_desc    = drv_gpio_GpioRpcResponse_fields,
-    .notify_size    = sizeof(drv_gpio_GpioRpcResponse),
+    .notify_desc    = NULL,
+    .notify_size    = 0,
     .handler        = gpio_rpc_handler,
-    .notify_handler = gpio_rpc_notify_handler,
+    .notify_handler = NULL,   // NOTIFY 由 luat_airlink_rpc_gpio_event_reg 独立处理
     .userdata       = NULL,
 };
 
 #endif /* LUAT_USE_AIRLINK_EXEC_GPIO */
+#endif /* LUAT_USE_AIRLINK_RPC */

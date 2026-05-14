@@ -1056,14 +1056,16 @@ static int ping_result_cb(lua_State *L, void *ptr) {
     return 0;
 }
 
-static int ping_worker_task(void* param) {
+static void ping_worker_task(void* param) {
     ping_worker_args_t* args = (ping_worker_args_t*)param;
+    luat_rtos_task_handle self = luat_rtos_get_current_handle();
 
     ping_result_msg_t* result = (ping_result_msg_t*)luat_heap_malloc(sizeof(ping_result_msg_t));
     if (!result) {
         LLOGE("ping worker: malloc result failed");
         luat_heap_free(args);
-        return -1;
+        luat_rtos_task_delete(self);
+        return;
     }
     memset(result, 0, sizeof(ping_result_msg_t));
     result->pkgid = args->pkgid;
@@ -1092,7 +1094,7 @@ static int ping_worker_task(void* param) {
     msg.handler = ping_result_cb;
     msg.ptr     = result;
     luat_msgbus_put(&msg, 0);
-    return 0;
+    luat_rtos_task_delete(self);
 }
 
 /*
@@ -1143,7 +1145,8 @@ static int l_airlink_ping(lua_State *L) {
         return 1;
     }
     memset(args, 0, sizeof(ping_worker_args_t));
-    args->mode        = LUAT_AIRLINK_MODE_LOOPBACK;
+    int current_mode = luat_airlink_current_mode_get();
+    args->mode        = (current_mode >= 0) ? (uint8_t)current_mode : LUAT_AIRLINK_MODE_LOOPBACK;
     args->pkgid       = pkgid;
     args->timeout_ms  = timeout_ms;
     args->payload_len = (uint16_t)data_len;

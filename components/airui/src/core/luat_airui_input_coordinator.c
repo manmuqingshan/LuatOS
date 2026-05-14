@@ -291,16 +291,16 @@ bool airui_input_coordinator_is_related_obj(const airui_input_coordinator_t *coo
             coord_is_obj_or_ancestor(runtime->preview_ta, obj)) {
             return true;
         }
+    }
 
 #if LV_USE_IME_PINYIN
-        if (s->ime != NULL && lv_obj_is_valid(s->ime)) {
-            lv_obj_t *cand_panel = coord_get_valid_cand_panel((airui_keyboard_data_t *)data);
-            if (coord_is_obj_or_ancestor(cand_panel, obj)) {
-                return true;
-            }
+    if (s->ime != NULL && lv_obj_is_valid(s->ime)) {
+        lv_obj_t *cand_panel = coord_get_valid_cand_panel((airui_keyboard_data_t *)data);
+        if (coord_is_obj_or_ancestor(cand_panel, obj)) {
+            return true;
         }
-#endif
     }
+#endif
 
     return false;
 }
@@ -339,16 +339,16 @@ bool airui_input_coordinator_is_focus_within(const airui_input_coordinator_t *co
                 coord_is_obj_or_ancestor(runtime->preview_ta, focused)) {
                 return true;
             }
+        }
 
 #if LV_USE_IME_PINYIN
-            if (s->ime != NULL && lv_obj_is_valid(s->ime)) {
-                lv_obj_t *cand_panel = coord_get_valid_cand_panel((airui_keyboard_data_t *)data);
-                if (coord_is_obj_or_ancestor(cand_panel, focused)) {
-                    return true;
-                }
+        if (s->ime != NULL && lv_obj_is_valid(s->ime)) {
+            lv_obj_t *cand_panel = coord_get_valid_cand_panel((airui_keyboard_data_t *)data);
+            if (coord_is_obj_or_ancestor(cand_panel, focused)) {
+                return true;
             }
-#endif
         }
+#endif
     }
 
     if (lv_obj_has_state(kb, LV_STATE_FOCUSED)) {
@@ -372,17 +372,17 @@ bool airui_input_coordinator_is_focus_within(const airui_input_coordinator_t *co
             lv_obj_has_state(runtime->preview_ta, LV_STATE_FOCUSED)) {
             return true;
         }
+    }
 
 #if LV_USE_IME_PINYIN
-        if (s->ime != NULL && lv_obj_is_valid(s->ime)) {
-            lv_obj_t *cand_panel = coord_get_valid_cand_panel((airui_keyboard_data_t *)data);
-            if (cand_panel != NULL && lv_obj_is_valid(cand_panel) &&
-                lv_obj_has_state(cand_panel, LV_STATE_FOCUSED)) {
-                return true;
-            }
+    if (s->ime != NULL && lv_obj_is_valid(s->ime)) {
+        lv_obj_t *cand_panel = coord_get_valid_cand_panel((airui_keyboard_data_t *)data);
+        if (cand_panel != NULL && lv_obj_is_valid(cand_panel) &&
+            lv_obj_has_state(cand_panel, LV_STATE_FOCUSED)) {
+            return true;
         }
-#endif
     }
+#endif
 
     return false;
 }

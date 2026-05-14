@@ -140,6 +140,27 @@ static int l_table_set_on_cell_click(lua_State *L) {
 }
 
 /**
+ * Table:scroll_to_row(row, animated)
+ * @api table:scroll_to_row(row, animated)
+ * @int row 行索引（从 0 开始）
+ * @boolean animated 是否使用动画，可选，默认 true
+ * @return nil
+ * @usage
+ * tbl:scroll_to_row(5)
+ * tbl:scroll_to_row(5, false) -- 直接跳转
+ */
+static int l_table_scroll_to_row(lua_State *L) {
+    lv_obj_t *table = airui_check_component(L, 1, AIRUI_TABLE_MT);
+    int row = luaL_checkinteger(L, 2);
+    bool animated = true;
+    if (lua_gettop(L) >= 3 && lua_type(L, 3) == LUA_TBOOLEAN) {
+        animated = lua_toboolean(L, 3);
+    }
+    airui_table_scroll_row_into_view(table, (uint32_t)row, animated, true);
+    return 0;
+}
+
+/**
  * Table:set_col_width(col, width)
  * @api table:set_col_width(col, width)
  * @int col 列索引（从 0 开始）
@@ -530,6 +551,7 @@ void airui_register_table_meta(lua_State *L) {
         {"auto_jump_scroll_control", l_table_auto_jump_scroll_control},
         {"auto_marquee_scroll_control", l_table_auto_marquee_scroll_control},
         {"set_on_cell_click", l_table_set_on_cell_click},
+        {"scroll_to_row", l_table_scroll_to_row},
         {"destroy", l_table_destroy},
         {"is_destroyed", airui_component_is_destroyed},
         {NULL, NULL}

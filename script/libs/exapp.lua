@@ -12,17 +12,21 @@
        - 隔离全局变量、模块加载、文件访问
        - 自动清理应用退出后的资源
 
-    2. 文件路径映射（将沙箱虚拟路径转换为实际文件系统路径）
+    2. 文件路径映射（将沙箱虚拟路径转换为实际文件系统路径，支持多存储）
        a. /luadb/icon.png
-          -> 映射到 <应用路径>/icon.png（应用图标，特殊处理）
+          -> 映射到 <app_path>/icon.png（应用图标，特殊处理）
        b. /luadb/xxx.lua 或 /luadb/xxx.luac
-          -> 按优先级搜索: <应用路径>/xxx.lua/luac -> <应用路径>/user/xxx.lua/luac -> <应用路径>/libs/xxx.lua/luac
-       c. /luadb/xxx（非lua文件）
-          -> 映射到 <应用路径>/res/xxx（资源文件目录）
+          -> 按优先级搜索: <app_path>/xxx.lua/luac -> <app_path>/user/xxx.lua/luac -> <app_path>/libs/xxx.lua/luac
+       c. /luadb/xxx.yyy（非lua/luac文件）
+          -> 映射到 <app_path>/res/xxx.yyy（资源文件目录）
        d. /ram/xxx
-          -> 直接返回 /ram/xxx（内存文件系统，不做转换）
-       e. /xxx（其他以/开头的路径）
-          -> 映射到 <应用路径>/data/xxx（数据存储目录）
+          -> 映射到 /ram/app_store/<app_name>/data/xxx（内存文件系统，app私有数据区）
+       e. /sd/xxx
+          -> 映射到 /sd/app_store/<app_name>/data/xxx（TF卡，app私有数据区）
+       f. /little_flash/xxx
+          -> 映射到 /little_flash/app_store/<app_name>/data/xxx（外挂Flash，app私有数据区）
+       g. /xxx（其他以/开头的路径）
+          -> 映射到 /app_store/<app_name>/data/xxx（内置Flash数据存储）
 
     3. 应用生命周期管理
        - 打开应用：创建沙箱环境，启动协程；每个应用的中的lua文件代码都在沙箱环境中运行
@@ -36,7 +40,7 @@
 
     5. 本地应用管理（原始行为）
        - install/uninstall 仅操作内存表，不操作文件系统
-       - init 扫描 /app_store/ 和 /sd/app_store/ 填充 installed_info（支持分页扫描，最多不限）
+       - init 扫描 /app_store/、/sd/app_store/、/little_flash/app_store/ 填充 installed_info（支持分页扫描，多存储）
 
     6. 云端应用管理（新增功能）
        - 获取远程应用列表（分页）
@@ -97,10 +101,11 @@
             libs/         -- 应用扩展库（存放全局环境中缺失的扩展库）
             res/          -- 资源文件
             data/         -- 数据存储
-    /sd/app_store/        -- SD卡应用根目录（结构同上）
+    /sd/app_store/        -- TF卡应用根目录（结构同上）
+    /little_flash/app_store/ -- 外挂Flash应用根目录（结构同上）
 
     注意事项：
-    1. 文件访问会被自动映射到应用目录
+    1. 文件访问会被自动映射到应用目录，支持跨存储写入（/ram/、/sd/、/little_flash/ 映射到各存储的 app 私有 data 区）
     2. 应用异常可能会导致重启，也可能不会影响主线程和其他应用的运行，取决于异常代码的执行逻辑是在全局环境还是应用沙箱环境中
 ]]
 
@@ -147,7 +152,180 @@ local APP_STORE_URL = "https://api.luatos.com/iot/appstore/list"
 local APP_STORE_DOWNLOAD_REPORT_URL = "https://api.luatos.com/iot/appstore/download"
 local PAGE_LIMIT = 10
 local TEMP_DOWNLOAD_PATH = "/ram/app_%s.zip"
-local APP_INSTALL_ROOT = "/app_store"
+-- ==============================================
+-- 多存储配置（模块层全局变量）
+-- ==============================================
+
+-- 存储位置定义表
+-- mount_point: 文件系统挂载点根目录（末尾带 /）
+-- label: 用户可见的中文名称
+-- order: 默认优先级序号（越小越优先）
+local STORAGE_DEFS = {
+    sd_tf        = { mount_point = "/sd/",          label = "外挂TF卡",     order = 1 },
+    little_flash = { mount_point = "/little_flash/", label = "外挂Flash",    order = 2 },
+    internal     = { mount_point = "/",              label = "内置文件系统", order = 3 },
+}
+
+-- 当前生效的存储优先级配置（type_key 数组，高优先级在前）
+-- 默认值：TF > Flash > 内置
+local storage_priority = { "sd_tf", "little_flash", "internal" }
+
+-- 存储介质可用状态（init 时探测）
+-- true = 介质已挂载且 app_store 目录存在（或可创建）
+local storage_available = {
+    internal     = true,  -- 内置文件系统永远可用
+    sd_tf        = false,
+    little_flash = false,
+}
+
+-- ==============================================
+-- 存储配置管理函数
+-- ==============================================
+
+-- 从 fskv 加载存储优先级配置
+-- 解析失败或配置无效时使用默认值
+local function load_storage_config()
+    local config_str = fskv.get("storage_priority")
+    if config_str then
+        local ok, parsed = pcall(json.decode, config_str)
+        if ok and type(parsed) == "table" and #parsed > 0 then
+            local valid = true
+            local seen = {}
+            for _, tk in ipairs(parsed) do
+                if not STORAGE_DEFS[tk] or seen[tk] then
+                    valid = false
+                    break
+                end
+                seen[tk] = true
+            end
+            if valid then
+                storage_priority = parsed
+                log.info("storage_config", "loaded priority:", config_str)
+                return
+            end
+        end
+        log.warn("storage_config", "invalid config, using default")
+    end
+    -- 回退到默认值
+    storage_priority = { "sd_tf", "little_flash", "internal" }
+end
+
+-- 保存存储优先级配置到 fskv
+local function save_storage_config(priority_list)
+    storage_priority = priority_list
+    local config_str = json.encode(priority_list)
+    local ok = fskv.set("storage_priority", config_str)
+    if ok then
+        log.info("storage_config", "saved priority:", config_str)
+        sys.publish("STORAGE_PRIORITY_CHANGED", priority_list)
+    else
+        log.warn("storage_config", "failed to persist priority")
+    end
+    return ok
+end
+
+-- 探测指定挂载点的存储介质是否可用
+-- 条件：挂载点根目录存在，且 app_store 目录存在或可创建
+local function probe_storage(mount_point)
+    if not io.dexist(mount_point) then
+        return false
+    end
+    local app_store_path = mount_point .. "app_store/"
+    if not io.dexist(app_store_path) then
+        local ok = io.mkdir(app_store_path)
+        if not ok then
+            log.warn("storage_probe", "cannot create dir:", app_store_path)
+            return false
+        end
+    end
+    return true
+end
+
+-- 获取指定挂载点的剩余空间（KB）
+-- 返回 nil 表示无法获取（不阻塞安装流程，由后续校验兜底）
+local function get_storage_free_kb(mount_point)
+    local ok, stat = pcall(io.fsstat, mount_point)
+    if not ok or type(stat) ~= "table" then return nil end
+    if type(stat.free_kb) == "number" then return stat.free_kb end
+    if stat.free_blocks and stat.block_size then
+        return math.floor(stat.free_blocks * stat.block_size / 1024)
+    end
+    return nil
+end
+
+-- 根据 app_path 推断其挂载点信息
+-- "/sd/app_store/hello/"     → "/sd/", "sd_tf"
+-- "/little_flash/.../hello/" → "/little_flash/", "little_flash"
+-- "/app_store/hello/"        → "/", "internal"
+local function infer_mount_point(app_path)
+    if app_path:sub(1, 4) == "/sd/" then
+        return "/sd/", "sd_tf"
+    elseif app_path:sub(1, 14) == "/little_flash/" then
+        return "/little_flash/", "little_flash"
+    else
+        return "/", "internal"
+    end
+end
+
+-- 根据 app_name 构建所有存储位置的 data 目录列表
+-- 用于卸载时批量删除
+local function build_data_dirs(app_name)
+    return {
+        "/app_store/" .. app_name .. "/data",
+        "/sd/app_store/" .. app_name .. "/data",
+        "/ram/app_store/" .. app_name .. "/data",
+        "/little_flash/app_store/" .. app_name .. "/data",
+    }
+end
+
+--[[
+    选择合适的存储位置用于安装 app
+
+    @param number app_size_kb 预估的 app 所需空间（解压后），未知时传 nil
+    @return string|nil  选中的 type_key（如 "sd_tf"），nil 表示没有可用位置
+    @return string|nil  选中的 mount_point（如 "/sd/"）
+    @return string|nil  失败原因描述（成功时为 nil）
+
+    选择逻辑：
+    1. 遍历 storage_priority 数组（按用户配置的优先级顺序）
+    2. 对每个候选位置，检查两个条件：
+       a. storage_available[type_key] == true（介质已挂载且可用）
+       b. 如果提供了 app_size_kb，检查剩余空间是否足够
+    3. 返回第一个满足所有条件的位置
+    4. 全部不满足则返回 nil + 原因描述
+]]
+local function select_storage_location(app_size_kb)
+    local reasons = {}
+
+    for _, type_key in ipairs(storage_priority) do
+        -- 条件1：介质是否可用
+        if not storage_available[type_key] then
+            reasons[#reasons + 1] = STORAGE_DEFS[type_key].label .. "未就绪"
+        -- 条件2：空间是否足够（如果提供了预估大小）
+        elseif app_size_kb then
+            local mount_point = STORAGE_DEFS[type_key].mount_point
+            local free_kb = get_storage_free_kb(mount_point)
+            if free_kb and free_kb < app_size_kb then
+                reasons[#reasons + 1] = string.format(
+                    "%s空间不足(需%.0fKB, 剩%.0fKB)",
+                    STORAGE_DEFS[type_key].label, app_size_kb, free_kb
+                )
+            else
+                log.info("storage_select", "selected", STORAGE_DEFS[type_key].label)
+                return type_key, STORAGE_DEFS[type_key].mount_point, nil
+            end
+        else
+            log.info("storage_select", "selected", STORAGE_DEFS[type_key].label)
+            return type_key, STORAGE_DEFS[type_key].mount_point, nil
+        end
+    end
+
+    local reason = #reasons > 0
+        and table.concat(reasons, "; ")
+        or "没有可用的存储位置"
+    log.error("storage_select", reason)
+    return nil, nil, reason
+end
 
 -- 网络状态
 local network_ready = false
@@ -204,7 +382,7 @@ local function iot_gen_device_uid()
     else
         device_uid = mcu.unique_id() or "unknown"
     end
-    log.info("ea", "device_uid generated:", model, device_uid)
+    -- log.info("ea", "device_uid generated:", model, device_uid)
     return device_uid
 end
 
@@ -310,8 +488,13 @@ local function rmdir_recursive(dir)
             end
         end
     end
-    io.rmdir(dir)
-    return true
+    local ok = io.rmdir(dir)
+    if not ok then
+        -- io.rmdir 可能因权限/占用失败，尝试 os.remove 兜底
+        log.warn("rmdir_recursive", "io.rmdir failed, trying os.remove:", dir)
+        ok = os.remove(dir)
+    end
+    return ok
 end
 
 --[[
@@ -340,8 +523,14 @@ local function app_task(app_path)
     -- 从app_path提取app_name，用于fskv键名隔离
     -- /app_store/app_hello/ -> app_hello
     -- /sd/app_store/myapp/ -> myapp
-    local app_name = app_path:match("/app_store/([^/]+)/?$") or app_path:match("/sd/app_store/([^/]+)/?$")
+    -- /little_flash/app_store/xxx/ -> xxx
+    local app_name = app_path:match("/app_store/([^/]+)/?$")
+        or app_path:match("/sd/app_store/([^/]+)/?$")
+        or app_path:match("/little_flash/app_store/([^/]+)/?$")
     local app_prefix = app_name and (app_name .. "_") or "e_"
+
+    -- 推断当前 app 的挂载点根目录
+    local mount_point, storage_type = infer_mount_point(app_path)
 
     -- ==============================================
     -- 【核心：沙箱订阅管理器】自动记录 + 自动清理
@@ -431,14 +620,14 @@ local function app_task(app_path)
     local app_id = meta_appid or app_name
     my_env.log.info("ea", "DB appid:", app_id)
 
-    my_env.exapp.add_record = function(params)
-        return exapp.add_record(params, app_id)
+    my_env.exapp.add_record = function(params, callback)
+        return exapp.add_record(params, app_id, callback)
     end
-    my_env.exapp.list_record = function(params)
-        return exapp.list_record(params, app_id)
+    my_env.exapp.list_record = function(params, callback)
+        return exapp.list_record(params, app_id, callback)
     end
-    my_env.exapp.delete_record = function(params)
-        return exapp.delete_record(params, app_id)
+    my_env.exapp.delete_record = function(params, callback)
+        return exapp.delete_record(params, app_id, callback)
     end
 
     -- ==============================================
@@ -638,16 +827,27 @@ local function app_task(app_path)
             return nil
         end
 
-        -- 处理 /ram/ 前缀的路径
-        -- 内存文件系统路径直接透传，不做转换
+        -- 规则(8.4): /ram/ 开头 → /ram/app_store/<app_name>/data/<relative>
         if path:sub(1, 5) == "/ram/" then
-            return path
+            local relative_path = path:sub(6)
+            return "/ram/app_store/" .. app_name .. "/data/" .. relative_path
         end
 
-        -- 处理其他 / 开头的路径
-        -- 映射到 <app_path>/data/ 目录（数据存储区）
+        -- 规则(8.5): /sd/ 开头 → /sd/app_store/<app_name>/data/<relative>
+        if path:sub(1, 4) == "/sd/" then
+            local relative_path = path:sub(5)
+            return "/sd/app_store/" .. app_name .. "/data/" .. relative_path
+        end
+
+        -- 规则(8.6): /little_flash/ 开头 → /little_flash/app_store/<app_name>/data/<relative>
+        if path:sub(1, 14) == "/little_flash/" then
+            local relative_path = path:sub(15)
+            return "/little_flash/app_store/" .. app_name .. "/data/" .. relative_path
+        end
+
+        -- 规则(8.7): 其余 / 开头的路径 → /app_store/<app_name>/data/<path>
         if path:sub(1, 1) == "/" then
-            return app_path.."data" .. path
+            return "/app_store/" .. app_name .. "/data" .. path
         end
 
         -- 无法识别的路径格式
@@ -664,15 +864,17 @@ local function app_task(app_path)
 
         路径映射规则（* 表示0个或多个字符）：
         1. "/luadb/*" 映射为 app_path..*
-        2. "/ram/*" 不做映射处理，直接返回传入的参数
-        3. "/*" 映射为 app_path.."data/"..*
+        2. "/ram/*" 映射为 /ram/app_store/<app_name>/data/*
+        3. "/sd/*" 映射为 /sd/app_store/<app_name>/data/*
+        4. "/little_flash/*" 映射为 /little_flash/app_store/<app_name>/data/*
+        5. "/*" 映射为 /app_store/<app_name>/data/*
 
         @param path string 虚拟目录路径，必须以 / 结尾
         @return string|nil 解析后的实际路径，解析失败返回 nil
 
         使用示例：
         local real_path = resolve_dir("/luadb/res/")
-        -- 映射为: /app_store/app_xxx/res/
+        -- 映射为: /sd/app_store/app_xxx/res/
     ]]
     local function resolve_dir(path)
         -- 参数类型检查，非字符串直接返回 nil
@@ -701,19 +903,28 @@ local function app_task(app_path)
             return app_path .. relative_path
         end
 
-        -- 处理 /ram/ 前缀的路径
-        -- 映射规则：/ram/* 不做映射，直接返回
+        -- 规则(8.4): /ram/* → /ram/app_store/<app_name>/data/*
         if path:sub(1, 5) == "/ram/" then
-            return path
+            local relative_path = path:sub(6)
+            return "/ram/app_store/" .. app_name .. "/data/" .. relative_path
         end
 
-        -- 处理其他 / 开头的路径
-        -- 映射规则：/* -> app_path.."data/"..*
+        -- 规则(8.5): /sd/* → /sd/app_store/<app_name>/data/*
+        if path:sub(1, 4) == "/sd/" then
+            local relative_path = path:sub(5)
+            return "/sd/app_store/" .. app_name .. "/data/" .. relative_path
+        end
+
+        -- 规则(8.6): /little_flash/* → /little_flash/app_store/<app_name>/data/*
+        if path:sub(1, 14) == "/little_flash/" then
+            local relative_path = path:sub(16)
+            return "/little_flash/app_store/" .. app_name .. "/data/" .. relative_path
+        end
+
+        -- 规则(8.7): /* → /app_store/<app_name>/data/*
         if path:sub(1, 1) == "/" then
-            -- 去掉开头的 /，获取相对路径（保留末尾的 /）
             local relative_path = path:sub(2)
-            -- 映射到应用目录下的 data/ 目录
-            return app_path .. "data/" .. relative_path
+            return "/app_store/" .. app_name .. "/data/" .. relative_path
         end
 
         -- 无法识别的路径格式
@@ -721,20 +932,48 @@ local function app_task(app_path)
         return nil
     end
 
-    -- 检查写入权限
+    -- 检查写入权限（增强版，支持多存储隔离）
     -- 规则：
-    -- 1. /ram/ 目录允许写入
-    -- 2. 只允许写入应用目录内的文件
-    -- 3. 禁止写入 libs/、user/、res/ 目录（只读资源）
-    -- 4. 禁止写入 main.lua、meta.json、icon.png（受保护文件）
+    -- 1. /ram/ 目录允许写入，但限制在 /ram/app_store/<app_name>/ 下
+    -- 2. /sd/ 目录允许写入，但限制在 /sd/app_store/<app_name>/ 下
+    -- 3. /little_flash/ 目录允许写入，但限制在 /little_flash/app_store/<app_name>/ 下
+    -- 4. 其他 / 开头：只允许写入 app 自身目录，禁止写 libs/user/res/ 和受保护文件
     -- 返回 true 表示有权限，false 表示无权限
     local function check_write(resolved_path)
-        -- /ram/ 目录允许写入
+        -- /ram/ 目录允许写入，但限定在 app data 子目录内
         if resolved_path:sub(1, 5) == "/ram/" then
+            local allowed_prefix = "/ram/app_store/" .. app_name .. "/"
+            if resolved_path:sub(1, #allowed_prefix) ~= allowed_prefix then
+                my_env.log.error("check_write",
+                    "no permission: outside /ram app data dir:", resolved_path)
+                return false
+            end
             return true
         end
 
-        -- 只允许写入应用目录内的文件
+        -- /sd/ 目录允许写入，但限定在 app data 子目录内
+        if resolved_path:sub(1, 4) == "/sd/" then
+            local allowed_prefix = "/sd/app_store/" .. app_name .. "/"
+            if resolved_path:sub(1, #allowed_prefix) ~= allowed_prefix then
+                my_env.log.error("check_write",
+                    "no permission: outside /sd app data dir:", resolved_path)
+                return false
+            end
+            return true
+        end
+
+        -- /little_flash/ 目录允许写入，但限定在 app data 子目录内
+        if resolved_path:sub(1, 14) == "/little_flash/" then
+            local allowed_prefix = "/little_flash/app_store/" .. app_name .. "/"
+            if resolved_path:sub(1, #allowed_prefix) ~= allowed_prefix then
+                my_env.log.error("check_write",
+                    "no permission: outside /little_flash app data dir:", resolved_path)
+                return false
+            end
+            return true
+        end
+
+        -- 其余 / 开头的路径 — 原有逻辑
         if resolved_path:sub(1, #app_path) ~= app_path then
             my_env.log.error("check_write", "no permission, operation not allowed:", resolved_path)
             return false
@@ -1793,9 +2032,14 @@ local function app_task(app_path)
     -- 例如：应用 app_hello 的键 "config" 实际存储为 "app_hello_config"
     -- ==============================================
 
-    -- 为键添加应用前缀
+    -- 为键添加应用前缀，并检查总长度是否超过 fskv 的 63 字节限制
+    local FS_KEY_MAX = 63
     local function wrap_key(key)
-        return app_prefix .. key
+        local full_key = app_prefix .. key
+        if #full_key > FS_KEY_MAX then
+            my_env.log.warn("fskv key too long:", #full_key, ">", FS_KEY_MAX, "prefix:", app_prefix, "key:", key)
+        end
+        return full_key
     end
 
     my_env.fskv = setmetatable({}, { __index = _G.fskv })
@@ -1806,17 +2050,16 @@ local function app_task(app_path)
         return _G.fskv.set(wrapped_key, value, ...)
     end
 
-    -- 设置哈希表键值对，键名自动添加前缀
-    my_env.fskv.sett = function(key, value, ...)
+    -- 设置哈希表键值对，键名自动添加前缀（skey 不加前缀，是 table 内部字段名）
+    my_env.fskv.sett = function(key, skey, value, ...)
         local wrapped_key = wrap_key(key)
-        local wrapped_skey = wrap_key(skey)
-        return _G.fskv.sett(wrapped_key, wrapped_skey, ...)
+        return _G.fskv.sett(wrapped_key, skey, value, ...)
     end
 
-    -- 获取键值，键名自动添加前缀
-    my_env.fskv.get = function(key)
+    -- 获取键值，键名自动添加前缀；支持 skey 二级查询
+    my_env.fskv.get = function(key, skey, ...)
         local wrapped_key = wrap_key(key)
-        return _G.fskv.get(wrapped_key)
+        return _G.fskv.get(wrapped_key, skey, ...)
     end
 
     -- 删除键，键名自动添加前缀
@@ -1974,7 +2217,7 @@ function exapp.open(app_path)
         return true
     end
 
-    -- 检查并创建data目录
+    -- 检查并创建 data 目录（app 自身目录下的 data/）
     local data_dir = app_path .. "data/"
     if not io.dexist(data_dir) then
         local ret = io.mkdir(data_dir)
@@ -1982,6 +2225,41 @@ function exapp.open(app_path)
             log.info("eo", "created data directory:", data_dir)
         else
             log.warn("eo", "failed to create data directory:", data_dir)
+        end
+    end
+
+    -- 预创建所有存储位置的 data 目录
+    -- PC: 强制创建全部路径用于测试；真机: 仅已挂载的存储
+    local app_name_for_open = app_path:match("/app_store/([^/]+)/?$")
+        or app_path:match("/sd/app_store/([^/]+)/?$")
+        or app_path:match("/little_flash/app_store/([^/]+)/?$")
+    if app_name_for_open then
+        local is_pc = rtos.bsp():find("PC") ~= nil
+        local data_dirs_to_create = build_data_dirs(app_name_for_open)
+        for _, dir in ipairs(data_dirs_to_create) do
+            -- 真机上检查挂载点是否存在
+            if not is_pc then
+                if dir:sub(1, 4) == "/sd/" and not io.dexist("/sd/") then
+                    goto next_data_dir
+                elseif dir:sub(1, 14) == "/little_flash/" and not io.dexist("/little_flash/") then
+                    goto next_data_dir
+                end
+            end
+            if not io.dexist(dir) then
+                local parts = {}
+                for part in dir:gmatch("[^/]+") do
+                    parts[#parts + 1] = part
+                end
+                local current = ""
+                for _, part in ipairs(parts) do
+                    current = current .. "/" .. part
+                    if not io.dexist(current) then
+                        io.mkdir(current)
+                    end
+                end
+                log.info("eo", "created data dir:", dir, io.dexist(dir) and "ok" or "FAIL")
+            end
+            ::next_data_dir::
         end
     end
 
@@ -2270,11 +2548,12 @@ end
     - 读取每个子目录的 meta.json 文件
     - 解析应用信息并保存到 installed_info，同时记录 install_time
 ]]
-local function scan(base_dir)
+local function scan(base_dir, storage_type)
     local cnt = 0
     local max_per_page = 50   -- 每次最多扫描50个目录
     local offset = 0
     local has_more = true
+    local mount_point = STORAGE_DEFS[storage_type].mount_point
 
     while has_more do
         local ret, dirs = io.lsdir(base_dir, max_per_page, offset)
@@ -2312,7 +2591,7 @@ local function scan(base_dir)
                     goto continue
                 end
 
-                -- 保存应用信息，包含 install_time
+                -- 保存应用信息，包含 install_time 和 storage 信息
                 local app_name = app_dir.name
                 installed_info[app_name] = {
                     cn_name = meta_data.app_name_cn or "unknown",
@@ -2326,9 +2605,12 @@ local function scan(base_dir)
                     zip_size_kb = meta_data.zip_size_kb,
                     origin_size_kb = meta_data.origin_size_kb,
                     total_downloads = meta_data.total_downloads,
-                    install_time = meta_data.install_time
+                    install_time = meta_data.install_time,
+                    storage_type = storage_type,
+                    mount_point = mount_point,
+                    data_dirs = build_data_dirs(app_name),
                 }
-                log.info("ei", "found app:", app_name, installed_info[app_name].cn_name)
+                log.info("ei", "found app:", app_name, installed_info[app_name].cn_name, "storage:", storage_type)
                 cnt = cnt + 1
                 ::continue::
             end
@@ -2346,37 +2628,56 @@ local function scan(base_dir)
 end
 
 --[[
-初始化应用管理库，扫描设备上的已安装应用
+初始化应用管理库，扫描设备上的已安装应用（支持多存储）
+
     功能说明：
-    - 扫描 /app_store/ 目录下的应用（支持分页）
-    - 扫描 /sd/app_store/ 目录下的应用（如果存在）
-    - 将应用信息保存到 installed_info
+    - 加载存储优先级配置（从 fskv）
+    - 探测所有存储介质状态（仅检查挂载点是否已存在，不执行硬件挂载）
+    - 扫描 /app_store/、/sd/app_store/、/little_flash/app_store/
+    - 将应用信息保存到 installed_info（含存储位置信息）
 
-@api exapp.init()
+    @return bool 初始化成功返回 true
+    注：外部存储（/sd/、/little_flash/）的硬件挂载由各型号驱动层在系统启动时完成，
+        exapp 只检查挂载点是否已存在，不执行实际的硬件初始化。
 
-@return bool
-初始化成功返回true，失败返回false（目前总是返回true）
+    @param storage_params table|nil 预留参数（可选），用于未来扩展
+    @return bool 初始化成功返回 true
 
-@usage
--- 在应用启动时调用初始化
-exapp.init()
+    @usage
+    exapp.init()
+    exapp.init({})  -- 可传入空表或预留参数
 ]]
-function exapp.init()
-    log.info("ei", "start scanning apps")
-    -- 清空已安装应用信息
-    installed_info = {}
+function exapp.init(storage_params)
+    log.info("ei", "start scanning apps with multi-storage support")
 
+    -- 1. 加载存储优先级配置
+    load_storage_config()
+
+    -- 2. 探测所有存储介质状态（仅检查挂载点是否存在）
+    storage_available.internal = true
+    storage_available.sd_tf = probe_storage("/sd/")
+    storage_available.little_flash = probe_storage("/little_flash/")
+    log.info("ei", "storage available: internal=", storage_available.internal,
+        "sd_tf=", storage_available.sd_tf,
+        "little_flash=", storage_available.little_flash)
+
+    -- 4. 扫描所有存储位置的 app_store 目录
+    installed_info = {}
     installed_cnt = 0
 
-    -- 扫描内置应用目录
-    installed_cnt = installed_cnt + scan("/app_store/")
+    -- 内置文件系统永远扫描
+    installed_cnt = installed_cnt + scan("/app_store/", "internal")
 
-    -- 扫描SD卡应用目录（如果存在）
-    if io.dexist("/sd/app_store/") then
-        installed_cnt = installed_cnt + scan("/sd/app_store/")
+    -- 外部存储：仅在介质可用时扫描
+    if storage_available.sd_tf then
+        installed_cnt = installed_cnt + scan("/sd/app_store/", "sd_tf")
     end
+    if storage_available.little_flash then
+        installed_cnt = installed_cnt + scan("/little_flash/app_store/", "little_flash")
+    end
+
     installed_total_count = installed_cnt
-    log.info("ei", "scan completed, found", installed_cnt, "apps")
+    log.info("ei", "scan completed, found", installed_cnt, "apps across all storages")
     sys.publish("APP_STORE_INSTALLED_UPDATED", installed_info)
 
     sys.taskInit(function()
@@ -2480,7 +2781,7 @@ local function http_request(params)
         ["Content-Type"] = "application/json"
     }, body, { timeout = 10000 }).wait()
 
-    log.info("ea", json.encode(body))
+    -- log.info("ea", json.encode(body))
 
     -- 处理通信异常（code < 0）
     if code < 0 then
@@ -2909,9 +3210,39 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
     end
 
     sys.taskInit(function()
-        local root_path = APP_INSTALL_ROOT
+        -- 1. 从缓存的应用列表中获取预估大小
+        local estimated_size_kb = nil
+        if remote_app_list and remote_app_list.apps then
+            for _, entry in ipairs(remote_app_list.apps) do
+                if tostring(entry.aid) == tostring(aid) then
+                    local origin = tonumber(entry.origin_size_kb)
+                    if origin and origin > 0 then
+                        -- 加 20% buffer，防止解压后超出
+                        estimated_size_kb = math.ceil(origin * 1.2)
+                    end
+                    break
+                end
+            end
+        end
+
+        -- 2. 选择合适的存储位置
+        local storage_type, mount_point, reason = select_storage_location(estimated_size_kb)
+        if not storage_type then
+            sys.publish("APP_STORE_ERROR", reason or "没有可用的存储位置")
+            sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
+            report_result(aid, "没有可用的存储位置")
+            return
+        end
+
+        local root_path = mount_point .. "app_store"
         if not io.dexist(root_path) then
-            io.mkdir(root_path)
+            local mk_ok = io.mkdir(root_path)
+            if not mk_ok then
+                sys.publish("APP_STORE_ERROR", "无法创建存储目录: " .. root_path)
+                sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
+                report_result(aid, "无法创建存储目录")
+                return
+            end
         end
 
         local temp_path = string.format(TEMP_DOWNLOAD_PATH, aid)
@@ -2951,11 +3282,7 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
         if io.dexist(app_path) or io.exists(app_path) then
             app_dir_kb = dir_size_kb(app_path) or 0
         end
-        local dest_parent = root_path
-        local parent_stat = io.fsstat and io.fsstat(dest_parent) or nil
-        if type(parent_stat) ~= "table" then parent_stat = nil end
-        local dest_free_kb = 0
-        if parent_stat and type(parent_stat.free_kb) == "number" then dest_free_kb = parent_stat.free_kb end
+        local dest_free_kb = get_storage_free_kb(mount_point) or 0
         if app_dir_kb > 0 and dest_free_kb > 0 and app_dir_kb > dest_free_kb then
             -- 文件系统空间不足，清理已下载/解压的内容
             if io.dexist(app_path) then rmdir_recursive(app_path) end
@@ -2997,7 +3324,7 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
                                 meta_data.total_downloads = app_entry.total_downloads
                             end
                         end
-                        
+
                         local new_content = json.encode(meta_data)
                         io.writeFile(meta_path, new_content)
 
@@ -3014,7 +3341,10 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
                             zip_size_kb = meta_data.zip_size_kb,
                             origin_size_kb = meta_data.origin_size_kb,
                             total_downloads = meta_data.total_downloads,
-                            install_time = install_time
+                            install_time = install_time,
+                            storage_type = storage_type,
+                            mount_point = mount_point,
+                            data_dirs = build_data_dirs(aid),
                         }
                         installed_cnt = installed_cnt + 1
                         installed_total_count = installed_cnt
@@ -3078,6 +3408,33 @@ function exapp.uninstall_remote_app(aid, category, sort)
     local success = rmdir_recursive(target_path)
 
     if success then
+        -- 删除所有存储位置的 data 目录
+        if app_info and app_info.data_dirs then
+            for _, data_dir in ipairs(app_info.data_dirs) do
+                if io.dexist(data_dir) then
+                    log.info("uninstall", "removing data dir:", data_dir)
+                    rmdir_recursive(data_dir)
+                end
+            end
+        end
+
+        -- 删除 app 的私有 fskv 数据
+        -- fskv 键名格式: {aid}_xxx
+        local iter = fskv.iter()
+        local keys_to_delete = {}
+        while true do
+            local key = fskv.next(iter)
+            if not key then break end
+            -- 精确前缀匹配: aid_
+            if key:sub(1, #aid + 1) == aid .. "_" then
+                table.insert(keys_to_delete, key)
+            end
+        end
+        for _, key in ipairs(keys_to_delete) do
+            fskv.del(key)
+        end
+        log.info("uninstall", "cleared", #keys_to_delete, "fskv entries for", aid)
+
         installed_info[aid] = nil
         installed_cnt = installed_cnt - 1
         installed_total_count = installed_cnt
@@ -3132,15 +3489,25 @@ function exapp.update_remote_app(aid, url, app_name, category, sort)
     local old_path = installed_info[aid].path
     sys.publish("APP_STORE_PROGRESS", aid, 0, "准备更新")
 
-    if rmdir_recursive(old_path) then
-        installed_info[aid] = nil
-        installed_cnt = installed_cnt - 1
-        exapp.install_remote_app(aid, url, app_name, category, sort)
-    else
-        sys.publish("APP_STORE_ERROR", "卸载旧版本失败")
-        sys.publish("APP_STORE_ACTION_DONE", aid, "update", false)
-        report_result(aid, "卸载旧版本失败")
+    -- 删除旧版本文件（保留 data/ 目录）
+    local ret, list = io.lsdir(old_path, 100, 0)
+    if ret and list then
+        for _, item in ipairs(list) do
+            if item.name ~= "data" then
+                local full_path = old_path .. item.name
+                if item.type == 1 then
+                    rmdir_recursive(full_path)
+                else
+                    os.remove(full_path)
+                end
+            end
+        end
     end
+
+    -- 安装新版本（解压到同一目录，覆盖旧文件，data/ 保留）
+    installed_info[aid] = nil
+    installed_cnt = installed_cnt - 1
+    exapp.install_remote_app(aid, url, app_name, category, sort)
 end
 
 -- 图标下载与缓存
@@ -3264,7 +3631,7 @@ local function db_request(endpoint, body_params, appid, callback)
     headers["Content-Type"] = "application/json"
     log.info("db", ">>> REQ", url)
     log.info("db", ">>> BODY", body)
-    log.info("db", ">>> HEADERS", json.encode(headers))
+    -- log.info("db", ">>> HEADERS", json.encode(headers))
     sys.taskInit(function()
         local code, _, resp_body = http.request("POST", url, headers, body, { timeout = 10000 }).wait()
         log.info("db", "<<< RESP code", code)
@@ -3296,21 +3663,27 @@ end
 --[[
 添加或更新一条数据记录
 
-@api exapp.add_record(params)
+@api exapp.add_record(params, callback)
 @table params 记录参数表
 @int params.cls 业务表标识（必填）
 @string params.uni_key 业务主键（可选，同名则覆盖更新）
 @string params.s1-s4 字符串字段
 @int params.i1-i4 整数字段
 @int params.d1-d2 时间戳字段
-@return nil 无返回值
+@function[opt] callback 结果回调 function(success, result) end，可选
 
 @usage
+-- 无回调
 exapp.add_record({cls = 2, uni_key = "user_001", i1 = 100, s1 = "玩家A"})
+-- 带回调
+exapp.add_record({cls = 2, uni_key = "user_001", i1 = 100, s1 = "玩家A"}, function(success, result)
+    if success then log.info("新建成功") else log.warn("新建失败", result) end
+end)
 ]]
-function exapp.add_record(params, appid)
+function exapp.add_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "add_record: network not ready")
+        if callback then callback(false, "网络未就绪") end
         return
     end
     local body = {
@@ -3340,13 +3713,14 @@ function exapp.add_record(params, appid)
         else
             log.warn("db", "add_record failed", result)
         end
+        if callback then callback(success, result) end
     end)
 end
 
 --[[
 查询记录列表
 
-@api exapp.list_record(params)
+@api exapp.list_record(params, callback)
 @table params 查询参数表
 @int params.cls 业务表标识（必填）
 @string params.uni_key 唯一键（可选）
@@ -3354,15 +3728,22 @@ end
 @int params.size 每页数量（可选，默认 20，最大 100）
 @string params.sort 排序字段（可选，如 "i1 desc"、"d1 asc"）
 @bool params.is_me 是否仅查询当前设备数据（可选，默认 false）
-@return nil 无返回值，结果通过 DB_RESULT 消息异步返回
+@function[opt] callback 结果回调 function(success, data) end，可选。data.records 为记录数组，每条含 id、uni_key、s1-s4、i1-i4、d1-d2
 
 @usage
 exapp.list_record({cls = 2, sort = "i1 desc", size = 10})
-exapp.list_record({cls = 2, filter = {aks = {"s1"}, acs = {"eq"}, avs = {"12"}}})
+exapp.list_record({cls = 2, sort = "i1 desc", size = 10}, function(success, data)
+    if success and data.records then
+        for _, rec in ipairs(data.records) do
+            log.info("id=" .. rec.id, "i1=" .. rec.i1)
+        end
+    end
+end)
 ]]
-function exapp.list_record(params, appid)
+function exapp.list_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "list_record: network not ready")
+        if callback then callback(false, "网络未就绪") end
         return
     end
     local body = {
@@ -3388,28 +3769,34 @@ function exapp.list_record(params, appid)
         else
             log.warn("db", "list_record failed", result)
         end
+        if callback then callback(success, result) end
     end)
 end
 
 --[[
 删除指定记录
 
-@api exapp.delete_record(params)
+@api exapp.delete_record(params, callback)
 @table params 删除参数表
 @int params.cls 业务表标识（必填）
 @string params.id 服务端记录 ID（必填，来自 list_record 返回的 records[i].id）
-@return nil 无返回值
+@function[opt] callback 结果回调 function(success, result) end，可选
 
 @usage
 exapp.delete_record({cls = 2, id = "2053765709500825602"})
+exapp.delete_record({cls = 2, id = "2053765709500825602"}, function(success, result)
+    if success then log.info("删除成功") else log.warn("删除失败", result) end
+end)
 ]]
-function exapp.delete_record(params, appid)
+function exapp.delete_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "delete_record: network not ready")
+        if callback then callback(false, "网络未就绪") end
         return
     end
     if not params.id then
         log.warn("db", "delete_record: id is required")
+        if callback then callback(false, "id为空") end
         return
     end
     local body = {
@@ -3422,6 +3809,7 @@ function exapp.delete_record(params, appid)
         else
             log.warn("db", "delete_record failed", result)
         end
+        if callback then callback(success, result) end
     end)
 end
 
@@ -3470,6 +3858,14 @@ end)
 
 sys.subscribe("APP_STORE_SYNC_INSTALLED", function()
     sys.publish("APP_STORE_INSTALLED_UPDATED", installed_info)
+end)
+
+-- 实时响应存储优先级变更（由 factory settings 触发）
+sys.subscribe("STORAGE_PRIORITY_CHANGED", function(priority_list)
+    if type(priority_list) == "table" and #priority_list > 0 then
+        storage_priority = priority_list
+        log.info("exapp", "storage priority updated at runtime:", json.encode(priority_list))
+    end
 end)
 
 log.info("ea", "loaded")

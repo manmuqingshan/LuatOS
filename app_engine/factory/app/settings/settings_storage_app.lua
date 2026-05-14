@@ -105,3 +105,52 @@ end
 
 -- 订阅存储信息查询事件
 sys.subscribe("STORAGE_GET_INFO", storage_info_handler)
+
+-- ==================== 多存储空间信息 ====================
+
+local STORAGE_LABELS = {
+    ["/"]              = "内置文件系统",
+    ["/sd/"]           = "外挂TF卡",
+    ["/little_flash/"] = "外挂Flash",
+}
+
+local function get_all_storage_info()
+    local result = {}
+    local mount_points = { "/", "/sd/", "/little_flash/" }
+
+    for _, mp in ipairs(mount_points) do
+        if io.dexist(mp) then
+            local ok, stat = pcall(io.fsstat, mp)
+            local entry = {
+                mount_point = mp,
+                label = STORAGE_LABELS[mp] or mp,
+                available = false,
+            }
+            if ok and type(stat) == "table" then
+                if type(stat.free_kb) == "number" and type(stat.total_kb) == "number" then
+                    entry.total_kb = stat.total_kb
+                    entry.free_kb = stat.free_kb
+                    entry.used_kb = stat.total_kb - stat.free_kb
+                    entry.used_percent = math.floor((stat.total_kb - stat.free_kb) * 100 / stat.total_kb)
+                    entry.available = true
+                elseif stat.free_blocks and stat.block_size and stat.total_blocks then
+                    local total_kb = math.floor(stat.total_blocks * stat.block_size / 1024)
+                    local free_kb = math.floor(stat.free_blocks * stat.block_size / 1024)
+                    entry.total_kb = total_kb
+                    entry.free_kb = free_kb
+                    entry.used_kb = total_kb - free_kb
+                    entry.used_percent = math.floor((total_kb - free_kb) * 100 / total_kb)
+                    entry.available = true
+                end
+            end
+            table.insert(result, entry)
+        end
+    end
+    return result
+end
+
+sys.subscribe("STORAGE_GET_INFO_LIST", function()
+    local list = get_all_storage_info()
+    sys.publish("STORAGE_INFO_LIST", list)
+    log.info("settings_storage", "上报多存储信息", #list, "个存储位置")
+end)

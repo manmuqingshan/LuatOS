@@ -101,7 +101,7 @@ typedef struct {
 static void rpc_sync_exec(struct luat_airlink_result_reg* reg, luat_airlink_cmd_t* cmd) {
     rpc_sync_ctx_t* ctx = (rpc_sync_ctx_t*)reg->userdata;
 
-    LLOGI("rpc_sync_exec ENTER cmd->len=%d timed_out=%d", cmd->len, (int)ctx->timed_out);
+    // LLOGI("rpc_sync_exec ENTER cmd->len=%d timed_out=%d", cmd->len, (int)ctx->timed_out);
 
     if (ctx->timed_out) {
         // 调用方已超时并放弃等待，由 callback 释放资源
@@ -110,12 +110,12 @@ static void rpc_sync_exec(struct luat_airlink_result_reg* reg, luat_airlink_cmd_
         return;
     }
 
-    LLOGD("rpc_sync_exec cmd->len=%d", cmd->len);
+    // LLOGD("rpc_sync_exec cmd->len=%d", cmd->len);
     // cmd->data 格式: [new_pkgid:8][req_pkgid:8][result_code:2][resp payload]
     if (cmd->len >= 18) {
         int16_t result_code = 0;
         memcpy(&result_code, cmd->data + 16, 2);
-        LLOGD("rpc_sync_exec result_code=%d", (int)result_code);
+        // LLOGD("rpc_sync_exec result_code=%d", (int)result_code);
         ctx->ret_code = (int)result_code;
 
         uint16_t payload_len = cmd->len - 18;
@@ -215,8 +215,8 @@ int luat_airlink_rpc(uint8_t mode, uint16_t rpc_id,
         memcpy(cmd->data + 11, req, req_len);
     }
 
-    LLOGD("rpc call: mode=%d rpc_id=0x%04X req_len=%d timeout=%dms pkgid=0x%llx", 
-          mode, rpc_id, req_len, timeout_ms, pkgid);
+    // LLOGD("rpc call: mode=%d rpc_id=0x%04X req_len=%d timeout=%dms pkgid=0x%llx",
+    //       mode, rpc_id, req_len, timeout_ms, pkgid);
 
     // 发送到指定 transport
     int send_ret = luat_airlink_send2transport(cmd, mode);
@@ -234,10 +234,10 @@ int luat_airlink_rpc(uint8_t mode, uint16_t rpc_id,
         return -3;
     }
 
-    LLOGI("rpc: waiting on semaphore pkgid=0x%llx timeout=%dms", pkgid, timeout_ms);
+    // LLOGI("rpc: waiting on semaphore pkgid=0x%llx timeout=%dms", pkgid, timeout_ms);
     // 阻塞等待
     int wait_ret = luat_rtos_semaphore_take(ctx->sem, timeout_ms);
-    LLOGI("rpc: semaphore take ret=%d (pkgid=0x%llx)", wait_ret, pkgid);
+    // LLOGI("rpc: semaphore take ret=%d (pkgid=0x%llx)", wait_ret, pkgid);
     if (wait_ret != 0) {
         // 超时：尝试从注册表清理 result_reg slot
         uint64_t elapsed_ms = luat_mcu_tick64_ms() - start_tick;
@@ -273,7 +273,7 @@ int luat_airlink_rpc(uint8_t mode, uint16_t rpc_id,
     if (result == 0) {
         g_rpc_stats.call_success++;
         _update_latency(elapsed_ms);
-        LLOGD("rpc: success (took %llums resp_len=%d)", elapsed_ms, ctx->out_len ? *ctx->out_len : 0);
+        // LLOGD("rpc: success (took %llums resp_len=%d)", elapsed_ms, ctx->out_len ? *ctx->out_len : 0);
     } else {
         if (result == -501 || result == -502) {
             g_rpc_stats.call_decode_fail++;
@@ -424,7 +424,7 @@ int luat_airlink_rpc_nb_call(uint8_t mode, uint16_t rpc_id,
         }
     }
     _stats_unlock();
-    LLOGD("rpc_nb_call: encode took %ums rpc_id=0x%04X enc_len=%d", enc_ms, rpc_id, enc_len);
+    // LLOGD("rpc_nb_call: encode took %ums rpc_id=0x%04X enc_len=%d", enc_ms, rpc_id, enc_len);
 
     // 分配响应缓冲区
     uint8_t* resp_buf = (uint8_t*)luat_heap_malloc(NB_ENC_BUF_SIZE);
@@ -473,7 +473,7 @@ int luat_airlink_rpc_nb_call(uint8_t mode, uint16_t rpc_id,
         }
     }
     _stats_unlock();
-    LLOGD("rpc_nb_call: decode took %ums rpc_id=0x%04X resp_len=%d", dec_ms, rpc_id, resp_len);
+    // LLOGD("rpc_nb_call: decode took %ums rpc_id=0x%04X resp_len=%d", dec_ms, rpc_id, resp_len);
     luat_heap_free(resp_buf);
     return 0;
 }
