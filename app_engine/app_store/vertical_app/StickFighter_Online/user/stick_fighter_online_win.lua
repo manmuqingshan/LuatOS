@@ -109,9 +109,9 @@ log.info('device_id', my_device_id)
 local my_device_model = ""
 if rtos and rtos.bsp then
     local bsp = rtos.bsp()
-    if bsp == "8000" then
+    if bsp == "Air8000" then
         my_device_model = "Air8000"
-    elseif bsp == "1602" then
+    elseif bsp == "Air1602" then
         my_device_model = "Air1602"
     else
         my_device_model = tostring(bsp)
