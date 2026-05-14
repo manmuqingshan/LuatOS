@@ -4,8 +4,7 @@
 #include <stdint.h>
 #include "lwip/ip_addr.h"
 #include "lwip/netif.h"
-#include "lwip/pbuf.h"
-#include "lwip/udp.h"
+#include "luat_network_adapter.h"
 #include "mbedtls/ssl.h"
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/pk.h"
@@ -114,13 +113,14 @@ typedef struct {
     size_t      client_cert_len;
     const char *client_key_pem;
     size_t      client_key_len;
-    const char *username;       /* optional, for auth-user-pass */
-    size_t      username_len;   /* 0 if no username */
-    const char *password;       /* optional, for auth-user-pass */
-    size_t      password_len;   /* 0 if no password */
+    const char *username;        /* optional, for auth-user-pass */
+    size_t      username_len;    /* 0 if no username */
+    const char *password;        /* optional, for auth-user-pass */
+    size_t      password_len;    /* 0 if no password */
     uint8_t     retry_enable;
     uint32_t    retry_base_ms;
     uint32_t    retry_max_ms;
+    uint8_t     transport_index; /* 底层传输网卡编号，用于 network_alloc_ctrl */
     ovpn_event_cb_t event_cb;
     void       *user_data;
 } ovpn_client_cfg_t;
@@ -175,13 +175,14 @@ typedef struct {
 } ovpn_push_reply_t;
 
 typedef struct ovpn_client {
-    /* Network interface */
+    /* Network interface & transport */
     struct netif netif;
-    struct udp_pcb *udp;
+    network_ctrl_t *netc;          /* luat_network_adapter transport control */
     ip_addr_t remote_ip;
     uint16_t remote_port;
     uint16_t mtu;
-    uint8_t adapter_index;
+    uint8_t adapter_index;         /* 虚拟网卡编号（用于 net_lwip2 注册） */
+    uint8_t transport_index;       /* 底层传输网卡编号（用于 network_alloc_ctrl） */
     uint8_t started;
     uint8_t debug;
 
@@ -213,6 +214,7 @@ typedef struct ovpn_client {
     uint32_t retry_attempt;
     uint32_t retry_base_ms;
     uint32_t retry_max_ms;
+    uint8_t  transport_err;      /* non-zero: transport socket error, handled in timer tick */
     uint32_t push_sent_ms;       /* when PUSH_REQUEST was last sent */
 
     /* Key method 2 exchange */
@@ -278,8 +280,8 @@ void ovpn_client_timer_tick(ovpn_client_t *cli);   /* periodic timer callback */
 void ovpn_client_poll(ovpn_client_t *cli);          /* poll for outgoing data */
 int  ovpn_client_is_ready(ovpn_client_t *cli);      /* TLS + push done */
 
-/* UDP receive callback (called from lwIP context) */
-void ovpn_client_udp_recv(ovpn_client_t *cli, struct pbuf *p, ip_addr_t *addr, uint16_t port);
+/* UDP receive callback (called from network adapter context) */
+void ovpn_client_udp_recv(ovpn_client_t *cli, const uint8_t *data, uint16_t len, ip_addr_t *addr, uint16_t port);
 
 #ifdef __cplusplus
 }

@@ -13,6 +13,7 @@
 #include "lwip/tcpip.h"
 #include "lwip/inet.h"
 #include "net_lwip2.h"
+#include "luat_network_adapter.h"
 
 /* OpenVPN 客户端头文件 */
 #include "luat_netdrv_openvpn_client.h"
@@ -59,18 +60,8 @@ static void ovpn_netdrv_event_callback(ovpn_event_t event, void *user_data) {
     }
 }
 
-/* ========== tcpip 线程代理回调 ========== */
-
-static void openvpn_tcpip_start(void *arg) {
-    ovpn_client_start((ovpn_client_t *)arg);
-}
-
-static void openvpn_tcpip_stop(void *arg) {
-    ovpn_client_stop((ovpn_client_t *)arg);
-}
-
 /**
- * OpenVPN netdrv boot 函数（无操作）
+ * OpenVPN netdrv boot 函数（无操作，启动在 setup 中完成）
  */
 static int openvpn_boot(luat_netdrv_t *drv, void *userdata) {
     return 0;
@@ -154,10 +145,10 @@ static int openvpn_ctrl(luat_netdrv_t *drv, void *userdata, int cmd, void *param
             int up = (int)(intptr_t)param;
             if (up) {
                 LLOGI("[%d] OpenVPN ctrl: up", drv->id);
-                tcpip_callback(openvpn_tcpip_start, ctx->client);
+                ovpn_client_start(ctx->client);
             } else {
                 LLOGI("[%d] OpenVPN ctrl: down", drv->id);
-                tcpip_callback(openvpn_tcpip_stop, ctx->client);
+                ovpn_client_stop(ctx->client);
             }
             return 0;
         }
@@ -285,6 +276,9 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
         ovpn_cfg.password_len = conf->ovpn_conf->ovpn_password_len;
     }
 
+    // 设置传输网卡编号（物理出口网卡）
+    ovpn_cfg.transport_index = (uint8_t)network_register_get_default();
+
     // 设置事件回调
     ovpn_cfg.event_cb = ovpn_netdrv_event_callback;
     ovpn_cfg.user_data = (void *)drv;
@@ -335,8 +329,7 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
     
     LLOGI("OpenVPN netdrv setup completed successfully");
 
-    // 通过 tcpip_callback 在 tcpip 线程中启动 OpenVPN 客户端（与 WireGuard 模式一致）
-    tcpip_callback(openvpn_tcpip_start, client);
+    ovpn_client_start(client);
 
     return drv;
 }

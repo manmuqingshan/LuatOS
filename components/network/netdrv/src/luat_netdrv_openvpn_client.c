@@ -3,7 +3,6 @@
 #include <string.h>
 #include "lwip/def.h"
 #include "lwip/pbuf.h"
-#include "lwip/udp.h"
 #include "lwip/ip4.h"
 #include "lwip/ip_addr.h"
 #include "lwip/dns.h"
@@ -179,13 +178,12 @@ static int ovpn_parse_pkt(const uint8_t *data, int datalen,
 
 /* Send a raw UDP packet to the remote server */
 static int ovpn_send_udp(ovpn_client_t *cli, const uint8_t *data, int len) {
-    if (!cli || !cli->udp || !data || len <= 0) return -1;
-    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
-    if (!p) return -1;
-    memcpy(p->payload, data, len);
-    err_t err = udp_sendto(cli->udp, p, &cli->remote_ip, cli->remote_port);
-    pbuf_free(p);
-    return (err == ERR_OK) ? 0 : -1;
+    if (!cli || !cli->netc || !data || len <= 0) return -1;
+    uint32_t tx_len = 0;
+    int ret = network_tx(cli->netc, data, len, 0,
+                         &cli->remote_ip, cli->remote_port,
+                         &tx_len, 0);
+    return (ret >= 0 && tx_len == (uint32_t)len) ? 0 : -1;
 }
 
 /* ========== Reliable send window ========== */
@@ -1135,28 +1133,23 @@ static void ovpn_attach_netif(ovpn_client_t *cli) {
 
 /* ========== Incoming packet processing ========== */
 
-void ovpn_client_udp_recv(ovpn_client_t *cli, struct pbuf *p,
+void ovpn_client_udp_recv(ovpn_client_t *cli, const uint8_t *data, uint16_t len,
                           ip_addr_t *addr, uint16_t port)
 {
-    if (!cli || !p || !addr) {
-        if (p) pbuf_free(p);
-        return;
-    }
+    if (!cli || !data || !addr || len == 0) return;
 
     /* Filter: only accept packets from the configured remote */
     if (!ip_addr_cmp(addr, &cli->remote_ip) || port != cli->remote_port) {
         cli->stats.drop_malformed++;
-        pbuf_free(p);
         return;
     }
 
-    uint8_t data[1600];
-    uint16_t len = (p->tot_len > 1600) ? 1600 : p->tot_len;
-    pbuf_copy_partial(p, data, len, 0);
-    pbuf_free(p);
+    uint8_t buf[1600];
+    if (len > 1600) len = 1600;
+    memcpy(buf, data, len);
 
-    uint8_t opcode = data[0] >> OVPN_OPCODE_SHIFT;
-    uint8_t key_id = data[0] & OVPN_KEY_ID_MASK;
+    uint8_t opcode = buf[0] >> OVPN_OPCODE_SHIFT;
+    uint8_t key_id = buf[0] & OVPN_KEY_ID_MASK;
 
     /* Handle data channel packets early (different format from control packets) */
     if (opcode == OVPN_OP_DATA_V1 || opcode == OVPN_OP_DATA_V2) {
@@ -1166,9 +1159,9 @@ void ovpn_client_udp_recv(ovpn_client_t *cli, struct pbuf *p,
             if (len >= min_len) {
                 uint32_t net_pid;
                 if (opcode == OVPN_OP_DATA_V2)
-                    memcpy(&net_pid, data + 4, 4);
+                    memcpy(&net_pid, buf + 4, 4);
                 else
-                    memcpy(&net_pid, data + 1, 4);
+                    memcpy(&net_pid, buf + 1, 4);
                 cli->data_rx_seq = lwip_ntohl(net_pid);
                 uint8_t iv[OVPN_AEAD_IV_LEN];
                 memcpy(iv, &net_pid, 4); memset(iv + 4, 0, OVPN_AEAD_IV_LEN - 4);
@@ -1182,8 +1175,8 @@ void ovpn_client_udp_recv(ovpn_client_t *cli, struct pbuf *p,
                     int aad_off = (opcode == OVPN_OP_DATA_V2) ? 0 : 1;
                     int aad_size = (opcode == OVPN_OP_DATA_V2) ? 8 : 4;
                     int ret = mbedtls_gcm_auth_decrypt(&cli->gcm_dec, elen, iv, OVPN_AEAD_IV_LEN,
-                                data + aad_off, aad_size, data + hdr_size + 4, OVPN_AUTH_TAG_LEN,
-                                data + hdr_size + 4 + OVPN_AUTH_TAG_LEN, dec);
+                                buf + aad_off, aad_size, buf + hdr_size + 4, OVPN_AUTH_TAG_LEN,
+                                buf + hdr_size + 4 + OVPN_AUTH_TAG_LEN, dec);
                     if (ret == 0) {
                         /* Strip NO_COMPRESS byte if server uses compression stub */
                         int pkt_off = (cli->push_reply.use_comp_stub && elen > 1 && dec[0] == 0xFA) ? 1 : 0;
@@ -1205,7 +1198,7 @@ void ovpn_client_udp_recv(ovpn_client_t *cli, struct pbuf *p,
     const uint8_t *payload;
     int payload_len;
 
-    if (ovpn_parse_pkt(data, len, &opcode, &key_id, src_sid,
+    if (ovpn_parse_pkt(buf, len, &opcode, &key_id, src_sid,
                         acks, &ack_count,
                         &packet_id, &has_pid, &payload, &payload_len) != 0)
     {
@@ -1365,22 +1358,33 @@ void ovpn_client_udp_recv(ovpn_client_t *cli, struct pbuf *p,
     ovpn_client_poll(cli);
 }
 
-/* ========== UDP receive callback (lwIP wrapper) ========== */
+/* ========== Network adapter callback ========== */
 
-static void ovpn_udp_recv_wrap(void *arg, struct udp_pcb *pcb,
-                                struct pbuf *p, const ip_addr_t *addr, u16_t port)
-{
-    LWIP_UNUSED_ARG(pcb);
-    ovpn_client_t *cli = (ovpn_client_t *)arg;
-    if (!cli) {
-        if (p) pbuf_free(p);
-        return;
+static int32_t ovpn_netc_callback(void *pData, void *pParam) {
+    OS_EVENT *event = (OS_EVENT *)pData;
+    ovpn_client_t *cli = (ovpn_client_t *)pParam;
+    if (!event || !cli || !cli->netc) return -1;
+
+    if (event->ID == EV_NW_RESULT_EVENT) {
+        uint8_t buf[1600];
+        uint32_t rx_len = 0;
+        luat_ip_addr_t src_addr;
+        uint16_t src_port = 0;
+        int ret = network_rx(cli->netc, buf, sizeof(buf), 0,
+                             &src_addr, &src_port, &rx_len);
+        if (ret == 0 && rx_len > 0) {
+            if (cli->debug) {
+                LLOGD("UDP recv from %s:%u, len=%lu",
+                      ipaddr_ntoa(&src_addr), src_port, (unsigned long)rx_len);
+            }
+            ovpn_client_udp_recv(cli, buf, (uint16_t)rx_len,
+                                 (ip_addr_t *)&src_addr, src_port);
+        }
+    } else if (event->ID == EV_NW_RESULT_CLOSE || event->Param1 != 0) {
+        /* Transport error: socket closed, or Param1 != 0 (general failure) */
+        cli->transport_err = 1;
     }
-    if (cli->debug) {
-        LLOGD("UDP recv from %s:%u, len=%d",
-              ipaddr_ntoa(addr), port, p ? p->tot_len : 0);
-    }
-    ovpn_client_udp_recv(cli, p, (ip_addr_t *)addr, port);
+    return 0;
 }
 
 /* ========== Retry / timer logic ========== */
@@ -1413,9 +1417,9 @@ static uint32_t ovpn_next_backoff_ms(ovpn_client_t *cli) {
 static void ovpn_schedule_retry(ovpn_client_t *cli, const char *reason) {
     if (!cli || !cli->retry_enabled || cli->retry_timer_active) return;
     uint32_t delay = ovpn_next_backoff_ms(cli);
-    /* Transport offline → poll at max interval instead of burning retries */
+    /* Transport offline → poll at base interval for quick recovery */
     if (!ovpn_transport_is_online(cli)) {
-        delay = cli->retry_max_ms ? cli->retry_max_ms : 60000;
+        delay = cli->retry_base_ms ? cli->retry_base_ms : 1000;
         LLOGW("transport offline, waiting %u ms before next retry", (unsigned)delay);
     }
     cli->retry_timer_active = 1;
@@ -1463,6 +1467,15 @@ static void ovpn_periodic_timer(void *arg) {
 void ovpn_client_timer_tick(ovpn_client_t *cli) {
     if (!cli || !cli->started) return;
     uint32_t now = sys_now();
+
+    /* Transport socket error — stop and schedule retry */
+    if (cli->transport_err) {
+        cli->transport_err = 0;
+        LLOGW("transport socket error, scheduling retry");
+        ovpn_client_stop_internal(cli, 0);
+        ovpn_schedule_retry(cli, "transport error");
+        return;
+    }
 
     /* Retransmit */
     rel_send_retransmit(cli, now);
@@ -1549,6 +1562,7 @@ int ovpn_client_init(ovpn_client_t *cli, const ovpn_client_cfg_t *cfg) {
     cli->remote_ip = cfg->remote_ip;
     cli->remote_port = cfg->remote_port;
     cli->adapter_index = cfg->adapter_index ? cfg->adapter_index : NW_ADAPTER_INDEX_LWIP_USER0;
+    cli->transport_index = cfg->transport_index;
     cli->mtu = cfg->tun_mtu ? cfg->tun_mtu : OVPN_TUN_MTU_DEFAULT;
     cli->event_cb = cfg->event_cb;
     cli->user_data = cfg->user_data;
@@ -1629,25 +1643,30 @@ int ovpn_client_start(ovpn_client_t *cli) {
     if (ip_addr_isany(&cli->remote_ip)) { LLOGE("remote ip missing"); return -2; }
     if (!cli->use_tls) { LLOGE("TLS not initialized"); return -3; }
 
-    /* Create UDP socket */
-#if LWIP_VERSION_MAJOR >= 2 && LWIP_VERSION_MINOR >= 1
-    cli->udp = udp_new_ip_type(IPADDR_TYPE_ANY);
-#else
-    cli->udp = udp_new();
-#endif
-    if (!cli->udp) { LLOGE("udp alloc fail"); ovpn_schedule_retry(cli, "udp alloc"); return -3; }
-
-#if LWIP_VERSION_MAJOR >= 2 && LWIP_VERSION_MINOR >= 1
-    ip_addr_t any_addr = IPADDR_ANY_TYPE_INIT;
-#else
-    ip_addr_t any_addr;
-    ip_addr_set_any(IP_IS_V6(&cli->remote_ip), &any_addr);
-#endif
-    if (udp_bind(cli->udp, &any_addr, 0) != ERR_OK) {
-        udp_remove(cli->udp); cli->udp = NULL;
-        LLOGE("udp bind fail"); ovpn_schedule_retry(cli, "udp bind"); return -4;
+    /* Check transport availability before allocating resources */
+    if (!ovpn_transport_is_online(cli)) {
+        LLOGW("transport offline, deferring start");
+        ovpn_schedule_retry(cli, "transport offline");
+        return -6;
     }
-    udp_recv(cli->udp, ovpn_udp_recv_wrap, cli);
+
+    /* Allocate & init network controller via luat_network_adapter */
+    cli->netc = network_alloc_ctrl(cli->transport_index);
+    if (!cli->netc) { LLOGE("netc alloc fail"); ovpn_schedule_retry(cli, "netc alloc"); return -3; }
+    network_init_ctrl(cli->netc, NULL, ovpn_netc_callback, cli);
+    network_set_base_mode(cli->netc, 0, 10000, 0, 0, 0, 0); /* UDP mode */
+    network_set_local_port(cli->netc, 0);
+    int netc_ret = network_connect(cli->netc, NULL, 0, &cli->remote_ip, cli->remote_port, 0);
+    if (netc_ret < 0) {
+        LLOGE("netc connect fail");
+        network_force_close_socket(cli->netc);
+        network_release_ctrl(cli->netc);
+        cli->netc = NULL;
+        ovpn_schedule_retry(cli, "netc connect");
+        return -4;
+    }
+    /* UDP: socket created, set ONLINE immediately (async connect event is a no-op in ONLINE state) */
+    cli->netc->state = NW_STATE_ONLINE;
 
     /* Attach virtual netif */
     ovpn_attach_netif(cli);
@@ -1672,7 +1691,9 @@ int ovpn_client_start(ovpn_client_t *cli) {
     int ret = ovpn_send_ctrl(cli, OVPN_OP_CONTROL_HARD_RESET_CLIENT_V2, NULL, 0);
     if (ret != 0) {
         LLOGE("send hard reset failed");
-        udp_remove(cli->udp); cli->udp = NULL;
+        network_force_close_socket(cli->netc);
+        network_release_ctrl(cli->netc);
+        cli->netc = NULL;
         return -5;
     }
 
@@ -1682,6 +1703,7 @@ int ovpn_client_start(ovpn_client_t *cli) {
     cli->handshake_failed = 0;
     cli->retry_attempt = 0;
     cli->retry_timer_active = 0;
+    cli->transport_err = 0;
 
     /* Start periodic tick */
     sys_timeout(OVPN_TICK_INTERVAL_MS, ovpn_periodic_timer, cli);
@@ -1692,7 +1714,13 @@ int ovpn_client_start(ovpn_client_t *cli) {
 
 static void ovpn_client_stop_internal(ovpn_client_t *cli, int free_buffers) {
     if (!cli) return;
-    if (cli->udp) { udp_remove(cli->udp); cli->udp = NULL; }
+    if (cli->netc) {
+        network_ctrl_t *netc = cli->netc;
+        cli->netc = NULL;
+        network_close(netc, 0);
+        network_force_close_socket(netc);
+        network_release_ctrl(netc);
+    }
     sys_untimeout(ovpn_periodic_timer, cli);
     sys_untimeout(ovpn_retry_timer, cli);
     cli->retry_timer_active = 0;
