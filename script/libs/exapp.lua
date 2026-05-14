@@ -917,7 +917,7 @@ local function app_task(app_path)
 
         -- 规则(8.6): /little_flash/* → /little_flash/app_store/<app_name>/data/*
         if path:sub(1, 14) == "/little_flash/" then
-            local relative_path = path:sub(16)
+            local relative_path = path:sub(15)
             return "/little_flash/app_store/" .. app_name .. "/data/" .. relative_path
         end
 
