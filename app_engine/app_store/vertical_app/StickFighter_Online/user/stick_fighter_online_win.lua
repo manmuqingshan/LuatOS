@@ -2,7 +2,7 @@
 --[[
 @module  stick_fighter_online_win
 @summary 双人联机火柴人格斗游戏窗口模块
-@version 1.0.9
+@version 1.1.0
 @date    2026.05.14
 @author  王世豪
 ]]
@@ -1774,7 +1774,6 @@ local function start_game_connect(peer_device_id)
         game_state_mqtt.i_am_ready = true
         send_ready()
         send_start_game()
-        send_device_info() -- 发送本方机型型号
         check_both_ready()
     end, 200)
 end
@@ -1812,7 +1811,7 @@ local function show_invite_dialog(nickname, sender_device_id)
         on_click = function()
             close_invite_dialog()
             if game_state_mqtt.mqtt_client and sender_device_id then
-                local data = { type = 'connect_accept', device_id = my_device_id, nickname = get_nickname() }
+                local data = { type = 'connect_accept', device_id = my_device_id, nickname = get_nickname(), model = my_device_model }
                 local ok, json_str = pcall(json.encode, data)
                 if ok then
                     game_state_mqtt.mqtt_client:publish(TOPIC_DATA .. sender_device_id, json_str, MQTT_QOS)
@@ -2281,7 +2280,7 @@ local function update_device_list_ui()
                     return
                 end
                 if game_state_mqtt.mqtt_client then
-                    local data = { type = 'connect_request', device_id = my_device_id, nickname = get_nickname() }
+                    local data = { type = 'connect_request', device_id = my_device_id, nickname = get_nickname(), model = my_device_model }
                     local ok, json_str = pcall(json.encode, data)
                     if ok then
                         game_state_mqtt.mqtt_client:publish(TOPIC_DATA .. device_id, json_str, MQTT_QOS)
@@ -2372,6 +2371,10 @@ local function handle_message(topic, payload)
             leaderboardWinId = nil
         end
         local nickname = data.nickname or data.device_id:sub(#data.device_id - 5)
+        if data.model then
+            game_state_mqtt.peer_device_model = data.model
+            update_score_display()
+        end
         show_invite_dialog(nickname, data.device_id)
         return
     elseif data.type == 'connect_accept' and data.device_id then
@@ -2382,6 +2385,10 @@ local function handle_message(topic, payload)
         end
         close_invite_waiting()
         local nickname = data.nickname or data.device_id:sub(#data.device_id - 5)
+        if data.model then
+            game_state_mqtt.peer_device_model = data.model
+            update_score_display()
+        end
         show_toast(nickname .. ' 已接受邀请')
         close_device_list_win()
         start_game_connect(data.device_id)
