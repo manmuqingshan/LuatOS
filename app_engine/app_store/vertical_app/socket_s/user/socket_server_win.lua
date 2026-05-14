@@ -73,6 +73,12 @@ local restart_flags = {
     udp = false
 }
 
+-- 任务协程句柄
+local task_coros = {
+    tcp = nil,
+    udp = nil
+}
+
 -- 日志数据
 local log_entries = {}
 local max_logs = 200
@@ -298,11 +304,22 @@ local function tcp_server_task()
             goto TCP_EXCEPTION
         end
         
-        -- 开始监听
+        -- 开始监听（分段等待，每5秒超时后检查退出标志）
+        -- 不直接用 0 无限超时，避免外部强制释放 socket 也无法打断阻塞
         log.info("tcp_server", "开始监听端口:", config.port)
-        result = libnet.listen(task_name, 0, netc)
+        result, param = libnet.listen(task_name, 5000, netc)
+        while not result and not task_exit_flags.tcp do
+            -- 超时未连上客户端，检查是否需要退出
+            log.info("tcp_server", "等待客户端连接...")
+            result, param = libnet.listen(task_name, 5000, netc)
+        end
+        -- 外部请求退出
+        if not result and task_exit_flags.tcp then
+            log.info("tcp_server", "检测到退出标志，停止监听")
+            goto TCP_EXCEPTION
+        end
         if not result then
-            log.error("tcp_server", "libnet.listen 失败")
+            log.error("tcp_server", "libnet.listen 最终失败")
             goto TCP_EXCEPTION
         end
         
@@ -349,8 +366,9 @@ local function tcp_server_task()
         send_queues.tcp = {}
         
         if netc then
-            libnet.close(task_name, 5000, netc)
-            socket.release(netc)
+            -- pcall 保护：外部可能已 socket.release 打断 listen，netc 可能成悬空引用
+            pcall(libnet.close, task_name, 5000, netc)
+            pcall(socket.release, netc)
             netc = nil
         end
         
@@ -363,7 +381,14 @@ local function tcp_server_task()
             break
         end
         
-        sys.wait(5000)
+        -- 重试等待（5秒，但每100ms检查退出标志，避免和重启逻辑产生竞态）
+        for i = 1, 50 do
+            sys.wait(100)
+            if task_exit_flags.tcp then
+                log.info("tcp_server", "检测到退出标志，放弃重试")
+                break
+            end
+        end
         
         ::tcp_continue::
     end
@@ -373,7 +398,9 @@ local function tcp_server_task()
         recv_buff = nil
     end
     
-    log.info("tcp_server", "任务退出")
+    -- 发布退出信号，通知重启逻辑旧任务已完全退出
+    sys.publish("TCP_SERVER_STOPPED")
+    log.info("tcp_server", "任务退出，已发布 TCP_SERVER_STOPPED 信号")
 end
 
 -- UDP Server 任务（参考 demo udp_server_main.lua + udp_server_sender.lua + udp_server_receiver.lua）
@@ -548,7 +575,9 @@ local function udp_server_task()
         ::udp_continue::
     end
     
-    log.info("udp_server", "任务退出")
+    -- 发布退出信号，通知重启逻辑旧任务已完全退出
+    sys.publish("UDP_SERVER_STOPPED")
+    log.info("udp_server", "任务退出，已发布 UDP_SERVER_STOPPED 信号")
 end
 
 -- ==================== UI构建函数 ====================
@@ -1222,29 +1251,32 @@ local function create_settings_page()
             task_exit_flags.tcp = true
             task_exit_flags.udp = true
             
-            -- 使用定时器延迟重新启用服务器（避免在回调中使用 sys.wait）
-            sys.timerStart(function()
+            -- 使用独立 task 处理重启流程
+            -- 给旧任务最多 12 秒退出（listen 每 5 秒超时检查一次 + 7 秒清理缓冲）
+            sys.taskInit(function()
+                log.info("socket_server", "等待旧任务退出...")
+                sys.wait(8000)
+                
+                log.info("socket_server", "旧任务等待结束，准备重启")
+                
                 -- 清除退出标志
                 task_exit_flags.tcp = false
                 task_exit_flags.udp = false
                 restart_flags.tcp = false
                 restart_flags.udp = false
                 
-                log.info("socket_server", "退出标志已清除，准备重启服务器...")
-                log.info("socket_server", "task_exit_flags.tcp:", task_exit_flags.tcp)
-                
                 -- 重新启用服务器
                 server_config.tcp.enabled = true
                 server_config.udp.enabled = true
                 
-                -- 重新启动TCP/UDP任务
+                -- 重新启动TCP/UDP任务并存储协程句柄
                 log.info("socket_server", "重新启动TCP/UDP任务...")
-                sys.taskInitEx(tcp_server_task, "tcp_server_task")
-                sys.taskInitEx(udp_server_task, "udp_server_task")
+                task_coros.tcp = sys.taskInitEx(tcp_server_task, "tcp_server_task")
+                task_coros.udp = sys.taskInitEx(udp_server_task, "udp_server_task")
                 
                 add_log("SYS", "INFO", "服务器已重启，TCP端口:" .. server_config.tcp.port .. " UDP端口:" .. server_config.udp.port)
                 log.info("socket_server", "服务器重启完成，TCP端口:", server_config.tcp.port, "UDP端口:", server_config.udp.port)
-            end, 3000)
+            end)
         end
     })
 
@@ -1711,12 +1743,12 @@ local function on_create()
     
     -- 启动TCP/UDP任务
     log.info("socket_server", "准备启动TCP任务...")
-    local tcp_task = sys.taskInitEx(tcp_server_task, "tcp_server_task")
-    log.info("socket_server", "TCP任务启动结果:", tcp_task)
+    task_coros.tcp = sys.taskInitEx(tcp_server_task, "tcp_server_task")
+    log.info("socket_server", "TCP任务启动结果:", task_coros.tcp)
     
     log.info("socket_server", "准备启动UDP任务...")
-    local udp_task = sys.taskInitEx(udp_server_task, "udp_server_task")
-    log.info("socket_server", "UDP任务启动结果:", udp_task)
+    task_coros.udp = sys.taskInitEx(udp_server_task, "udp_server_task")
+    log.info("socket_server", "UDP任务启动结果:", task_coros.udp)
     
     -- 添加初始日志
     add_log("SYS", "INFO", "系统启动成功")
