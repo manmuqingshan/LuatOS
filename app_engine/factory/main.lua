@@ -101,7 +101,7 @@ elseif _G.model_str:find("Air1601") or _G.model_str:find("Air1602") then
 else
     -- PC模拟器显示/触摸驱动，
     -- 取值可以是"Air8000W_4in"、"Air8101_5in"、"Air1601_5in"、"Air1601_7in"、"Air1601_9in"、"Air1601_10in"
-    local pc_lcd = "Air8000W_4in"
+    local pc_lcd = "Air1601_5in"
 
     if pc_lcd == "Air8000W_4in" then
         lcd_drv = require "lcd_drv_air8101_5in"
