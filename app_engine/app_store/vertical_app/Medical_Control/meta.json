@@ -1,0 +1,23 @@
+{
+  "app_name_cn": "医疗中控",
+  "app_name_en": "medical_control",
+  "version": "1.0.0",
+  "publish_time": "2026-05-12 15:30:00",
+  "category": "工具",
+  "description": "智能医疗设备中控系统，实时监测患者生命体征并控制治疗设备",
+  "resolution": "480x800",
+  "supported_models": {
+    "Air8101": [
+      {
+        "firmware_id": 104,
+        "min_firmware_version": 2010
+      },
+      {
+        "firmware_id": 105,
+        "min_firmware_version": 2010
+      }
+    ]
+  },
+  "zip_size_kb": 150,
+  "origin_size_kb": 400
+}

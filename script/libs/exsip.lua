@@ -74,6 +74,7 @@ exsip.DEFAULT_EXPIRES = 600
 -- socket.LWIP_ETH = 以太网
 -- nil = 使用系统默认网卡
 
+local exnetif = require "exnetif"
 
 local sipclient = nil
 local g_config = nil
@@ -218,6 +219,7 @@ local function sip_event_handler(event, action, payload)
                 body = payload.body,
                 uri = payload.uri
             }
+            exnetif.lock_network()
             emit_callback("call", "incoming", g_current_call)
             if g_config and g_config.auto_answer then
                 if g_config.delay_auto_answer > 0 then
@@ -234,6 +236,7 @@ local function sip_event_handler(event, action, payload)
             emit_callback("call", "connected", payload)
         elseif action == "ended" or action == "failed" then
             stop_voip_engine()
+            exnetif.unlock_network()
             emit_callback("call", "ended", payload)
             g_current_call = nil
         end
@@ -260,10 +263,15 @@ local function sip_event_handler(event, action, payload)
         end
     elseif event == "lifecycle" then
         log_info("lifecycle:", action)
-        if action == "offline" or action == "stopped" then
+        if action == "offline" then
             -- SIP 离线时，停止 voip 引擎，让下次重连时使用新网卡
             stop_voip_engine()
             g_registered = false
+        elseif action == "stopped" then
+            stop_voip_engine()
+            g_registered = false
+            -- SIP 离线时确保解锁网卡，防止异常退出后网卡一直被锁定
+            exnetif.unlock_network()
         end
         emit_callback("lifecycle", action, payload)
     elseif event == "error" then
@@ -387,6 +395,10 @@ function exsip.start()
         log_info("subscribed to EXLIB_NETDRV_NETWORK_STATUS")
     end
 
+    sys.subscribe("EXSIP_LOCK_NETWORK", function()
+        exnetif.lock_network()
+    end)
+
     sipclient.start({
         sip_server_addr = g_config.sip_server_addr,
         sip_server_port = g_config.sip_server_port,
@@ -404,6 +416,7 @@ function exsip.start()
     })
 
     g_started = true
+    -- exnetif.lock_network()
     log_info("started", "adapter", g_config.adapter)
     return true
 end

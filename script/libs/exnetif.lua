@@ -1380,4 +1380,39 @@ function exnetif.close(type, adapter)
     end
 end
 
+--[[
+锁定当前网卡，阻止网络切换。
+在通话过程中调用，确保SIP信令和媒体流使用同一网卡。
+@api exnetif.lock_network()
+@return nil 无返回值
+@usage
+exnetif.lock_network()
+]]
+function exnetif.lock_network()
+    if not network_locked then
+        network_locked = true
+        locked_adapter = current_active
+        log.info("exnetif", "network locked, adapter:", type_to_string(locked_adapter), locked_adapter)
+    end
+end
+
+--[[
+解锁网卡，允许网络切换。
+通话结束后调用，恢复正常的网卡优先级切换逻辑。
+@api exnetif.unlock_network()
+@return nil 无返回值
+@usage
+exnetif.unlock_network()
+]]
+function exnetif.unlock_network()
+    if network_locked then
+        network_locked = false
+        log.info("exnetif", "network unlocked, previous adapter:", type_to_string(locked_adapter), locked_adapter)
+        locked_adapter = nil
+        -- 解锁后立即执行一次优先级判断，如果有更高优先级的网卡可用则切换
+        apply_priority()
+    end
+end
+
+
 return exnetif
