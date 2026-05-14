@@ -52,6 +52,7 @@ local lastSentPosX = 0 -- 上一次发送的位置x，用于去重
 local myScore = 0
 local SCORE_CLS = 2
 local scoreLabel = nil
+local peerModelLabel = nil
 local pendingUpload = nil  -- 待上传的积分 {account, nickname, score}
 local justDeletedMyScore = false  -- 删除积分后的标记，下次上传强制覆盖（不走累加）
 
@@ -105,19 +106,13 @@ end
 my_device_id = get_device_id()
 log.info('device_id', my_device_id)
 
--- 获取本机设备型号 (Air8000 / Air1602)
-local my_device_model = ""
-if rtos and rtos.bsp then
-    local bsp = rtos.bsp()
-    if bsp == "Air8000" then
-        my_device_model = "Air8000"
-    elseif bsp == "Air1602" then
-        my_device_model = "Air1602"
-    else
-        my_device_model = tostring(bsp)
+-- 获取本机设备型号
+local my_device_model = "未知"
+if hmeta and hmeta.model then
+    local model = hmeta.model()
+    if model then
+        my_device_model = model
     end
-else
-    my_device_model = "未知"
 end
 log.info('device_model', my_device_model)
 
@@ -1845,24 +1840,27 @@ local function show_invite_dialog(nickname, sender_device_id)
 end
 
 local function update_score_display()
-    if scoreLabel then
+    if scoreLabel and peerModelLabel then
         local role = nil
         local pid = game_state_mqtt.peer_device_id
         if pid then
             role = (my_device_id < pid) and '红方' or '蓝方'
         end
-        local prefix = role and ('您是' .. role .. ' | ') or ''
-        local modelText = ''
-        if game_state_mqtt.peer_device_model then
-            modelText = '对方：' .. game_state_mqtt.peer_device_model .. ' | '
+        -- 第一行：角色 + 对方机型
+        local peerText = ''
+        if role then
+            peerText = '您是' .. role
         end
-        scoreLabel:set_text(prefix .. modelText .. '本场积分: ' .. myScore)
-        -- 根据积分正负显示不同颜色：正数金黄、零白、负数红
+        if game_state_mqtt.peer_device_model then
+            peerText = peerText .. ' | 对方机型：' .. game_state_mqtt.peer_device_model
+        end
+        peerModelLabel:set_text(peerText)
+
+        -- 第二行：本场积分
+        scoreLabel:set_text('本场积分: ' .. myScore)
         if scoreLabel.set_color then
             if myScore >= 0 then
                 scoreLabel:set_color(0xffcc00)
-            -- elseif myScore == 0 then
-                -- scoreLabel:set_color(0xffffff)
             else
                 scoreLabel:set_color(0xff4444)
             end
@@ -3123,14 +3121,26 @@ local function create_ui()
         align = airui.TEXT_ALIGN_CENTER
     })
 
+    peerModelLabel = airui.label({
+        parent = main_container,
+        x = 40,
+        y = 54,
+        w = 240,
+        h = 16,
+        text = '您是蓝方',
+        font_size = 13,
+        color = 0xffffff,
+        align = airui.TEXT_ALIGN_CENTER
+    })
+
     scoreLabel = airui.label({
         parent = main_container,
         x = 40,
-        y = 56,
+        y = 72,
         w = 240,
-        h = 18,
+        h = 16,
         text = '本场积分: 0',
-        font_size = 14,
+        font_size = 13,
         color = 0xffcc00,
         align = airui.TEXT_ALIGN_CENTER
     })
