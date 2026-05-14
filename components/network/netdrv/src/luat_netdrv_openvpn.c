@@ -33,60 +33,29 @@ typedef struct {
  */
 static void ovpn_netdrv_event_callback(ovpn_event_t event, void *user_data) {
     luat_netdrv_t *drv = (luat_netdrv_t *)user_data;
-    
-    if (drv == NULL) {
-        return;
-    }
-    
-    const char *event_name = NULL;
-    
+    if (!drv) return;
+
     switch (event) {
         case OVPN_EVENT_CONNECTED:
-            event_name = "OPENVPN_CONNECTED";
             LLOGI("[%d] OpenVPN connected", drv->id);
             break;
         case OVPN_EVENT_TLS_HANDSHAKE_OK:
-            event_name = "OPENVPN_TLS_HANDSHAKE_OK";
             LLOGI("[%d] OpenVPN TLS handshake successful", drv->id);
             break;
         case OVPN_EVENT_TLS_HANDSHAKE_FAIL:
-            event_name = "OPENVPN_TLS_HANDSHAKE_FAIL";
             LLOGE("[%d] OpenVPN TLS handshake failed", drv->id);
             break;
         case OVPN_EVENT_KEEPALIVE_TIMEOUT:
-            event_name = "OPENVPN_KEEPALIVE_TIMEOUT";
             LLOGW("[%d] OpenVPN keepalive timeout", drv->id);
             break;
         case OVPN_EVENT_AUTH_FAILED:
-            event_name = "OPENVPN_AUTH_FAILED";
             LLOGE("[%d] OpenVPN authentication failed", drv->id);
             break;
         case OVPN_EVENT_DISCONNECTED:
-            event_name = "OPENVPN_DISCONNECTED";
             LLOGI("[%d] OpenVPN disconnected", drv->id);
             break;
-        case OVPN_EVENT_DATA_RX:
-            // 数据接收事件，通常不需要日志
-            return;
-        case OVPN_EVENT_DATA_TX:
-            // 数据发送事件，通常不需要日志
-            return;
         default:
-            LLOGW("[%d] Unknown OpenVPN event: %d", drv->id, event);
-            return;
-    }
-    
-    // 可以在这里添加进一步的处理，比如事件分发到上层
-    // luat_netdrv_notify_event(drv->id, event_name);
-    if (event_name) {
-        #if 0
-        rtos_msg_t msg = {0};
-        msg.handler = l_netdrv_openvpn_handler;
-        msg.arg1 = drv->id;
-        msg.arg2 = event;
-        msg.ptr = (void *)event_name;
-        luat_msgbus_put(&msg, 0);
-        #endif
+            break;
     }
 }
 
@@ -140,12 +109,19 @@ static int openvpn_shutdown(luat_netdrv_t *drv, void *userdata) {
  * OpenVPN netdrv ready 函数（检查是否准备就绪）
  */
 static int openvpn_ready(luat_netdrv_t *drv, void *userdata) {
-    if (drv == NULL || drv->netif == NULL) {
+    if (drv == NULL || drv->userdata == NULL || drv->netif == NULL) {
         return 0;
     }
-    
-    // 检查网络接口是否已启用且有有效 IP
-    return netif_is_link_up(drv->netif) && !ip_addr_isany(&drv->netif->ip_addr);
+
+    luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)drv->userdata;
+    ovpn_client_t *client = ctx->client;
+    if (client == NULL) {
+        return 0;
+    }
+
+    // VPN 隧道 readiness = TLS 握手完成 + PUSH_REPLY 收到 + 链路正常
+    return ovpn_client_is_ready(client)
+           && netif_is_link_up(drv->netif) && netif_is_up(drv->netif);
 }
 
 /**
@@ -280,6 +256,18 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
         ovpn_cfg.tun_mtu = 1500;
     }
     
+    // 设置用户名 (可选)
+    if (conf->ovpn_conf->ovpn_username != NULL && conf->ovpn_conf->ovpn_username_len > 0) {
+        ovpn_cfg.username = conf->ovpn_conf->ovpn_username;
+        ovpn_cfg.username_len = conf->ovpn_conf->ovpn_username_len;
+    }
+
+    // 设置密码 (可选)
+    if (conf->ovpn_conf->ovpn_password != NULL && conf->ovpn_conf->ovpn_password_len > 0) {
+        ovpn_cfg.password = conf->ovpn_conf->ovpn_password;
+        ovpn_cfg.password_len = conf->ovpn_conf->ovpn_password_len;
+    }
+
     // 设置事件回调
     ovpn_cfg.event_cb = ovpn_netdrv_event_callback;
     ovpn_cfg.user_data = (void *)drv;
@@ -328,5 +316,13 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
     }
     
     LLOGI("OpenVPN netdrv setup completed successfully");
+
+    // 启动 OpenVPN 客户端（创建 UDP 连接并注册虚拟网卡）
+    // 必须在 setup 内完成 boot，否则 openvpn_boot 永远不会被调用
+    int boot_ret = openvpn_boot(drv, NULL);
+    if (boot_ret != 0) {
+        LLOGW("[%d] OpenVPN client start during setup returned %d (will retry)", conf->id, boot_ret);
+    }
+
     return drv;
 }

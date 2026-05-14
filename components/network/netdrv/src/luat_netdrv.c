@@ -373,6 +373,12 @@ int luat_netdrv_is_ready(int id) {
     if (netdrv == NULL || netdrv->netif == NULL) {
         return 0;
     }
+
+    // 如果驱动提供了 ready 回调，优先使用（如 VPN 类虚拟网卡）
+    if (netdrv->ready) {
+        return netdrv->ready(netdrv, netdrv->userdata);
+    }
+
     ret = netif_is_link_up(netdrv->netif);
     ret &= netif_is_up(netdrv->netif);
     ret &= !ip_addr_isany(&netdrv->netif->ip_addr);
