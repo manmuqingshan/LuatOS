@@ -6,6 +6,7 @@
 #include "lwip/udp.h"
 #include "lwip/ip4.h"
 #include "lwip/ip_addr.h"
+#include "lwip/dns.h"
 #include "lwip/tcpip.h"
 #include "lwip/timeouts.h"
 #include "lwip/sys.h"
@@ -955,7 +956,11 @@ static void ovpn_process_push_reply(ovpn_client_t *cli, const char *reply, int l
         if (opt_len > 9 && memcmp(start, "ifconfig", 8) == 0 && (start[8] == ' ' || start[8] == '\t')) {
             const char *val = start + 9;
             char ip_str[32] = {0}, gw_str[32] = {0};
-            if (sscanf(val, "%31s %31s", ip_str, gw_str) >= 1) {
+            /* Copy to temp buf and null-terminate at option boundary */
+            int remain = (int)(p - val);
+            char tmp[64]; int tmplen = remain < 63 ? remain : 63;
+            memcpy(tmp, val, tmplen); tmp[tmplen] = '\0';
+            if (sscanf(tmp, "%31s %31s", ip_str, gw_str) >= 1) {
                 ip4_addr_t ip_addr, gw_addr;
                 if (ip4addr_aton(ip_str, &ip_addr)) {
                     ip4_addr_t mask;
@@ -991,12 +996,17 @@ static void ovpn_process_push_reply(ovpn_client_t *cli, const char *reply, int l
             }
         }
 
-        /* Extract DNS servers from dhcp-option DNS */
+        /* Extract DNS servers from dhcp-option DNS and set per-adapter */
         if (opt_len > 16 && memcmp(start, "dhcp-option DNS ", 16) == 0) {
             const char *dns_str = start + 16;
-            ip_addr_t dns_ip = {0};
-            if (ipaddr_aton(dns_str, &dns_ip)) {
-                LLOGI("PUSH DNS: %s", dns_str);
+            char dns_buf[32]; int dns_len = (int)(p - dns_str);
+            if (dns_len > 0 && dns_len < (int)sizeof(dns_buf)) {
+                memcpy(dns_buf, dns_str, dns_len); dns_buf[dns_len] = '\0';
+                ip_addr_t dns_ip;
+                if (ipaddr_aton(dns_buf, &dns_ip)) {
+                    network_set_dns_server(cli->adapter_index, 0, (luat_ip_addr_t*)&dns_ip);
+                    LLOGI("PUSH DNS[%d]: %s", cli->adapter_index, dns_buf);
+                }
             }
         }
 
