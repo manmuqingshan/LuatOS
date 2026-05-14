@@ -18,16 +18,20 @@
 #define CMD_REG(id,func) {id, luat_airlink_cmd_exec_##func}
 
 // 基础指令0x01开始
+#ifdef LUAT_USE_AIRLINK_EXEC_PING
 CMD_DEFINE(ping);
 CMD_DEFINE(pong);
+#endif
 CMD_DEFINE(reset);
 CMD_DEFINE(result);
 
 
+#ifdef LUAT_USE_AIRLINK_EXEC_FOTA
 CMD_DEFINE(fota_init);
 CMD_DEFINE(fota_write);
 CMD_DEFINE(fota_done);
 CMD_DEFINE(fota_end);
+#endif
 CMD_DEFINE(dev_info);
 CMD_DEFINE(sdata);
 CMD_DEFINE(nop);
@@ -123,8 +127,10 @@ __AIRLINK_CODE_IN_RAM__ const luat_airlink_cmd_reg_t airlink_cmds[] = {
     CMD_REG(0x81, notify_log),
 #endif
 
+#ifdef LUAT_USE_AIRLINK_EXEC_PING
     CMD_REG(0x01, ping),
     CMD_REG(0x02, pong),
+#endif
 #ifdef LUAT_USE_AIRLINK_EXEC_FOTA
     CMD_REG(0x04, fota_init),
     CMD_REG(0x05, fota_write),
