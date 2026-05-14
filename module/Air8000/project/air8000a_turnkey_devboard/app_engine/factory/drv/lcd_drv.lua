@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  lcd_drv
 @summary LCD显示驱动模块，基于lcd核心库

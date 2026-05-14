@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  netdrv_pc
 @summary "pc模拟器网卡"驱动模块 

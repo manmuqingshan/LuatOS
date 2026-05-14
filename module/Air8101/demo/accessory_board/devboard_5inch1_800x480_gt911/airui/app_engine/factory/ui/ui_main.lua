@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  ui_main
 @summary UI主模块，负责初始化硬件并启动UI系统

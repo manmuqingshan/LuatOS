@@ -3,7 +3,7 @@
 @summary 存储优先级配置窗口
 @version 1.0
 @date    2026.05.13
-@author  Claude (Cowork)
+@author  江访
 @usage
 用户可以在此页面调整 app 安装存储位置的优先级（上移/下移）。
 默认优先级：外挂TF卡 > 外挂Flash > 内置文件系统
@@ -43,7 +43,7 @@ local function update_screen_size()
     end
     margin = math.floor(screen_w * 0.04)
     card_w = screen_w - 2 * margin
-    card_h = math.floor(screen_h * 0.10)
+    card_h = math.floor(screen_h * 0.12)
     card_gap = math.floor(screen_h * 0.015)
 end
 

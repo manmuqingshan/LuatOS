@@ -227,7 +227,7 @@ local function build_ui()
         color = COLOR_BG
     })
 
-    local _, th = titlebar.create(main_container, "存储", screen_w, function() exwin.close(window_id) end)
+    local _, th = titlebar.create(main_container, "存储空间", screen_w, function() exwin.close(window_id) end)
 
     local content_area = airui.container({
         parent = main_container,
