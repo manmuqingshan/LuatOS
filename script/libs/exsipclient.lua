@@ -835,6 +835,8 @@ local function sip_task(opts)
         log.info("sip", "setting call timeout", state.call_timeout, "seconds")
         dialog.timeout_timer = sys.timerStart(on_call_timeout, state.call_timeout * 1000)
 
+        sys.publish("EXSIP_LOCK_NETWORK")
+        
         local req = build_invite(state, dialog, nil)
         log.info("sip", "send INVITE", to_uri)
         net_send(req)
