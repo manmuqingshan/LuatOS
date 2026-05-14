@@ -11,6 +11,7 @@
 #include "lwip/timeouts.h"
 #include "lwip/sys.h"
 #include "net_lwip2.h"
+#include "luat_netdrv.h"
 #include "luat_malloc.h"
 #include "luat_crypto.h"
 #include "mbedtls/md5.h"
@@ -1384,6 +1385,21 @@ static void ovpn_udp_recv_wrap(void *arg, struct udp_pcb *pcb,
 
 /* ========== Retry / timer logic ========== */
 
+/**
+ * Check whether at least one non-OpenVPN netdrv adapter is online.
+ *
+ * Uses luat_netdrv_is_ready() which understands per-adapter semantics:
+ * GPRS → mobile registration check, ETH → link + IP, etc.
+ * Returns 1 if any transport adapter is ready, 0 otherwise.
+ */
+static int ovpn_transport_is_online(ovpn_client_t *cli) {
+    for (int i = 0; i < NW_ADAPTER_QTY; i++) {
+        if (i == cli->adapter_index) continue;   /* skip our own virtual tun */
+        if (luat_netdrv_is_ready(i)) return 1;
+    }
+    return 0;
+}
+
 static uint32_t ovpn_next_backoff_ms(ovpn_client_t *cli) {
     uint32_t base = cli->retry_base_ms ? cli->retry_base_ms : 1000;
     uint32_t max = cli->retry_max_ms ? cli->retry_max_ms : 60000;
@@ -1397,6 +1413,11 @@ static uint32_t ovpn_next_backoff_ms(ovpn_client_t *cli) {
 static void ovpn_schedule_retry(ovpn_client_t *cli, const char *reason) {
     if (!cli || !cli->retry_enabled || cli->retry_timer_active) return;
     uint32_t delay = ovpn_next_backoff_ms(cli);
+    /* Transport offline → poll at max interval instead of burning retries */
+    if (!ovpn_transport_is_online(cli)) {
+        delay = cli->retry_max_ms ? cli->retry_max_ms : 60000;
+        LLOGW("transport offline, waiting %u ms before next retry", (unsigned)delay);
+    }
     cli->retry_timer_active = 1;
     cli->retry_attempt++;
     LLOGW("schedule retry in %u ms (%s)", (unsigned)delay, reason ? reason : "unknown");

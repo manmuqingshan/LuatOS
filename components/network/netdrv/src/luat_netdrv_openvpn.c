@@ -59,30 +59,20 @@ static void ovpn_netdrv_event_callback(ovpn_event_t event, void *user_data) {
     }
 }
 
+/* ========== tcpip 线程代理回调 ========== */
+
+static void openvpn_tcpip_start(void *arg) {
+    ovpn_client_start((ovpn_client_t *)arg);
+}
+
+static void openvpn_tcpip_stop(void *arg) {
+    ovpn_client_stop((ovpn_client_t *)arg);
+}
+
 /**
- * OpenVPN netdrv boot 函数（启动网络设备）
+ * OpenVPN netdrv boot 函数（无操作）
  */
 static int openvpn_boot(luat_netdrv_t *drv, void *userdata) {
-    if (drv == NULL || drv->userdata == NULL) {
-        LLOGE("Invalid OpenVPN netdrv");
-        return -1;
-    }
-    
-    luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)drv->userdata;
-    ovpn_client_t *client = ctx->client;
-    
-    if (client == NULL) {
-        LLOGE("[%d] OpenVPN client not initialized", drv->id);
-        return -1;
-    }
-    
-    int ret = ovpn_client_start(client);
-    if (ret != 0) {
-        LLOGE("[%d] OpenVPN client start failed: %d", drv->id, ret);
-        return ret;
-    }
-    
-    LLOGI("[%d] OpenVPN client started successfully", drv->id);
     return 0;
 }
 
@@ -93,15 +83,15 @@ static int openvpn_shutdown(luat_netdrv_t *drv, void *userdata) {
     if (drv == NULL || drv->userdata == NULL) {
         return -1;
     }
-    
+
     luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)drv->userdata;
     ovpn_client_t *client = ctx->client;
-    
+
     if (client != NULL) {
         ovpn_client_stop(client);
         LLOGI("[%d] OpenVPN client stopped", drv->id);
     }
-    
+
     return 0;
 }
 
@@ -139,16 +129,43 @@ static int openvpn_debug(luat_netdrv_t *drv, void *userdata, int enable) {
     if (drv == NULL || drv->userdata == NULL) {
         return -1;
     }
-    
+
     luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)drv->userdata;
     ovpn_client_t *client = ctx->client;
-    
+
     if (client != NULL) {
         ovpn_client_set_debug(client, enable);
         LLOGD("[%d] OpenVPN debug %s", drv->id, enable ? "enabled" : "disabled");
     }
-    
+
     return 0;
+}
+
+/**
+ * OpenVPN netdrv 控制命令
+ * @param cmd LUAT_NETDRV_CTRL_UPDOWN — param!=0 启动, param==0 停止
+ */
+static int openvpn_ctrl(luat_netdrv_t *drv, void *userdata, int cmd, void *param) {
+    luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)userdata;
+    if (!ctx || !ctx->client) return -1;
+
+    switch (cmd) {
+        case LUAT_NETDRV_CTRL_UPDOWN: {
+            int up = (int)(intptr_t)param;
+            if (up) {
+                LLOGI("[%d] OpenVPN ctrl: up", drv->id);
+                tcpip_callback(openvpn_tcpip_start, ctx->client);
+            } else {
+                LLOGI("[%d] OpenVPN ctrl: down", drv->id);
+                tcpip_callback(openvpn_tcpip_stop, ctx->client);
+            }
+            return 0;
+        }
+
+        default:
+            LLOGW("[%d] OpenVPN ctrl: unknown cmd %d", drv->id, cmd);
+            return -1;
+    }
 }
 
 /**
@@ -304,6 +321,7 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
     drv->ready = openvpn_ready;
     drv->dhcp = openvpn_dhcp;
     drv->debug = openvpn_debug;
+    drv->ctrl = openvpn_ctrl;
     
     // 注册到 netdrv 系统
     int reg_ret = luat_netdrv_register(conf->id, drv);
@@ -317,12 +335,8 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
     
     LLOGI("OpenVPN netdrv setup completed successfully");
 
-    // 启动 OpenVPN 客户端（创建 UDP 连接并注册虚拟网卡）
-    // 必须在 setup 内完成 boot，否则 openvpn_boot 永远不会被调用
-    int boot_ret = openvpn_boot(drv, NULL);
-    if (boot_ret != 0) {
-        LLOGW("[%d] OpenVPN client start during setup returned %d (will retry)", conf->id, boot_ret);
-    }
+    // 通过 tcpip_callback 在 tcpip 线程中启动 OpenVPN 客户端（与 WireGuard 模式一致）
+    tcpip_callback(openvpn_tcpip_start, client);
 
     return drv;
 }
