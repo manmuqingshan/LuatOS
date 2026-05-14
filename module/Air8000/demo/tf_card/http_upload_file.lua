@@ -85,6 +85,7 @@ local function http_upload_task()
             -- 服务器要求文件名必须为"f"
             ["f"] = upload_file_path, 
         },
+        timeout = 60,
     })
 
     -- 阶段5: 记录上传结果
