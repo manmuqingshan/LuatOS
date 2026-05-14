@@ -47,8 +47,6 @@ end
 local current_priority = {socket.LWIP_ETH, socket.LWIP_STA, socket.LWIP_GP}
 -- 网卡锁定标志：通话过程中锁定当前网卡，阻止网络切换
 local network_locked = false
--- 锁定时的当前网卡，用于解锁后恢复判断
-local locked_adapter = nil
 -- 连接状态
 local available = {
     [socket.LWIP_STA] = connection_states.DISCONNECTED,
@@ -116,7 +114,6 @@ end
 
 -- 状态更改后重新设置默认网卡
 local function apply_priority()
-    -- 如果网卡被锁定，跳过网卡切换，保持当前网卡不变
     if network_locked then
         log.info("exnetif", "network locked, skipping priority apply")
         return
@@ -1380,39 +1377,16 @@ function exnetif.close(type, adapter)
     end
 end
 
---[[
-锁定当前网卡，阻止网络切换。
-在通话过程中调用，确保SIP信令和媒体流使用同一网卡。
-@api exnetif.lock_network()
-@return nil 无返回值
-@usage
-exnetif.lock_network()
-]]
-function exnetif.lock_network()
-    if not network_locked then
-        network_locked = true
-        locked_adapter = current_active
-        log.info("exnetif", "network locked, adapter:", type_to_string(locked_adapter), locked_adapter)
-    end
-end
 
---[[
-解锁网卡，允许网络切换。
-通话结束后调用，恢复正常的网卡优先级切换逻辑。
-@api exnetif.unlock_network()
-@return nil 无返回值
-@usage
-exnetif.unlock_network()
-]]
-function exnetif.unlock_network()
-    if network_locked then
-        network_locked = false
-        log.info("exnetif", "network unlocked, previous adapter:", type_to_string(locked_adapter), locked_adapter)
-        locked_adapter = nil
-        -- 解锁后立即执行一次优先级判断，如果有更高优先级的网卡可用则切换
-        apply_priority()
-    end
-end
+sys.subscribe("EXNETIF_LOCK_NETWORK", function()
+    network_locked = true
+    log.info("exnetif", "network locked by sip")
+end)
 
+sys.subscribe("EXNETIF_UNLOCK_NETWORK", function()
+    network_locked = false
+    log.info("exnetif", "network unlocked by sip")
+    apply_priority()
+end)
 
 return exnetif
