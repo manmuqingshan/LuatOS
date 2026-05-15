@@ -328,12 +328,6 @@ void luat_airlink_drv_wlan_ap_disconnected_cb(const uint8_t* mac) {
     luat_airlink_rpc_nb_notify((uint8_t)mode, 0x0304,
                                 drv_wlan_WlanApIncNotify_fields, &notify);
 }
-#else
-void luat_airlink_drv_wlan_sta_connected_cb(const char* ssid, const uint8_t* bssid) {}
-void luat_airlink_drv_wlan_sta_disconnected_cb(uint32_t reason) {}
-void luat_airlink_drv_wlan_ip_ready_cb(const char* ip, uint32_t adapter) {}
-void luat_airlink_drv_wlan_ap_connected_cb(const uint8_t* mac) {}
-void luat_airlink_drv_wlan_ap_disconnected_cb(const uint8_t* mac) {}
 #endif
 
 extern void luat_airlink_devinfo_init(AIRLINK_DEV_INFO_UPDATE_CB cb);
