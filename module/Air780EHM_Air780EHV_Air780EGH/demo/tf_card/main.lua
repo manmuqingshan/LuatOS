@@ -78,7 +78,7 @@ require "tfcard_app"
 --加载HTTP下载存入TF卡功能演示模块
 -- require "http_download_file"
 --加载HTTP上传文件到服务器的功能演示模块
---require "http_upload_file"
+-- require "http_upload_file"
 
 
 -- 用户代码已结束---------------------------------------------

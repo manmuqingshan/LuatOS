@@ -44,6 +44,12 @@ local function http_upload_task()
     -- 初始化后拉高pin_cs,准备开始挂载TF卡
     gpio.setup(pin_cs, 1)
     
+    -- -- Air780EHM/EHV/EGH开发板上的pin_cs为gpio16，spi_id为0.请根据实际硬件修改
+    -- spi_id, pin_cs = 0, 16
+    -- spi.setup(spi_id, nil, 0, 0, 8, 2000000)
+    -- -- 设置片选引脚同一spi总线上的所有从设备在初始化时必须要先拉高CS脚，防止从设备之间互相干扰。
+    -- -- 在Air780EHM/EHV/EGH开发板上，TF卡和ch390共用SPI0总线。
+    -- gpio.setup(pin_cs, 1)
 
     -- 挂载文件系统
     local mount_ok = fatfs.mount(fatfs.SPI, "/sd", spi_id, pin_cs, 24 * 1000 * 1000)
