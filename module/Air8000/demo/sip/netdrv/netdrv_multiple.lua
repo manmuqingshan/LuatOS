@@ -65,7 +65,8 @@ local function netdrv_multiple_task_func()
                     
                     -- 网卡芯片型号(选填参数)，仅spi方式外挂以太网时需要填写。
                     tp = netdrv.CH390, 
-                    opts = {spi=1, cs=12}
+                    opts = {spi=1, cs=12},
+                    auto_socket_switch = false
                 }
             },
 
@@ -76,17 +77,18 @@ local function netdrv_multiple_task_func()
                     ssid = "admin-降功耗，找合宙！",
                     -- 要连接的WIFI路由器密码
                     password = "Air123456",  
-
                     -- 连通性检测ip(选填参数)；
                     -- 如果没有传入ip地址，exnetif中会默认使用httpdns能否成功获取baidu.com的ip作为是否连通的判断条件；
                     -- 如果传入，一定要传入可靠的并且可以ping通的ip地址；
                     -- ping_ip = "填入可靠的并且可以ping通的ip地址",
+                    auto_socket_switch = false
                 }
             },
 
             -- 4G网卡
             {
-                LWIP_GP = true
+                LWIP_GP = true,
+                auto_socket_switch = false
             },
 
 

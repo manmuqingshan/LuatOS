@@ -248,11 +248,9 @@ local function sip_event_handler(event, action, payload)
         elseif action == "ringing" then
             emit_callback("call", "ringing", payload)
         elseif action == "connected" or action == "established" then
-            sys.publish("EXNETIF_LOCK_NETWORK")
             emit_callback("call", "connected", payload)
         elseif action == "ended" or action == "failed" then
             stop_voip_engine()
-            sys.publish("EXNETIF_UNLOCK_NETWORK")
             emit_callback("call", "ended", payload)
             g_current_call = nil
         end
@@ -449,7 +447,6 @@ function exsip.stop()
     end
 
     stop_voip_engine()
-    sys.publish("EXNETIF_UNLOCK_NETWORK")
 
     if sipclient and sipclient.stop then
         sipclient.stop()
