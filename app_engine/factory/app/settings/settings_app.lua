@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  settings_app
 @summary 设置模块主入口
@@ -15,5 +15,6 @@ require "settings_buzz_app"
 require "settings_about_app"
 require "settings_display_app"
 require "settings_storage_app"
+require "storage_pri_app"
 require "settings_memory_app"
 sys.publish("SETTINGS_APP_INIT")

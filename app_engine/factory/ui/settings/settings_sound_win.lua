@@ -16,6 +16,8 @@ local toggle_switch
 local duration_slider, duration_label
 local volume_slider, volume_label
 
+local titlebar = require "settings_titlebar"
+
 local COLOR_PRIMARY        = 0x007AFF
 local COLOR_ACCENT         = 0xFF9800
 local COLOR_BG             = 0xF5F5F5
@@ -52,47 +54,8 @@ local function build_ui()
         color = COLOR_BG
     })
 
-    local tb = airui.container({
-        parent = main_container,
-        x = 0,
-        y = 0,
-        w = screen_w,
-        h = math.floor(60 * _G.density_scale),
-        color = COLOR_PRIMARY
-    })
-    local bb = airui.container({
-        parent = tb,
-        x = 10,
-        y = 10,
-        w = math.floor(50 * _G.density_scale),
-        h = math.floor(40 * _G.density_scale),
-        color = COLOR_PRIMARY,
-        on_click = function() exwin.close(window_id) end
-    })
-    airui.label({
-        parent = bb,
-        x = 0,
-        y = math.floor(5 * _G.density_scale),
-        w = math.floor(50 * _G.density_scale),
-        h = math.floor(30 * _G.density_scale),
-        text = "<",
-        font_size = math.floor(28 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_CENTER
-    })
-    airui.label({
-        parent = tb,
-        x = math.floor(60 * _G.density_scale),
-        y = math.floor(10 * _G.density_scale),
-        w = math.floor(200 * _G.density_scale),
-        h = math.floor(40 * _G.density_scale),
-        text = "触摸音效",
-        font_size = math.floor(32 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_LEFT
-    })
+    local _, th = titlebar.create(main_container, "触摸音效", screen_w, function() exwin.close(window_id) end)
 
-    local th = math.floor(60 * _G.density_scale)
     local ct = airui.container({
         parent = main_container,
         x = 0,

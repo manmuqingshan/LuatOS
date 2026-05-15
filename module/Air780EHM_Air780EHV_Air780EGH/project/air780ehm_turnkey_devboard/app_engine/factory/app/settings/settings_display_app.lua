@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  settings_display_app
 @summary 显示与亮度业务逻辑层

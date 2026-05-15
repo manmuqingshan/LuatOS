@@ -90,22 +90,30 @@ local function show_data(op, params, status, data)
 end
 
 ----------------------------------------------------------------------
--- DB 操作（日志输出结果）
+-- DB 操作（通过 callback 获取结果）
 ----------------------------------------------------------------------
 local function do_add()
     if not check_login() then
         log.warn("db", "请先登录IOT账号")
         return
     end
+    local i1_val = math.random(1, 100)
     exapp.add_record({
         cls = 99,
         uni_key = "test_" .. os.time(),
-        i1 = math.random(1, 100),
+        i1 = i1_val,
         s1 = get_nickname(),
         d1 = os.time()
-    })
-    log.info("db", "add_record 已调用 -> 查看日志中的 [db] 标签")
-    show_data("add_record", "cls=99, i1=" .. math.random(1,100) .. ", s1=" .. get_nickname(), "已发送", "等待服务器响应...")
+    }, function(success, result)
+        if success then
+            log.info("db", "add_record 成功")
+            show_data("add_record", "cls=99, i1=" .. i1_val, "成功", result)
+        else
+            log.warn("db", "add_record 失败", result)
+            show_data("add_record", "cls=99", "失败", result)
+        end
+    end)
+    show_data("add_record", "cls=99, i1=" .. i1_val, "已发送", "等待服务器响应...")
 end
 
 local function do_list()
@@ -113,9 +121,19 @@ local function do_list()
         log.warn("db", "请先登录IOT账号")
         return
     end
-    exapp.list_record({cls = 99, sort = "i1", desc = true, size = 5})
-    log.info("db", "list_record 已调用 -> 查看日志中的 [db] 标签")
-    show_data("list_record", "cls=99, sort=i1, desc=true, size=5", "已发送", "查看日志 [db] 标签")
+    exapp.list_record({cls = 99, sort = "i1", desc = true, size = 5}, function(success, data)
+        if success and data and data.records then
+            log.info("db", "list_record 成功, 共" .. data.total .. "条")
+            local lines = {}
+            for i, rec in ipairs(data.records) do
+                lines[#lines + 1] = string.format("#%d id=%s i1=%s", i, rec.id, rec.i1)
+            end
+            show_data("list_record", "size=5", "成功", table.concat(lines, "\n"))
+        else
+            show_data("list_record", "size=5", "失败", tostring(data))
+        end
+    end)
+    show_data("list_record", "cls=99, sort=i1, desc=true, size=5", "已发送", "等待服务器响应...")
 end
 
 local function do_delete()
@@ -123,11 +141,23 @@ local function do_delete()
         log.warn("db", "请先登录IOT账号")
         return
     end
-    local uk = "test_" .. os.time()
-    exapp.add_record({cls = 99, uni_key = uk, i1 = 1, s1 = "待删除"})
-    exapp.delete_record({cls = 99, uni_key = uk})
-    log.info("db", "delete_record 已调用 -> 查看日志中的 [db] 标签")
-    show_data("delete_record", "cls=99, uni_key=" .. uk, "已发送", "add后立即delete")
+    exapp.list_record({cls = 99, sort = "i1", desc = true, size = 5}, function(success, data)
+        if success and data and data.records and #data.records > 0 then
+            local rec = data.records[1]
+            exapp.delete_record({cls = 99, id = rec.id}, function(success2, result2)
+                if success2 then
+                    log.info("db", "delete_record 成功, id=" .. rec.id)
+                    show_data("delete_record", "id=" .. rec.id, "成功", "已删除 uni_key=" .. (rec.uni_key or ""))
+                else
+                    show_data("delete_record", "id=" .. rec.id, "失败", result2)
+                end
+            end)
+            show_data("delete_record", "list完成 -> 删除第一条", "进行中", "id=" .. rec.id)
+        else
+            show_data("delete_record", "--", "失败", "无记录可删除，请先执行查询")
+        end
+    end)
+    show_data("delete_record", "先list获取id...", "已发送", "将删除list第一条记录")
 end
 
 local function do_flow()
@@ -137,10 +167,30 @@ local function do_flow()
     end
     local nick = get_nickname()
     local uk = "flow_" .. os.time()
-    exapp.add_record({cls = 99, uni_key = uk, i1 = 50, s1 = nick})
-    exapp.list_record({cls = 99, size = 3})
-    exapp.delete_record({cls = 99, uni_key = uk})
-    log.info("db", "完整流程已调用：add -> list -> delete")
+    exapp.add_record({cls = 99, uni_key = uk, i1 = 50, s1 = nick}, function(success_add, result_add)
+        if not success_add then
+            show_data("完整流程", "add失败", "失败", result_add)
+            return
+        end
+        log.info("db", "add 成功，开始 list")
+        exapp.list_record({cls = 99, size = 3, sort = "i1", desc = true}, function(success_list, data)
+            if success_list and data and data.records and #data.records > 0 then
+                local rec = data.records[1]
+                exapp.delete_record({cls = 99, id = rec.id}, function(success_del, result_del)
+                    if success_del then
+                        log.info("db", "完整流程成功, id=" .. rec.id)
+                        show_data("完整流程", "add->list->delete", "成功", "已删除 id=" .. rec.id)
+                    else
+                        show_data("完整流程", "delete失败", "失败", result_del)
+                    end
+                end)
+                show_data("完整流程", "list完成 -> delete中", "进行中", "id=" .. rec.id)
+            else
+                show_data("完整流程", "list失败/无数据", "失败", tostring(data))
+            end
+        end)
+        show_data("完整流程", "add完成 -> list中", "进行中", "")
+    end)
     show_data("完整流程", "add->list->delete", "已发送", "uni_key=" .. uk)
 end
 
@@ -279,25 +329,13 @@ end
 ----------------------------------------------------------------------
 -- 窗口生命周期
 ----------------------------------------------------------------------
--- DB 结果回调
-local function on_db_result(endpoint, success, info)
-    local op_name = endpoint
-    if success then
-        show_data(op_name, "--", "成功", tostring(info or ""))
-    else
-        show_data(op_name, "--", "失败", tostring(info or ""))
-    end
-end
-
 local function on_create()
     build_ui()
     refresh_info()
     show_data("--", "--", "等待操作", "点击上方按钮开始测试")
-    sys.subscribe("DB_RESULT", on_db_result)
 end
 
 local function on_destroy()
-    sys.unsubscribe("DB_RESULT", on_db_result)
     if main_container then
         main_container:destroy()
         main_container = nil

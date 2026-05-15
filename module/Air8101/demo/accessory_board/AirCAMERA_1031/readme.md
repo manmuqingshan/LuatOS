@@ -925,7 +925,7 @@ AirCAMERA_1031 配件板 + AirMICROSD_1000 配件板+ Air8101 核心板，硬件
 
 ## 合宙音视频后台查看
 
-打开[合宙视频物联网大数据平台](https://video.luatos.com:8083/login?redirect=/real-time)
+打开[合宙视频物联网大数据平台](https://video.luatos.com/login?redirect=/real-time)
 输入自己的IOT账号和密码然后输入验证码，点击登录
 
 ![](https://docs.openLuat.com/cdn/image/8101_rtmp_1.jpg)

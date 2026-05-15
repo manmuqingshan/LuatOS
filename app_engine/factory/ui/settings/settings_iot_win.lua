@@ -15,6 +15,8 @@ local first_open = true
 local screen_w, screen_h = 480, 800
 local margin, card_w, padding, row_gap, label_w, input_w, input_h, row_h, btn_w, btn_h, font_size, font_size2
 
+local titlebar = require "settings_titlebar"
+
 local COLOR_PRIMARY        = 0x007AFF
 local COLOR_BG             = 0xF5F5F5
 local COLOR_CARD           = 0xFFFFFF
@@ -275,38 +277,7 @@ local function build_ui()
         parent = airui.screen
     })
 
-    local th = math.floor(60 * _G.density_scale)
-    local tb = airui.container({
-        parent = main_container,
-        x = 0, y = 0,
-        w = screen_w, h = th,
-        color = COLOR_PRIMARY
-    })
-    local bb = airui.container({
-        parent = tb,
-        x = 10, y = 10,
-        w = math.floor(50 * _G.density_scale), h = math.floor(40 * _G.density_scale),
-        color = COLOR_PRIMARY,
-        on_click = function() exwin.close(window_id) end
-    })
-    airui.label({
-        parent = bb,
-        x = 0, y = math.floor(5 * _G.density_scale),
-        w = math.floor(50 * _G.density_scale), h = math.floor(30 * _G.density_scale),
-        text = "<",
-        font_size = math.floor(28 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_CENTER
-    })
-    airui.label({
-        parent = tb,
-        x = math.floor(60 * _G.density_scale), y = math.floor(10 * _G.density_scale),
-        w = math.floor(150 * _G.density_scale), h = math.floor(40 * _G.density_scale),
-        text = "IOT账号",
-        font_size = math.floor(32 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_LEFT
-    })
+    local _, th = titlebar.create(main_container, "IOT账号", screen_w, function() exwin.close(window_id) end)
 
     if soft_keyboard then soft_keyboard = nil end
 

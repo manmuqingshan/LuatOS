@@ -32,54 +32,56 @@
 3. 消息驱动
 4. 及时刷新
 ]]
--- Abbreviations: ac=action sc=success an=app_name pg=page_info sm=sort_map cy=cat_y
---   bo=btn_obj act=active et=entry lp=local_path tst=toast lb=label vl=value
---   hn=hm_now tn=tp_now tl=total_now ca=cached pc=percent st=status_text ni=new_installed
+-- All variable and function names now use full readable names.
+-- Layout variables defined in calc_layout().
+-- Message callbacks: on_list_updated, on_installed_updated, on_progress, on_action_done, on_error, on_icon_ready
+-- Containers: main_container, app_content_area, app_grid
+-- State: current_category, current_sort, current_page, total_pages, has_more, current_query
 
-local wid = nil
-local mc = nil
-local si = nil
-local sk = nil
-local ss = nil
-local cb = {}
-local cc = "全部"
-local cs = "recommend"
-local ac = nil
-local ag = nil
-local pl = nil
-local pvb = nil
-local nxb = nil
+local window_id = nil
+local main_container = nil
+local search_input = nil
+local search_keyboard = nil
+local sort_select = nil
+local category_buttons = {}
+local current_category = "全部"
+local current_sort = "recommend"
+local app_content_area = nil
+local app_grid = nil
+local page_label = nil
+local prev_button = nil
+local next_button = nil
 
 -- 布局参数
-local th, sh, sw, aah, pbh, gah = 0, 0, 0, 0, 0, 0
-local sbw, sbh = 0, 0
-local sbrw = 0
-local acw, ach = 0, 0
-local agw, agh = 0, 0
-local pbw = 0
+local top_height, sort_height, sidebar_width, available_area_height, pagination_bar_height, grid_area_height = 0, 0, 0, 0, 0, 0
+local search_box_width, search_box_height = 0, 0
+local sort_bar_width = 0
+local app_content_width, app_content_height = 0, 0
+local app_grid_width, app_grid_height = 0, 0
+local page_bar_width = 0
 local sort_by = 0
 
-local gm = 8
-local cw, ch = 0, 0
-local gc = 1
-local isz = 0
-local tfs = 0
-local dfs = 0
-local bfs = 0
-local ifs = 0
-local mdl = 2 -- 描述最大行数，动态计算
+local grid_margin = 8
+local card_width, card_height = 0, 0
+local grid_columns = 1
+local icon_size = 0
+local title_font_size = 0
+local description_font_size = 0
+local button_font_size = 0
+local info_font_size = 0
+local max_description_lines = 2 -- 描述最大行数，动态计算
 
 -- 按钮自适应参数
-local cbh = math.floor(32 * (_G.density_scale or 1.0))
-local cbbm = 8
-local cp = 1
-local tp = 0
-local plim = 10
-local hm = false
-local cq = ""
+local card_button_height = math.floor(32 * (_G.density_scale or 1.0))
+local card_button_bottom_margin = 8
+local current_page = 1
+local total_pages = 0
+local page_limit = 10
+local has_more = false
+local current_query = ""
 
 -- 只保存UI状态，不保存业务数据
-local lii = {}
+local local_installed_info = {}
 
 -- 使用颜色
 local COLOR_PRIMARY = 0x007AFF
@@ -93,73 +95,73 @@ local COLOR_DIVIDER = 0xE0E0E0
 local COLOR_WHITE = 0xFFFFFF
 local COLOR_DANGER = 0xE63946
 
-local cats = { "全部", "已安装", "通信", "工具", "游戏", "工业", "健康" }
-local piu = {}
+local categories = { "全部", "已安装", "通信", "工具", "游戏", "工业", "健康" }
+local pending_icon_updates = {}
 
 -- 进度对话框相关
-local pd = nil
-local pbar = nil
-local pbl = nil
+local progress_dialog = nil
+local progress_bar = nil
+local progress_label = nil
 
 -------------------------------------------------------------------------------
 -- 布局计算
 ------------------------------------------------------------------------------
-local function cl()
+local function calc_layout()
     -- 框架布局：从模板线性缩放
-    -- 竖屏模板 480x854: top=68, sort=51, side=96, pbh=55
-    -- 横屏模板 854x480: top=38, sort=28, side=136, pbh=40
+    -- 竖屏模板 480x854: top=68, sort=51, side=96, pagination_bar_height=55
+    -- 横屏模板 854x480: top=38, sort=28, side=136, pagination_bar_height=40
     if is_landscape then
         local sy = screen_h / 480
-        th = math.floor(38 * sy)
-        sh = math.floor(28 * sy)
-        sw = math.floor(136 * screen_w / 854)
-        pbh = math.floor(40 * sy)
+        top_height = math.floor(38 * sy)
+        sort_height = math.floor(28 * sy)
+        sidebar_width = math.floor(136 * screen_w / 854)
+        pagination_bar_height = math.floor(40 * sy)
     else
         local sy = screen_h / 854
-        th = math.floor(68 * sy)
-        sh = math.floor(51 * sy)
-        sw = math.floor(96 * screen_w / 480)
-        pbh = math.floor(55 * sy)
+        top_height = math.floor(68 * sy)
+        sort_height = math.floor(51 * sy)
+        sidebar_width = math.floor(96 * screen_w / 480)
+        pagination_bar_height = math.floor(55 * sy)
     end
-    sw = math.max(64, math.min(260, sw))
-    sh = math.max(26, sh)
-    pbh = math.max(28, math.min(60, pbh))
+    sidebar_width = math.max(64, math.min(260, sidebar_width))
+    sort_height = math.max(26, sort_height)
+    pagination_bar_height = math.max(28, math.min(60, pagination_bar_height))
 
     -- 字体大小（全部 ≥ 14）
     local bf = math.floor(screen_h / 40 * _G.density_scale)
     bf = math.max(math.floor(14 * _G.density_scale), math.min(math.floor(24 * _G.density_scale), bf))
-    tfs = math.max(math.floor(16 * _G.density_scale), math.min(math.floor(26 * _G.density_scale), bf))
-    dfs = math.max(math.floor(14 * _G.density_scale),
+    title_font_size = math.max(math.floor(16 * _G.density_scale), math.min(math.floor(26 * _G.density_scale), bf))
+    description_font_size = math.max(math.floor(14 * _G.density_scale),
         math.min(math.floor(22 * _G.density_scale), bf - math.floor(2 * _G.density_scale)))
-    bfs = math.max(math.floor(14 * _G.density_scale),
+    button_font_size = math.max(math.floor(14 * _G.density_scale),
         math.min(math.floor(20 * _G.density_scale), bf - math.floor(2 * _G.density_scale)))
-    ifs = bfs
+    info_font_size = button_font_size
 
     -- 图标大小
     if is_landscape then
-        isz = math.max(math.floor(40 * _G.density_scale),
+        icon_size = math.max(math.floor(40 * _G.density_scale),
             math.min(math.floor(70 * _G.density_scale), math.floor(screen_h / 16 * _G.density_scale)))
     else
-        isz = math.max(math.floor(40 * _G.density_scale),
+        icon_size = math.max(math.floor(40 * _G.density_scale),
             math.min(math.floor(70 * _G.density_scale), math.floor(screen_h / 14 * _G.density_scale)))
     end
     if screen_h < 360 then
-        isz = math.max(math.floor(32 * _G.density_scale),
+        icon_size = math.max(math.floor(32 * _G.density_scale),
             math.min(math.floor(50 * _G.density_scale), math.floor(screen_h / 12 * _G.density_scale)))
     end
 
     -- 区域尺寸
-    aah = screen_h - th - sh
-    gah = aah - pbh - gm * 2
+    available_area_height = screen_h - top_height - sort_height
+    grid_area_height = available_area_height - pagination_bar_height - grid_margin * 2
 
-    sbw = screen_w - 2 * gm - 70 - 50
-    sbh = math.max(32, math.min(math.floor(th * 0.72), th - 10))
-    sbrw = screen_w
-    acw = screen_w - sw
-    ach = aah
-    agw = acw - 2 * gm
-    agh = gah
-    pbw = acw
+    search_box_width = screen_w - 2 * grid_margin - 70 - 50
+    search_box_height = math.max(32, math.min(math.floor(top_height * 0.72), top_height - 10))
+    sort_bar_width = screen_w
+    app_content_width = screen_w - sidebar_width
+    app_content_height = available_area_height
+    app_grid_width = app_content_width - 2 * grid_margin
+    app_grid_height = grid_area_height
+    page_bar_width = app_content_width
 
     -- 网格列数（动态计算，最小卡片宽度乘以 density_scale 适配高密度屏）
     local mcw
@@ -170,93 +172,93 @@ local function cl()
     end
     mcw = math.max(math.floor(150 * _G.density_scale), math.min(math.floor(280 * _G.density_scale), mcw))
 
-    gc = math.max(1, math.floor(agw / mcw))
+    grid_columns = math.max(1, math.floor(app_grid_width / mcw))
 
     if screen_w < 480 then
-        gc = math.min(2, gc)
+        grid_columns = math.min(2, grid_columns)
     elseif screen_w < 720 then
-        gc = math.min(3, gc)
+        grid_columns = math.min(3, grid_columns)
     elseif screen_w < 1800 then
-        gc = math.min(4, gc)
+        grid_columns = math.min(4, grid_columns)
     else
-        gc = math.min(5, gc)
+        grid_columns = math.min(5, grid_columns)
     end
 
     if screen_w <= 480 and not is_landscape then
-        gc = 1
+        grid_columns = 1
     end
 
-    cw = math.floor((agw - (gc + 1) * gm) / gc)
+    card_width = math.floor((app_grid_width - (grid_columns + 1) * grid_margin) / grid_columns)
 
     -- 卡片按钮高度
     if screen_h < 360 then
-        cbh = math.max(math.floor(28 * _G.density_scale),
+        card_button_height = math.max(math.floor(28 * _G.density_scale),
             math.min(math.floor(40 * _G.density_scale), math.floor(screen_h / 14 * _G.density_scale)))
     else
-        cbh = math.max(math.floor(36 * _G.density_scale),
+        card_button_height = math.max(math.floor(36 * _G.density_scale),
             math.min(math.floor(50 * _G.density_scale), math.floor(screen_h / 18 * _G.density_scale)))
     end
 
     -- 卡片高度与描述行数
-    local tlh = tfs + 4
-    local ilh = ifs + 4
-    local dlh = dfs + 4
-    local dl = 2
+    local tlh = title_font_size + 4
+    local ilh = info_font_size + 4
+    local dlh = description_font_size + 4
+    local desc_lines = 2
 
     local vpe = (screen_h < 400) and 8 or 12
-    local bch = math.max(isz, tlh + ilh) + cbh + cbbm +
+    local bch = math.max(icon_size, tlh + ilh) + card_button_height + card_button_bottom_margin +
         vpe
-    local ahd = gah - bch - gm * 2
+    local ahd = grid_area_height - bch - grid_margin * 2
 
     if ahd >= dlh * 2 then
-        dl = 2
+        desc_lines = 2
     elseif ahd >= dlh then
-        dl = 1
+        desc_lines = 1
     else
-        dl = 0
+        desc_lines = 0
     end
 
-    local dh = dfs * dl + (dl > 0 and 8 or 0)
-    ch = math.floor(bch + dh)
+    local dh = description_font_size * desc_lines + (desc_lines > 0 and 8 or 0)
+    card_height = math.floor(bch + dh)
 
     -- 确保卡片高度足够容纳内部布局：描述 + 间距 + 按钮
-    local ioy = 15 + tfs + 6
-    local dsy = ioy + ifs + 8
-    local rh = dsy + dh + 4 + cbh + cbbm
-    ch = math.max(ch, math.floor(rh))
+    local ioy = 15 + title_font_size + 6
+    local dsy = ioy + info_font_size + 8
+    local rh = dsy + dh + 4 + card_button_height + card_button_bottom_margin
+    card_height = math.max(card_height, math.floor(rh))
 
-    local rpp = math.max(1, math.floor(gah / (ch + gm)))
-    plim = gc * rpp
+    local rpp = math.max(1, math.floor(grid_area_height / (card_height + grid_margin)))
+    page_limit = grid_columns * rpp
 
-    mdl = dl
+    max_description_lines = desc_lines
 
 end
 
-local function upd()
-    if not pl then return end
-    local text = tostring(cp)
-    if tp > 0 then
-        text = text .. "/" .. tp
+local function update_page_label()
+    if not page_label then return end
+    local text = tostring(current_page)
+    if total_pages > 0 then
+        text = text .. "/" .. total_pages
     else
         text = text .. "/?"
     end
-    pl:set_text(text)
+    page_label:set_text(text)
 end
 
 -------------------------------------------------------------------------------
 -- 进度对话框
 -------------------------------------------------------------------------------
-local function cpd()
-    if pd then
-        pd:destroy()
-        pd = nil
-        pbar = nil
-        pbl = nil
+local function close_progress_dialog()
+    if progress_dialog then
+        progress_dialog:destroy()
+        progress_dialog = nil
+        progress_bar = nil
+        progress_label = nil
     end
 end
 
-local function spd(an)
-    cpd()
+local function show_progress_dialog(app_name)
+    close_progress_dialog()
     local msk = airui.container({
         parent = airui.screen,
         x = 0,
@@ -287,8 +289,8 @@ local function spd(an)
         y = 20,
         w = dlw - 40,
         h = 30,
-        text = "正在安装 " .. (an or ""),
-        font_size = tfs,
+        text = "正在安装 " .. (app_name or ""),
+        font_size = title_font_size,
         color = COLOR_TEXT,
         align = airui.TEXT_ALIGN_CENTER
     })
@@ -312,66 +314,66 @@ local function spd(an)
         w = dlw - 40,
         h = 24,
         text = "准备下载...",
-        font_size = dfs,
+        font_size = description_font_size,
         color = COLOR_TEXT_SECONDARY,
         align = airui.TEXT_ALIGN_CENTER
     })
-    pd = msk
-    pbar = bar
-    pbl = tl
+    progress_dialog = msk
+    progress_bar = bar
+    progress_label = tl
 end
 
-local function sst(ac, an)
+local function show_status_toast(action, app_name)
     local msg = ""
-    if ac == "install" then
-        msg = (an or "应用") .. " 安装完成"
-    elseif ac == "uninstall" then
-        msg = (an or "应用") .. " 卸载完成"
-    elseif ac == "update" then
-        msg = (an or "应用") .. " 更新完成"
+    if action == "install" then
+        msg = (app_name or "应用") .. " 安装完成"
+    elseif action == "uninstall" then
+        msg = (app_name or "应用") .. " 卸载完成"
+    elseif action == "update" then
+        msg = (app_name or "应用") .. " 更新完成"
     else
         msg = "操作完成"
     end
-    local tst = airui.msgbox({
+    local toast_msg = airui.msgbox({
         title = "提示",
         text = msg,
         buttons = { "确定" },
         timeout = 1000,
-        on_action = function(self, lb)
-            if lb == "确定" then
+        on_action = function(self, btn_label)
+            if btn_label == "确定" then
                 self:hide()
             end
             self:destroy()
         end
     })
-    tst:show()
+    toast_msg:show()
 end
 
 -------------------------------------------------------------------------------
 -- 图标更新
 -------------------------------------------------------------------------------
-local function oir(aid, lp)
-    local et = piu[aid]
-    if et and et.image_component then
-        et.image_component:set_src(lp)
+local function on_icon_ready(app_id, icon_path)
+    local entry = pending_icon_updates[app_id]
+    if entry and entry.image_component then
+        entry.image_component:set_src(icon_path)
     end
-    piu[aid] = nil
+    pending_icon_updates[app_id] = nil
 end
 
 -------------------------------------------------------------------------------
 -- UI 创建（顶部栏、排序栏、分类侧边栏、内容区、分页栏）
 -------------------------------------------------------------------------------
-local function cui()
-    mc = airui.container({
+local function create_ui()
+    main_container = airui.container({
         x = 0, y = 0, w = screen_w, h = screen_h, color = COLOR_BG, parent = airui.screen
     })
 
     -- 顶部栏
     local tb = airui.container({
-        parent = mc, x = 0, y = 0, w = screen_w, h = th, color = COLOR_CARD
+        parent = main_container, x = 0, y = 0, w = screen_w, h = top_height, color = COLOR_CARD
     })
-    local tih = math.min(38, math.floor(th * 0.82))
-    local tiy = math.floor((th - tih) / 2)
+    local tih = math.min(38, math.floor(top_height * 0.82))
+    local tiy = math.floor((top_height - tih) / 2)
     local tir = math.floor(tih / 2)
     airui.button({
         parent = tb,
@@ -383,7 +385,7 @@ local function cui()
         font_size = math.min(math.floor(24 * _G.density_scale), math.floor((tih - 4) * _G.density_scale)),
         style = { bg_color = COLOR_DIVIDER, pressed_bg_color = COLOR_DIVIDER, text_color = COLOR_TEXT, radius = tir, border_width = 1, border_color = COLOR_DIVIDER, pad = 0 },
         on_click = function()
-            if wid then
+            if window_id then
                 exapp.init()
                 exwin.return_idle()
             end
@@ -391,7 +393,7 @@ local function cui()
     })
 
     local sbwe = screen_w - tih - 12 - 60 - 8
-    local sbhe = math.min(tih, sbh)
+    local sbhe = math.min(tih, search_box_height)
     local sbg = airui.container({
         parent = tb,
         x = tih + 12,
@@ -403,7 +405,7 @@ local function cui()
         border_width = 1,
         border_color = COLOR_DIVIDER
     })
-    sk = airui.keyboard({
+    search_keyboard = airui.keyboard({
         mode = "text",
         auto_hide = true,
         preview = true,
@@ -415,16 +417,16 @@ local function cui()
             self:hide()
         end,
     })
-    si = airui.textarea({
+    search_input = airui.textarea({
         parent = sbg,
         x = 8,
         y = 2,
         w = sbwe - 16,
         h = sbhe - 4,
         placeholder = "搜索应用...",
-        font_size = bfs,
+        font_size = button_font_size,
         color = COLOR_TEXT,
-        keyboard = sk
+        keyboard = search_keyboard
     })
     local sbnw = math.min(60, screen_w - tih - 12 - sbwe - 8)
     airui.button({
@@ -434,28 +436,28 @@ local function cui()
         w = sbnw,
         h = tih,
         text = "搜索",
-        font_size = bfs,
+        font_size = button_font_size,
         style = { bg_color = COLOR_PRIMARY, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = tir, border_width = 0, pad = 4 },
         on_click = function()
-            local q = (si and si:get_text()) or ""
-            cq = q or ""
-            cp = 1
-            sys.publish("APP_STORE_GET_LIST", cc, cs, cp, plim, cq)
+            local q = (search_input and search_input:get_text()) or ""
+            current_query = q or ""
+            current_page = 1
+            sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
         end
     })
 
     -- 排序栏
     local srb = airui.container({
-        parent = mc,
+        parent = main_container,
         x = 0,
-        y = th,
-        w = sbrw,
-        h = sh,
+        y = top_height,
+        w = sort_bar_width,
+        h = sort_height,
         color = COLOR_CARD
     })
-    local stbh = math.min(36, math.floor(sh * 0.85))
+    local stbh = math.min(36, math.floor(sort_height * 0.85))
     local stbr = math.floor(stbh / 2)
-    sort_by = math.floor((sh - stbh) / 2)
+    sort_by = math.floor((sort_height - stbh) / 2)
     local sddx = math.floor(12 * _G.density_scale)
     local sddw = math.min(150, math.floor((screen_w - sddx - 90) * 0.65))
     local srfx = sddx + sddw + 20
@@ -463,7 +465,7 @@ local function cui()
         sddw = math.floor(screen_w - sddx - 90)
         srfx = sddx + sddw + 10
     end
-    ss = airui.dropdown({
+    sort_select = airui.dropdown({
         parent = srb,
         x = sddx,
         y = sort_by,
@@ -472,11 +474,11 @@ local function cui()
         options = { "推荐", "序号", "上传时间(旧)", "上传时间(新)", "热度", "下载量", "更新优先" },
         default_index = 0,
         style = { bg_color = COLOR_CARD, border_color = COLOR_DIVIDER, radius = stbr },
-        on_change = function(self, idx, vl)
-            local sm = { "recommend", "idAsc", "timeAsc", "timeDesc", "hot", "downloads", "updatePriority" }
-            cs = sm[idx + 1] or "recommend"
-            cp = 1
-            sys.publish("APP_STORE_GET_LIST", cc, cs, cp, plim, cq)
+        on_change = function(self, idx, option_value)
+            local sort_map = { "recommend", "idAsc", "timeAsc", "timeDesc", "hot", "downloads", "updatePriority" }
+            current_sort = sort_map[idx + 1] or "recommend"
+            current_page = 1
+            sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
         end
     })
     airui.button({
@@ -486,28 +488,28 @@ local function cui()
         w = math.min(70, screen_w - math.max(srfx, screen_w - 78) - 4),
         h = stbh,
         text = "刷新",
-        font_size = bfs,
+        font_size = button_font_size,
         style = { bg_color = COLOR_DIVIDER, pressed_bg_color = COLOR_DIVIDER, text_color = COLOR_TEXT, radius = stbr, border_width = 1, border_color = COLOR_DIVIDER },
         on_click = function()
-            cp = 1
-            sys.publish("APP_STORE_GET_LIST", cc, cs, cp, plim, cq)
+            current_page = 1
+            sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
         end
     })
 
     -- 分类侧边栏
     local csb = airui.container({
-        parent = mc,
+        parent = main_container,
         x = 0,
-        y = th + sh,
-        w = sw,
-        h = aah,
+        y = top_height + sort_height,
+        w = sidebar_width,
+        h = available_area_height,
         color = COLOR_CARD
     })
     local cy = 16
     local cth = math.max(36, math.min(50, math.floor(screen_h / 20)))
     local ctr = math.min(24, math.floor(cth / 2))
-    local ctw = sw - 20
-    for i, cat in ipairs(cats) do
+    local ctw = sidebar_width - 20
+    for i, cat in ipairs(categories) do
         local btn = airui.button({
             parent = csb,
             x = 10,
@@ -515,115 +517,115 @@ local function cui()
             w = ctw,
             h = cth,
             text = cat,
-            font_size = bfs,
+            font_size = button_font_size,
             style = {
-                bg_color = (cat == cc) and COLOR_PRIMARY or COLOR_CARD,
+                bg_color = (cat == current_category) and COLOR_PRIMARY or COLOR_CARD,
                 pressed_bg_color = COLOR_PRIMARY_DARK,
-                text_color = (cat == cc) and COLOR_WHITE or COLOR_TEXT,
+                text_color = (cat == current_category) and COLOR_WHITE or COLOR_TEXT,
                 radius = ctr,
                 border_width = 1,
                 border_color = COLOR_DIVIDER,
                 pad = 0
             },
             on_click = function()
-                if cc == cat then return end
-                cc = cat
-                for idx, bo in ipairs(cb) do
-                    local act = (cats[idx] == cat)
-                    bo:set_style({
-                        bg_color = act and COLOR_PRIMARY or COLOR_CARD,
-                        text_color = act and COLOR_WHITE or COLOR_TEXT
+                if current_category == cat then return end
+                current_category = cat
+                for cat_idx, button_obj in ipairs(category_buttons) do
+                    local is_active = (categories[cat_idx] == cat)
+                    button_obj:set_style({
+                        bg_color = is_active and COLOR_PRIMARY or COLOR_CARD,
+                        text_color = is_active and COLOR_WHITE or COLOR_TEXT
                     })
                 end
-                cp = 1
-                sys.publish("APP_STORE_GET_LIST", cc, cs, cp, plim, cq)
+                current_page = 1
+                sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
             end
         })
-        cb[i] = btn
+        category_buttons[i] = btn
         cy = cy + cth + 8
     end
 
     -- 右侧内容区
-    ac = airui.container({
-        parent = mc,
-        x = sw,
-        y = th + sh,
-        w = acw,
-        h = ach - pbh,
+    app_content_area = airui.container({
+        parent = main_container,
+        x = sidebar_width,
+        y = top_height + sort_height,
+        w = app_content_width,
+        h = app_content_height - pagination_bar_height,
         color = COLOR_BG,
         scrollable = true,
     })
-    ag = airui.container({
-        parent = ac,
-        x = gm,
-        y = gm,
-        w = agw,
-        h = agh,
+    app_grid = airui.container({
+        parent = app_content_area,
+        x = grid_margin,
+        y = grid_margin,
+        w = app_grid_width,
+        h = app_grid_height,
         color = COLOR_BG
     })
 
     -- 分页栏
-    local pbhe = pbh
+    local pbhe = pagination_bar_height
     local pgb = airui.container({
-        parent = mc,
-        x = sw,
-        y = screen_h - pbh,
-        w = screen_w - sw,
-        h = pbh,
+        parent = main_container,
+        x = sidebar_width,
+        y = screen_h - pagination_bar_height,
+        w = screen_w - sidebar_width,
+        h = pagination_bar_height,
         color = COLOR_CARD
     })
     local pvx = 16
     local pvw = 70
     local nxw = 70
-    local nxx = pbw - 86
+    local nxx = page_bar_width - 86
     local lx = pvx + pvw + 4
 
-    local pnbh = math.min(40, math.floor(pbh * 0.8))
-    local pnby = math.floor((pbh - pnbh) / 2)
+    local pnbh = math.min(40, math.floor(pagination_bar_height * 0.8))
+    local pnby = math.floor((pagination_bar_height - pnbh) / 2)
     local pnr = math.floor(pnbh / 2)
 
-    pvb = airui.button({
+    prev_button = airui.button({
         parent = pgb,
         x = pvx,
         y = pnby,
         w = pvw,
         h = pnbh,
         text = "上一页",
-        font_size = math.max(math.floor(14 * _G.density_scale), bfs - math.floor(4 * _G.density_scale)),
+        font_size = math.max(math.floor(14 * _G.density_scale), button_font_size - math.floor(4 * _G.density_scale)),
         style = { bg_color = COLOR_PRIMARY, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = pnr, border_width = 0 },
         on_click = function()
-            if cp > 1 then
-                cp = cp - 1
-                sys.publish("APP_STORE_GET_LIST", cc, cs, cp, plim, cq)
-                upd()
+            if current_page > 1 then
+                current_page = current_page - 1
+                sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+                update_page_label()
             end
         end
     })
-    nxb = airui.button({
+    next_button = airui.button({
         parent = pgb,
         x = nxx,
         y = pnby,
         w = nxw,
         h = pnbh,
         text = "下一页",
-        font_size = math.max(math.floor(14 * _G.density_scale), bfs - math.floor(4 * _G.density_scale)),
+        font_size = math.max(math.floor(14 * _G.density_scale), button_font_size - math.floor(4 * _G.density_scale)),
         style = { bg_color = COLOR_PRIMARY, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = pnr, border_width = 0 },
         on_click = function()
-            if hm then
-                cp = cp + 1
-                sys.publish("APP_STORE_GET_LIST", cc, cs, cp, plim, cq)
-                upd()
+            if has_more then
+                current_page = current_page + 1
+                sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+                update_page_label()
             end
         end
     })
-    pl = airui.label({
+    page_label = airui.label({
         parent = pgb,
         x = lx,
-        y = math.floor((pbh - 30) / 2),
-        w = screen_w - sw - nxw * 2 - 40,
+        y = math.floor((pagination_bar_height - 30) / 2),
+        w = screen_w - sidebar_width - nxw * 2 - 40,
         h = 30,
         text = "1/?",
-        font_size = bfs,
+        font_size = button_font_size,
         color = COLOR_TEXT_SECONDARY,
         align = airui.TEXT_ALIGN_CENTER
     })
@@ -632,43 +634,43 @@ end
 -------------------------------------------------------------------------------
 -- 渲染应用卡片（新布局：名称 → 信息行 → 描述 → 按钮）
 -------------------------------------------------------------------------------
-local function ra(apps, more)
-    hm = more
-    upd()
+local function render_apps(apps, has_more_pages)
+    has_more = has_more_pages
+    update_page_label()
 
-    if ag then ag:destroy() end
+    if app_grid then app_grid:destroy() end
 
-    local rn = math.ceil(#apps / gc)
-    local ngh = math.max(gah, rn * (ch + gm) + gm + 10)
-    ag = airui.container({
-        parent = ac,
-        x = gm,
-        y = gm,
-        w = agw,
-        h = ngh,
+    local row_count = math.ceil(#apps / grid_columns)
+    local needed_grid_height = math.max(grid_area_height, row_count * (card_height + grid_margin) + grid_margin + 10)
+    app_grid = airui.container({
+        parent = app_content_area,
+        x = grid_margin,
+        y = grid_margin,
+        w = app_grid_width,
+        h = needed_grid_height,
         color = COLOR_BG
     })
 
     local ia = exapp.list_installed()
-    local bh = cbh
-    local bbm = cbbm
-    local by = ch - bh - bbm
+    local bh = card_button_height
+    local bbm = card_button_bottom_margin
+    local by = card_height - bh - bbm
 
     for idx, app in ipairs(apps) do
-        local lid = lii[tostring(app.aid)]
-        if lid then app.installed = true end
+        local installed_flag = local_installed_info[tostring(app.aid)]
+        if installed_flag then app.installed = true end
 
-        local col = (idx - 1) % gc
-        local row = math.floor((idx - 1) / gc)
-        local x = col * (cw + gm) + gm
-        local y = row * (ch + gm) + gm
+        local col = (idx - 1) % grid_columns
+        local row = math.floor((idx - 1) / grid_columns)
+        local x = col * (card_width + grid_margin) + grid_margin
+        local y = row * (card_height + grid_margin) + grid_margin
 
         local card = airui.container({
-            parent = ag,
+            parent = app_grid,
             x = x,
             y = y,
-            w = cw,
-            h = ch,
+            w = card_width,
+            h = card_height,
             color = COLOR_CARD,
             radius = 16,
             border_width = 1,
@@ -682,50 +684,50 @@ local function ra(apps, more)
         end
 
         airui.image({
-            parent = card, x = 12, y = 12, w = isz, h = isz, src = isc
+            parent = card, x = 12, y = 12, w = icon_size, h = icon_size, src = isc
         })
 
         -- 应用名称
         local ny = 15
         airui.label({
             parent = card,
-            x = isz + 20,
+            x = icon_size + 20,
             y = ny,
-            w = cw - isz - 28,
-            h = tfs + 4,
+            w = card_width - icon_size - 28,
+            h = title_font_size + 4,
             text = app.title or app.name or "未知",
-            font_size = tfs,
+            font_size = title_font_size,
             color = COLOR_TEXT
         })
 
         -- 信息行：大小和下载量（格式：XXKB | ↓ xx次）
-        local ioy = ny + tfs + 6
+        local ioy = ny + title_font_size + 6
         local szt = (app.origin_size_kb and app.origin_size_kb ~= "") and (app.origin_size_kb .. "KB") or "未知"
         local dlt = (app.total_downloads and tostring(app.total_downloads)) or "0"
         local ift = string.format("%s | ↓ %s次", szt, dlt)
         airui.label({
             parent = card,
-            x = isz + 20,
+            x = icon_size + 20,
             y = ioy,
-            w = cw - isz - 28,
-            h = ifs + 4,
+            w = card_width - icon_size - 28,
+            h = info_font_size + 4,
             text = ift,
-            font_size = ifs,
+            font_size = info_font_size,
             color = COLOR_TEXT_SECONDARY
         })
 
         -- 应用描述（动态行数）
-        if mdl > 0 then
-            local dsy = ioy + ifs + 8
-            local dh = dfs * mdl + (mdl > 1 and 2 or 0)
+        if max_description_lines > 0 then
+            local dsy = ioy + info_font_size + 8
+            local dh = description_font_size * max_description_lines + (max_description_lines > 1 and 2 or 0)
             airui.label({
                 parent = card,
                 x = 12,
                 y = dsy,
-                w = cw - 24,
+                w = card_width - 24,
                 h = dh,
                 text = app.desc or "",
-                font_size = dfs,
+                font_size = description_font_size,
                 color = COLOR_TEXT_SECONDARY
             })
         end
@@ -733,7 +735,7 @@ local function ra(apps, more)
         -- 按钮（安装/更新/卸载）
         if app.installed then
             if app.has_update then
-                local bw = math.min(70, (cw - 36) / 2)
+                local bw = math.min(70, (card_width - 36) / 2)
                 airui.button({
                     parent = card,
                     x = 12,
@@ -741,22 +743,22 @@ local function ra(apps, more)
                     w = bw,
                     h = bh,
                     text = "更新",
-                    font_size = bfs,
+                    font_size = button_font_size,
                     style = { bg_color = COLOR_ACCENT, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                     on_click = function()
-                        local mbx = airui.msgbox({
+                        local msg_box = airui.msgbox({
                             title = "确认更新",
                             text = "是否更新应用 " .. (app.title or app.name) .. "？",
                             buttons = { "确定", "取消" },
-                            on_action = function(self, lb)
-                                if lb == "确定" then
-                                    spd(app.title or app.name)
-                                    sys.publish("APP_STORE_UPDATE", tostring(app.aid), app.url, app.title or app.name, cc, cs)
+                            on_action = function(self, btn_label)
+                                if btn_label == "确定" then
+                                    show_progress_dialog(app.title or app.name)
+                                    sys.publish("APP_STORE_UPDATE", tostring(app.aid), app.url, app.title or app.name, current_category, current_sort)
                                 end
                                 self:hide()
                             end
                         })
-                        mbx:show()
+                        msg_box:show()
                     end
                 })
                 airui.button({
@@ -766,25 +768,25 @@ local function ra(apps, more)
                     w = bw,
                     h = bh,
                     text = "卸载",
-                    font_size = bfs,
+                    font_size = button_font_size,
                     style = { bg_color = COLOR_DANGER, pressed_bg_color = COLOR_DANGER, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                     on_click = function()
-                        local mbx = airui.msgbox({
+                        local msg_box = airui.msgbox({
                             title = "确认卸载",
                             text = "是否卸载应用 " .. (app.title or app.name) .. "？",
                             buttons = { "确定", "取消" },
-                            on_action = function(self, lb)
-                                if lb == "确定" then
-                                    sys.publish("APP_STORE_UNINSTALL", tostring(app.aid), cc, cs)
+                            on_action = function(self, btn_label)
+                                if btn_label == "确定" then
+                                    sys.publish("APP_STORE_UNINSTALL", tostring(app.aid), current_category, current_sort)
                                 end
                                 self:hide()
                             end
                         })
-                        mbx:show()
+                        msg_box:show()
                     end
                 })
             else
-                local bw = math.min(80, cw - 24)
+                local bw = math.min(80, card_width - 24)
                 airui.button({
                     parent = card,
                     x = 12,
@@ -792,26 +794,26 @@ local function ra(apps, more)
                     w = bw,
                     h = bh,
                     text = "卸载",
-                    font_size = bfs,
+                    font_size = button_font_size,
                     style = { bg_color = COLOR_DANGER, pressed_bg_color = COLOR_DANGER, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                     on_click = function()
-                        local mbx = airui.msgbox({
+                        local msg_box = airui.msgbox({
                             title = "确认卸载",
                             text = "是否卸载应用 " .. (app.title or app.name) .. "？",
                             buttons = { "确定", "取消" },
-                            on_action = function(self, lb)
-                                if lb == "确定" then
-                                    sys.publish("APP_STORE_UNINSTALL", tostring(app.aid), cc, cs)
+                            on_action = function(self, btn_label)
+                                if btn_label == "确定" then
+                                    sys.publish("APP_STORE_UNINSTALL", tostring(app.aid), current_category, current_sort)
                                 end
                                 self:hide()
                             end
                         })
-                        mbx:show()
+                        msg_box:show()
                     end
                 })
             end
         else
-            local bw = math.min(80, cw - 24)
+            local bw = math.min(80, card_width - 24)
             airui.button({
                 parent = card,
                 x = 12,
@@ -819,22 +821,22 @@ local function ra(apps, more)
                 w = bw,
                 h = bh,
                 text = "安装",
-                font_size = bfs,
+                font_size = button_font_size,
                 style = { bg_color = COLOR_PRIMARY, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                 on_click = function()
-                    local mbx = airui.msgbox({
+                    local msg_box = airui.msgbox({
                         title = "确认安装",
                         text = "是否安装应用 " .. (app.title or app.name) .. "？",
                         buttons = { "确定", "取消" },
-                        on_action = function(self, lb)
-                            if lb == "确定" then
-                                spd(app.title or app.name)
-                                sys.publish("APP_STORE_INSTALL", tostring(app.aid), app.url, app.title or app.name, cc, cs)
+                        on_action = function(self, btn_label)
+                            if btn_label == "确定" then
+                                show_progress_dialog(app.title or app.name)
+                                sys.publish("APP_STORE_INSTALL", tostring(app.aid), app.url, app.title or app.name, current_category, current_sort)
                             end
                             self:hide()
                         end
                     })
-                    mbx:show()
+                    msg_box:show()
                 end
             })
         end
@@ -844,60 +846,60 @@ end
 -------------------------------------------------------------------------------
 -- 消息回调
 -------------------------------------------------------------------------------
-local function oiu(ni)
-    for aid, _ in pairs(ni) do
-        lii[aid] = true
+local function on_installed_updated(new_installed)
+    for app_id_str, _ in pairs(new_installed) do
+        local_installed_info[app_id_str] = true
     end
 end
 
-local function olu(apps, pg)
+local function on_list_updated(apps, page_info)
     local hn = false
-    local tn = cp
+    local tn = current_page
     local tl = 0
-    if type(pg) == "table" then
-        if type(pg.page) == 'number' then
-            cp = pg.page
+    if type(page_info) == "table" then
+        if type(page_info.page) == 'number' then
+            current_page = page_info.page
         end
-        if type(pg.total_pages) == 'number' then
-            tn = pg.total_pages
-        elseif type(pg.total_pages) == 'number' then
-            tn = pg.total_pages
+        if type(page_info.total_pages) == 'number' then
+            tn = page_info.total_pages
+        elseif type(page_info.total_pages) == 'number' then
+            tn = page_info.total_pages
         end
-        if type(pg.total) == 'number' then
-            tl = pg.total
+        if type(page_info.total) == 'number' then
+            tl = page_info.total
         end
-        if pg.has_more ~= nil then
-            hn = (pg.has_more == true)
+        if page_info.has_more ~= nil then
+            hn = (page_info.has_more == true)
         else
-            hn = (cp < tn)
+            hn = (current_page < tn)
         end
     end
 
-    hm = hn
+    has_more = hn
     if type(tn) ~= "number" then
         tn = 1
     end
-    tp = math.max(tn, 1)
-    upd()
+    total_pages = math.max(tn, 1)
+    update_page_label()
 
     local ia = exapp.list_installed()
 
     for _, app in ipairs(apps) do
-        local aid = tostring(app.aid)
-        local ca = lii[aid]
-        if ca ~= nil then
-            app.installed = ca
-            if ca and ia[aid] then
-                local info = ia[aid]
+        local app_id_str = tostring(app.aid)
+        local cached_status = local_installed_info[app_id_str]
+        if cached_status ~= nil then
+            app.installed = cached_status
+            if cached_status and ia[app_id_str] then
+                local info = ia[app_id_str]
                 if info and info.path then
                     app.path = info.path
                     app.icon_path = info.icon_path
                 end
             end
         else
-            if ia[aid] then
+            if ia[app_id_str] then
                 app.installed = true
-                local info = ia[aid]
+                local info = ia[app_id_str]
                 if info and info.path then
                     app.path = info.path
                     app.icon_path = info.icon_path
@@ -907,7 +909,7 @@ local function olu(apps, pg)
             end
         end
     end
-    if cc == "已安装" then
+    if current_category == "已安装" then
         local filtered = {}
         for _, app in ipairs(apps) do
             if app.installed then
@@ -919,56 +921,56 @@ local function olu(apps, pg)
         end
         apps = filtered
         if tl > 0 then
-            tp = math.max(1, math.ceil(tl / plim))
+            total_pages = math.max(1, math.ceil(tl / page_limit))
         end
-        hm = (cp < tp)
+        has_more = (current_page < total_pages)
     end
-    ra(apps, hm)
+    render_apps(apps, has_more)
 end
 
-local function opr(aid, pc, st)
-    if pbar and pbl then
-        pbar:set_value(pc)
-        pbl:set_text(st or string.format("下载进度 %d%%", pc))
-        if pc >= 100 then
-            pbl:set_text("解压完成，请稍候...")
+local function on_progress(app_id, download_percent, status_text)
+    if progress_bar and progress_label then
+        progress_bar:set_value(download_percent)
+        progress_label:set_text(status_text or string.format("下载进度 %d%%", download_percent))
+        if download_percent >= 100 then
+            progress_label:set_text("解压完成，请稍候...")
         end
     end
 end
 
-local function oad(aid, ac, sc)
-    cpd()
+local function on_action_done(app_id, action, success)
+    close_progress_dialog()
 
-    if sc then
-        local an = nil
+    if success then
+        local app_name = nil
         local ia = exapp.list_installed()
-        if ia[aid] then
-            an = ia[aid].cn_name or ia[aid].name
+        if ia[app_id] then
+            app_name = ia[app_id].cn_name or ia[app_id].name
         end
 
         local apps, more = exapp.get_current_list()
         if apps then
-            local idx = nil
+            local app_index = nil
             for i, app in ipairs(apps) do
-                if tostring(app.aid) == aid then
-                    idx = i
+                if tostring(app.aid) == app_id then
+                    app_index = i
                     break
                 end
             end
 
-            if idx then
-                if ac == "install" then
-                    apps[idx].installed = true
-                    apps[idx].has_update = false
-                elseif ac == "update" then
-                    apps[idx].has_update = false
-                    apps[idx].installed = true
-                elseif ac == "uninstall" then
-                    apps[idx].installed = false
+            if app_index then
+                if action == "install" then
+                    apps[app_index].installed = true
+                    apps[app_index].has_update = false
+                elseif action == "update" then
+                    apps[app_index].has_update = false
+                    apps[app_index].installed = true
+                elseif action == "uninstall" then
+                    apps[app_index].installed = false
                 end
             end
 
-            if cc == "已安装" then
+            if current_category == "已安装" then
                 local filtered = {}
                 for _, app in ipairs(apps) do
                     if app.installed then
@@ -976,78 +978,93 @@ local function oad(aid, ac, sc)
                     end
                 end
                 if #filtered > 0 then
-                    ra(filtered, false)
+                    render_apps(filtered, false)
                 end
             else
-                ra(apps, more)
+                render_apps(apps, more)
             end
         end
 
-        sst(ac, an)
+        show_status_toast(action, app_name)
 
-        local key = tostring(aid)
-        if ac == "install" and sc then
-            lii[key] = true
-        elseif ac == "uninstall" and sc then
-            lii[key] = false
+        local key = tostring(app_id)
+        if action == "install" and success then
+            local_installed_info[key] = true
+        elseif action == "uninstall" and success then
+            local_installed_info[key] = false
+        end
+
+        -- 卸载后调整分页：如果当前页已空且非首页，回退一页
+        if action == "uninstall" and success then
+            if current_category == "已安装" then
+                local ia = exapp.list_installed()
+                local installed_cnt = 0
+                for _ in pairs(ia) do installed_cnt = installed_cnt + 1 end
+                total_pages = math.max(1, math.ceil(installed_cnt / page_limit))
+                if current_page > total_pages then
+                    current_page = total_pages
+                end
+                has_more = current_page < total_pages
+            end
+            update_page_label()
         end
 
         -- 后台用当前页码重新请求服务端数据，不跳回第1页
-        sys.publish("APP_STORE_GET_LIST", cc, cs, cp, plim, cq)
+        sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
     end
 end
 
-local function oer(msg)
-    cpd()
-    local mbx = airui.msgbox({
+local function on_error(error_msg)
+    close_progress_dialog()
+    local msg_box = airui.msgbox({
         title = "错误",
         text = msg,
         buttons = { "确定" },
-        on_action = function(self, lb) self:hide() end
+        on_action = function(self, btn_label) self:hide() end
     })
-    mbx:show()
+    msg_box:show()
 end
 
 -------------------------------------------------------------------------------
 -- 窗口生命周期
 -------------------------------------------------------------------------------
-local function ocr()
-    cl()
-    cui()
+local function on_create()
+    calc_layout()
+    create_ui()
 
-    sys.subscribe("APP_STORE_LIST_UPDATED", olu)
-    sys.subscribe("APP_STORE_PROGRESS", opr)
-    sys.subscribe("APP_STORE_ERROR", oer)
-    sys.subscribe("APP_STORE_ACTION_DONE", oad)
-    sys.subscribe("APP_STORE_INSTALLED_UPDATED", oiu)
-    sys.subscribe("APP_STORE_ICON_READY", oir)
+    sys.subscribe("APP_STORE_LIST_UPDATED", on_list_updated)
+    sys.subscribe("APP_STORE_PROGRESS", on_progress)
+    sys.subscribe("APP_STORE_ERROR", on_error)
+    sys.subscribe("APP_STORE_ACTION_DONE", on_action_done)
+    sys.subscribe("APP_STORE_INSTALLED_UPDATED", on_installed_updated)
+    sys.subscribe("APP_STORE_ICON_READY", on_icon_ready)
 
     sys.publish("APP_STORE_SYNC_INSTALLED")
-    sys.publish("APP_STORE_GET_LIST", cc, cs, cp, plim, cq)
+    sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
 end
 
-local function ods()
-    sys.unsubscribe("APP_STORE_LIST_UPDATED", olu)
-    sys.unsubscribe("APP_STORE_PROGRESS", opr)
-    sys.unsubscribe("APP_STORE_ERROR", oer)
-    sys.unsubscribe("APP_STORE_ACTION_DONE", oad)
-    sys.unsubscribe("APP_STORE_INSTALLED_UPDATED", oiu)
-    sys.unsubscribe("APP_STORE_ICON_READY", oir)
+local function on_destroy()
+    sys.unsubscribe("APP_STORE_LIST_UPDATED", on_list_updated)
+    sys.unsubscribe("APP_STORE_PROGRESS", on_progress)
+    sys.unsubscribe("APP_STORE_ERROR", on_error)
+    sys.unsubscribe("APP_STORE_ACTION_DONE", on_action_done)
+    sys.unsubscribe("APP_STORE_INSTALLED_UPDATED", on_installed_updated)
+    sys.unsubscribe("APP_STORE_ICON_READY", on_icon_ready)
 
-    cpd()
-    if sk then sk:destroy() end
-    if mc then mc:destroy() end
+    close_progress_dialog()
+    if search_keyboard then search_keyboard:destroy() end
+    if main_container then main_container:destroy() end
 end
 
-local function ogf()
+local function on_get_focus()
     local apps, more = exapp.get_current_list()
     if apps then
-        if cc == "已安装" then
+        if current_category == "已安装" then
             local ia = exapp.list_installed()
             local filtered = {}
             for _, app in ipairs(apps) do
-                local aid = tostring(app.aid)
-                if ia[aid] then
+                local app_id_str = tostring(app.aid)
+                if ia[app_id_str] then
                     app.installed = true
                     table.insert(filtered, app)
                 end
@@ -1055,24 +1072,24 @@ local function ogf()
             if #filtered == 0 then
                 return
             end
-            ra(filtered, false)
+            render_apps(filtered, false)
         else
-            ra(apps, more)
+            render_apps(apps, more)
         end
     end
 end
 
-local function olf()
-    lii = {}
+local function on_lose_focus()
+    local_installed_info = {}
 end
 
-local function oh()
-    wid = exwin.open({
-        on_create = ocr,
-        on_destroy = ods,
-        on_get_focus = ogf,
-        on_lose_focus = olf,
+local function open_handler()
+    window_id = exwin.open({
+        on_create = on_create,
+        on_destroy = on_destroy,
+        on_get_focus = on_get_focus,
+        on_lose_focus = on_lose_focus,
     })
 end
 
-sys.subscribe("OPEN_APP_STORE_WIN", oh)
+sys.subscribe("OPEN_APP_STORE_WIN", open_handler)

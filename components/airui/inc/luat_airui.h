@@ -81,6 +81,19 @@ typedef enum {
     AIRUI_TOUCH_STATE_UP
 } airui_touch_state_t;
 
+typedef struct {
+    airui_touch_state_t state;
+    lv_coord_t x;
+    lv_coord_t y;
+    uint8_t track_id;
+    uint32_t timestamp;
+} airui_touch_point_t;
+
+typedef struct {
+    airui_ctx_t *ctx;
+    uint8_t slot;
+} airui_indev_udata_t;
+
 /**
  * Lua-facing keypad key values used by airui.keypad_subscribe().
  * On SDL builds these match the normalized SDL keycodes delivered to Lua.
@@ -101,7 +114,8 @@ typedef enum {
 #define AIRUI_LUA_KEY_LEFT    SDLK_LEFT
 #define AIRUI_LUA_KEY_RIGHT   SDLK_RIGHT
 #define AIRUI_LUA_KEY_OK      SDLK_RETURN
-#define AIRUI_LUA_KEY_BACK    SDLK_ESCAPE
+#define AIRUI_LUA_KEY_BACK    SDLK_BACKSPACE
+#define AIRUI_LUA_KEY_ESC     SDLK_ESCAPE
 #else
 #define AIRUI_LUA_KEY_0       '0'
 #define AIRUI_LUA_KEY_1       '1'
@@ -118,7 +132,8 @@ typedef enum {
 #define AIRUI_LUA_KEY_LEFT    1003
 #define AIRUI_LUA_KEY_RIGHT   1004
 #define AIRUI_LUA_KEY_OK      1005
-#define AIRUI_LUA_KEY_BACK    1006
+#define AIRUI_LUA_KEY_BACK    8
+#define AIRUI_LUA_KEY_ESC     27
 #endif
 
 /**
@@ -149,7 +164,7 @@ typedef struct {
  * 输入设备操作接口
  */
 typedef struct {
-    bool (*read_pointer)(airui_ctx_t *ctx, lv_indev_data_t *data);
+    bool (*read_pointer)(airui_ctx_t *ctx, lv_indev_t *indev, lv_indev_data_t *data);
     bool (*read_keypad)(airui_ctx_t *ctx, lv_indev_data_t *data);
     void (*calibration)(airui_ctx_t *ctx, int16_t *x, int16_t *y);
 } airui_input_ops_t;
@@ -187,10 +202,13 @@ typedef struct {
 struct airui_ctx {
     // LVGL 驱动实例
     lv_display_t *display;          /**< 显示设备 */
-    lv_indev_t *indev;               /**< 指针输入设备 */
+    lv_indev_t *indev;               /**< 主指针输入设备（= indev_ptrs[0]，向后兼容） */
     lv_indev_t *indev_keypad;        /**< 按键输入设备 */
     lv_group_t *indev_group;         /**< 默认焦点组 */
     lv_fs_drv_t fs_drv;          /**< 文件系统驱动（和 /） */
+    lv_indev_t *indev_ptrs[AIRUI_POINTER_INDEV_MAX]; /**< 多指针设备数组 */
+    uint8_t indev_ptr_count;         /**< 实际创建的指针设备数量 */
+    airui_indev_udata_t indev_udata[AIRUI_POINTER_INDEV_MAX]; /**< 指针设备用户数据 */
     
     // 缓冲管理
     airui_buffer_t *buffer;       /**< 缓冲管理器 */
@@ -220,10 +238,12 @@ struct airui_ctx {
     bool system_keyboard_preedit_active; /**< 当前是否处于 SDL 预编辑（拼音）阶段 */
     int touch_callback_ref;              /**< 全局触摸订阅回调 */
     airui_touch_state_t touch_last_state;/**< 上一次已分发的触摸状态 */
-    bool touch_pressed;                  /**< 当前是否处于按下中 */
+    bool touch_pressed;                  /**< 当前是否处于按下中（任意触点） */
     lv_point_t touch_last_point;         /**< 上一次触摸点 */
     uint8_t touch_last_track_id;         /**< 上一次触摸 track id */
     uint32_t touch_last_timestamp;       /**< 上一次触摸时间戳 */
+    airui_touch_point_t touch_active[AIRUI_TOUCH_MAX_POINTS]; /**< 当前活跃触点快照 */
+    uint8_t touch_active_count;          /**< 当前活跃触点数量 */
 
     // 键盘订阅
     int keypad_callback_ref;             /**< 全局键盘订阅回调 */
@@ -467,7 +487,7 @@ void airui_system_keyboard_clear_preedit(airui_ctx_t *ctx);
  */
 int airui_touch_subscribe(airui_ctx_t *ctx, void *L, int callback_ref);
 void airui_touch_unsubscribe(airui_ctx_t *ctx, void *L);
-void airui_touch_notify(airui_ctx_t *ctx, airui_touch_state_t state, lv_coord_t x, lv_coord_t y, uint8_t track_id, uint32_t timestamp);
+void airui_touch_notify(airui_ctx_t *ctx, const airui_touch_point_t *points, uint8_t count);
 
 /**
  * 控制全局键盘订阅

@@ -90,9 +90,17 @@ local function init_wifi_hw()
     netdrv.setup(socket.LWIP_STA, netdrv.WHALE)
     airlink.start(airlink.MODE_SPI_MASTER)
     sys.wait(1000)
+    local airlink_timeout = 0
     while not airlink.ready() do
         log.info("wifi_app", "等待airlink就绪...")
         sys.wait(100)
+        airlink_timeout = airlink_timeout + 100
+        if airlink_timeout >= 30000 then
+            log.error("wifi_app", "airlink初始化超时，放弃本次初始化")
+            wifi_busy = false
+            wifi_ready = false
+            return
+        end
     end
     log.info("wifi_app", "airlink就绪")
     wlan.init()
@@ -330,7 +338,6 @@ local function on_connect_request(data)
     end
     sys.publish("WIFI_STORAGE_SAVE_REQ", { ssid = ssid, password = password, advanced_config = adv_config })
     sys.publish("WIFI_CONNECTING", ssid)
-    disconnect_reason = "config"
     sys.taskInit(function()
         if not wifi_ready then
             ensure_wifi_ready()

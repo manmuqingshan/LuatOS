@@ -7,6 +7,7 @@
 
 #include "luat_base.h"
 
+#ifdef LUAT_USE_AIRLINK_RPC
 #ifdef LUAT_USE_AIRLINK_EXEC_UART
 
 #include "luat_airlink_rpc.h"
@@ -110,3 +111,4 @@ const luat_airlink_rpc_nb_reg_t luat_airlink_rpc_uart_reg = {
 };
 
 #endif /* LUAT_USE_AIRLINK_EXEC_UART */
+#endif /* LUAT_USE_AIRLINK_RPC */

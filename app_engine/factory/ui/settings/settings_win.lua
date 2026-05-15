@@ -8,10 +8,12 @@
 
 require "settings_display_win"
 require "settings_storage_win"
+require "storage_pri_win"
 require "settings_about_win"
 require "settings_sound_win"
 require "wifi_list_win"
 require "settings_iot_win"
+local titlebar = require "settings_titlebar"
 
 local window_id = nil
 local main_container
@@ -52,40 +54,8 @@ local function build_ui()
         color = COLOR_BG
     })
 
-    -- 标题栏
-    local tb = airui.container({
-        parent = main_container,
-        x = 0, y = 0,
-        w = screen_w, h = math.floor(60 * _G.density_scale),
-        color = COLOR_PRIMARY
-    })
-    local bb = airui.container({
-        parent = tb,
-        x = 10, y = 10,
-        w = math.floor(50 * _G.density_scale), h = math.floor(40 * _G.density_scale),
-        color = COLOR_PRIMARY,
-        on_click = function() exwin.close(window_id) end
-    })
-    airui.label({
-        parent = bb,
-        x = 0, y = math.floor(5 * _G.density_scale),
-        w = math.floor(50 * _G.density_scale), h = math.floor(30 * _G.density_scale),
-        text = "<",
-        font_size = math.floor(28 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_CENTER
-    })
-    airui.label({
-        parent = tb,
-        x = math.floor(60 * _G.density_scale), y = math.floor(10 * _G.density_scale),
-        w = math.floor(100 * _G.density_scale), h = math.floor(40 * _G.density_scale),
-        text = "设置",
-        font_size = math.floor(32 * _G.density_scale),
-        color = COLOR_WHITE,
-        align = airui.TEXT_ALIGN_LEFT
-    })
-
-    local th = math.floor(60 * _G.density_scale)
+    -- 标题栏（使用共享组件）
+    local _, th = titlebar.create(main_container, "设置", screen_w, function() exwin.close(window_id) end)
     local ct = airui.container({
         parent = main_container,
         x = 0, y = th,
@@ -133,7 +103,9 @@ local function build_ui()
     y = y + card_h + card_spacing
     create_card(y, "显示亮度", function() sys.publish("OPEN_DISPLAY_WIN") end)
     y = y + card_h + card_spacing
-    create_card(y, "存储", function() sys.publish("OPEN_STORAGE_WIN") end)
+    create_card(y, "存储空间", function() sys.publish("OPEN_STORAGE_WIN") end)
+    y = y + card_h + card_spacing
+    create_card(y, "存储位置", function() sys.publish("OPEN_STORAGE_PRI_WIN") end)
     y = y + card_h + card_spacing
     create_card(y, "系统更新", function()
         sys.publish("OPEN_SYSTEM_WIN")

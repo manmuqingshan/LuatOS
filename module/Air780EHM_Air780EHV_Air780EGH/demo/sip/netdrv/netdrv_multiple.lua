@@ -41,9 +41,6 @@ local function netdrv_multiple_notify_cbfunc(net_type,adapter)
     else
         log.warn("netdrv_multiple_notify_cbfunc", "unknown status", net_type, adapter)
     end
-    
-    -- 发送全局事件，通知其他模块
-    sys.publish("NETDRV_NETWORK_STATUS", net_type, adapter)
 end
 
 local function netdrv_multiple_task_func()
@@ -67,13 +64,15 @@ local function netdrv_multiple_task_func()
                     
                     -- 网卡芯片型号(选填参数)，仅spi方式外挂以太网时需要填写。
                     tp = netdrv.CH390, 
-                    opts = {spi=0, cs=8}
+                    opts = {spi=0, cs=8},
+                    auto_socket_switch = false
                 }
             },
 
             -- 4G网卡
             {
-                LWIP_GP = true
+                LWIP_GP = true,
+                auto_socket_switch = false
             },
 
 

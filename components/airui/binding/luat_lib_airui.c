@@ -221,6 +221,7 @@ static const rotable_Reg_t reg_airui[] = {
     {"KEY_RIGHT", ROREG_INT(AIRUI_LUA_KEY_RIGHT)},
     {"KEY_OK", ROREG_INT(AIRUI_LUA_KEY_OK)},
     {"KEY_BACK", ROREG_INT(AIRUI_LUA_KEY_BACK)},
+    {"KEY_ESC", ROREG_INT(AIRUI_LUA_KEY_ESC)},
     // 图标常量
     AIRUI_SYMBOL_REG,
     {NULL, ROREG_INT(0)}
@@ -720,7 +721,7 @@ static int l_airui_device_bind_keypad(lua_State *L) {
             cfg.left = (left_val != 0) ? left_val : SDLK_LEFT;
             cfg.right = (right_val != 0) ? right_val : SDLK_RIGHT;
             cfg.ok = (ok_val != 0) ? ok_val : SDLK_RETURN;
-            cfg.back = (back_val != 0) ? back_val : SDLK_ESCAPE;
+            cfg.back = (back_val != 0) ? back_val : SDLK_BACKSPACE;
             has_cfg = true;
         }
     }
@@ -732,7 +733,7 @@ static int l_airui_device_bind_keypad(lua_State *L) {
               cfg.up, cfg.down, cfg.left, cfg.right, cfg.ok, cfg.back);
     } else {
         airui_platform_sdl2_bind_keypad(true);
-        LLOGD("device_bind_keypad enabled on SDL2 (default: 0-9/Arrow/Enter/Esc subscribe, Arrow/Enter/Esc navigate)");
+        LLOGD("device_bind_keypad enabled on SDL2 (default: 0-9/Arrow/Enter/Backspace/Esc subscribe, Arrow/Enter/Backspace/Esc navigate)");
     }
     lua_pushboolean(L, 1);
     return 1;

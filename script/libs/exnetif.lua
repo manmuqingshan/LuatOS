@@ -96,6 +96,19 @@ local function socket_state_detection(adapter)
         end)
     end
 end
+-- 发布网络状态变化的全局消息
+-- 当有可用网络时：net_type为网卡类型字符串，adapter为网卡id
+-- 当所有网卡断开时：net_type为nil，adapter为-1
+local function publish_network_status(net_type, adapter)
+    if type(net_type) == "string" then
+        log.info("exnetif", "publish network status", net_type, adapter)
+    elseif type(net_type) == "nil" then
+        log.warn("exnetif", "publish network status", "no available adapter", adapter)
+    else
+        log.warn("exnetif", "publish network status", "unknown status", net_type, adapter)
+    end
+    sys.publish("EXLIB_NETDRV_NETWORK_STATUS", net_type, adapter)
+end
 
 -- 状态更改后重新设置默认网卡
 local function apply_priority()
@@ -109,6 +122,7 @@ local function apply_priority()
             if current_active ~= net_type then
                 log.info("设置网卡", type_to_string(net_type))
                 states_cbfnc(type_to_string(net_type), net_type) -- 默认网卡改变的回调函数
+                publish_network_status(type_to_string(net_type), net_type) -- 发布网络状态变化消息
                 socket.dft(net_type)
                 if auto_socket_switch and socket.close_all then
                     socket.close_all(current_active)
@@ -124,6 +138,7 @@ local function apply_priority()
         -- 避免重复通知
         current_active = nil
         states_cbfnc(nil, -1)
+        publish_network_status(nil, -1) -- 发布网络状态变化消息
     end
 end
 
@@ -1355,5 +1370,6 @@ function exnetif.close(type, adapter)
         return true
     end
 end
+
 
 return exnetif

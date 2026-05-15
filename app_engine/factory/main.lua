@@ -23,7 +23,7 @@ VERSION：项目版本号，ascii string类型
 
 -- 项目名称和版本定义
 PROJECT = "app_engine_factory"                   -- 项目名称，用于标识当前工程
-VERSION = "001.999.004"                          -- 项目版本号
+VERSION = "001.999.005"                          -- 项目版本号
 PROJECT_KEY = "YdsyLfESvOKYSVuOBeKYmKFmoeTuuGUv" -- 项目key，此非真实项目key
 
 -- 在日志中打印项目名和项目版本号
@@ -101,7 +101,7 @@ elseif _G.model_str:find("Air1601") or _G.model_str:find("Air1602") then
 else
     -- PC模拟器显示/触摸驱动，
     -- 取值可以是"Air8000W_4in"、"Air8101_5in"、"Air1601_5in"、"Air1601_7in"、"Air1601_9in"、"Air1601_10in"
-    local pc_lcd = "Air8000W_4in"
+    local pc_lcd = "Air1601_5in"
 
     if pc_lcd == "Air8000W_4in" then
         lcd_drv = require "lcd_drv_air8101_5in"

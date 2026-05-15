@@ -67,7 +67,7 @@ static void airui_table_jump_scroll_timer_cb(lv_timer_t *timer);
 static void airui_table_apply_data(lua_State *L_state, int idx, lv_obj_t *table, int *rows, int *cols);
 static void airui_table_apply_col_widths(lua_State *L_state, int idx, lv_obj_t *table, int cols);
 static void airui_table_apply_row_heights(lua_State *L_state, int idx, lv_obj_t *table, int rows);
-static void airui_table_scroll_row_into_view(lv_obj_t *table, uint32_t row, bool animated);
+void airui_table_scroll_row_into_view(lv_obj_t *table, uint32_t row, bool animated, bool align_top);
 static void airui_table_shift_cached_row_heights(airui_table_data_t *data, uint32_t index, int32_t delta);
 static void airui_table_marquee_scroll_stop_internal(lv_obj_t *table, bool reset_position);
 static void airui_table_marquee_scroll_timer_cb(lv_timer_t *timer);
@@ -479,8 +479,15 @@ static void airui_table_jump_scroll_select_cell(lv_obj_t *table, uint32_t row, u
     lv_obj_invalidate(table);
 }
 
-// 滚动行到视图
-static void airui_table_scroll_row_into_view(lv_obj_t *table, uint32_t row, bool animated)
+/**
+ * 滚动行到视图
+ * @param table Table 对象指针
+ * @param row 行索引（从 0 开始）
+ * @param animated 滚动是否使用动画，可选，默认 true
+ * @param align_top 是否始终将目标行滚到视口顶部，可选，默认 false，一般自动滚动时才会启用
+ * @return nil
+ */
+void airui_table_scroll_row_into_view(lv_obj_t *table, uint32_t row, bool animated, bool align_top)
 {
     if (table == NULL) {
         return;
@@ -494,6 +501,11 @@ static void airui_table_scroll_row_into_view(lv_obj_t *table, uint32_t row, bool
     int32_t row_top = 0;
     for (uint32_t i = 0; i < row; i++) {
         row_top += table_dsc->row_h[i];
+    }
+
+    if (align_top) {
+        lv_obj_scroll_to_y(table, row_top, animated ? LV_ANIM_ON : LV_ANIM_OFF);
+        return;
     }
 
     int32_t row_bottom = row_top + table_dsc->row_h[row];
@@ -592,7 +604,7 @@ static void airui_table_jump_scroll_timer_cb(lv_timer_t *timer)
 
     data->jump_scroll_current_row = (uint16_t)next_row;
     airui_table_jump_scroll_select_cell(table, next_row, focus_col);
-    airui_table_scroll_row_into_view(table, next_row, data->jump_scroll_anim && !wrapped);
+    airui_table_scroll_row_into_view(table, next_row, data->jump_scroll_anim && !wrapped, false);
 }
 
 // 停止跑马灯滚动

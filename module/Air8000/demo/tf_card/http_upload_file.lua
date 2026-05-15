@@ -72,14 +72,22 @@ local function http_upload_task()
     
     -- 使用httpplus库上传文件，参考httpplus_app_post_file的实现
     -- hhtplus.request接口支持单文件上传、多文件上传、单文本上传、多文本上传、单/多文本+单/多文件上传
-    -- http://airtest.openluat.com:2900/uploadFileToStatic 仅支持单文件上传，并且上传的文件name必须使用"uploadFile"
-    -- 所以此处仅演示了单文件上传功能，并且"uploadFile"不能改成其他名字，否则会出现上传失败的应答
+    -- https://airtest.luatos.com/iot/luat_test_file/add 只支持单文件上传或者单文件+单文本上传
+    -- 要求上传的文件name必须使用"f"，上传的文本name必须使用"params"
+    -- 此处仅演示单文件上传功能，并且"f"不能改成其他名字，否则会出现上传失败的应答
+    -- 测试接口的响应说明：
+        -- 成功：HTTP 200 OK：{"code":0,"value":"上传成功"}；
+        -- 失败：HTTP 状态码非 200 OK 或是 200 OK 但 code 不为 0
+    -- 如何在网页端查看上传的文件：
+        -- 在浏览器中打开https://iot.luatos.com/#/p8000/netlab_file_server，即可查看上传的文件；
+    -- 如果你自己的http服务支持更多类型的文本/文件混合上传，可以自行添加代码进行测试
     local code, response = httpplus.request({
-        url = "http://airtest.openluat.com:2900/uploadFileToStatic",
+        url = "https://airtest.luatos.com/iot/luat_test_file/add",
         files = {
-            -- 服务器要求文件名必须为"uploadFile"
-            ["uploadFile"] = upload_file_path, 
+            -- 服务器要求文件名必须为"f"
+            ["f"] = upload_file_path, 
         },
+        timeout = 60,
     })
 
     -- 阶段5: 记录上传结果
