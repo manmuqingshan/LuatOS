@@ -41,8 +41,6 @@ local lcd_drv = {}
 function lcd_drv.init()
     gpio.setup(28, 1) -- 28号GPIO引脚设置为输出模式
     gpio.set(28, 1)  -- 将28号GPIO引脚设置为
-     -- 开启屏幕供电
-    gpio.setup(141, 1)
     -- 开启屏幕供电
     local r = lcd.init("st7796",
         {
