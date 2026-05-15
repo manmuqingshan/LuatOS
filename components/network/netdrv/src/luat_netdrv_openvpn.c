@@ -13,6 +13,7 @@
 #include "lwip/tcpip.h"
 #include "lwip/inet.h"
 #include "net_lwip2.h"
+#include "luat_network_adapter.h"
 
 /* OpenVPN 客户端头文件 */
 #include "luat_netdrv_openvpn_client.h"
@@ -33,87 +34,36 @@ typedef struct {
  */
 static void ovpn_netdrv_event_callback(ovpn_event_t event, void *user_data) {
     luat_netdrv_t *drv = (luat_netdrv_t *)user_data;
-    
-    if (drv == NULL) {
-        return;
-    }
-    
-    const char *event_name = NULL;
-    
+    if (!drv) return;
+
     switch (event) {
         case OVPN_EVENT_CONNECTED:
-            event_name = "OPENVPN_CONNECTED";
             LLOGI("[%d] OpenVPN connected", drv->id);
             break;
         case OVPN_EVENT_TLS_HANDSHAKE_OK:
-            event_name = "OPENVPN_TLS_HANDSHAKE_OK";
             LLOGI("[%d] OpenVPN TLS handshake successful", drv->id);
             break;
         case OVPN_EVENT_TLS_HANDSHAKE_FAIL:
-            event_name = "OPENVPN_TLS_HANDSHAKE_FAIL";
             LLOGE("[%d] OpenVPN TLS handshake failed", drv->id);
             break;
         case OVPN_EVENT_KEEPALIVE_TIMEOUT:
-            event_name = "OPENVPN_KEEPALIVE_TIMEOUT";
             LLOGW("[%d] OpenVPN keepalive timeout", drv->id);
             break;
         case OVPN_EVENT_AUTH_FAILED:
-            event_name = "OPENVPN_AUTH_FAILED";
             LLOGE("[%d] OpenVPN authentication failed", drv->id);
             break;
         case OVPN_EVENT_DISCONNECTED:
-            event_name = "OPENVPN_DISCONNECTED";
             LLOGI("[%d] OpenVPN disconnected", drv->id);
             break;
-        case OVPN_EVENT_DATA_RX:
-            // 数据接收事件，通常不需要日志
-            return;
-        case OVPN_EVENT_DATA_TX:
-            // 数据发送事件，通常不需要日志
-            return;
         default:
-            LLOGW("[%d] Unknown OpenVPN event: %d", drv->id, event);
-            return;
-    }
-    
-    // 可以在这里添加进一步的处理，比如事件分发到上层
-    // luat_netdrv_notify_event(drv->id, event_name);
-    if (event_name) {
-        #if 0
-        rtos_msg_t msg = {0};
-        msg.handler = l_netdrv_openvpn_handler;
-        msg.arg1 = drv->id;
-        msg.arg2 = event;
-        msg.ptr = (void *)event_name;
-        luat_msgbus_put(&msg, 0);
-        #endif
+            break;
     }
 }
 
 /**
- * OpenVPN netdrv boot 函数（启动网络设备）
+ * OpenVPN netdrv boot 函数（无操作，启动在 setup 中完成）
  */
 static int openvpn_boot(luat_netdrv_t *drv, void *userdata) {
-    if (drv == NULL || drv->userdata == NULL) {
-        LLOGE("Invalid OpenVPN netdrv");
-        return -1;
-    }
-    
-    luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)drv->userdata;
-    ovpn_client_t *client = ctx->client;
-    
-    if (client == NULL) {
-        LLOGE("[%d] OpenVPN client not initialized", drv->id);
-        return -1;
-    }
-    
-    int ret = ovpn_client_start(client);
-    if (ret != 0) {
-        LLOGE("[%d] OpenVPN client start failed: %d", drv->id, ret);
-        return ret;
-    }
-    
-    LLOGI("[%d] OpenVPN client started successfully", drv->id);
     return 0;
 }
 
@@ -124,28 +74,16 @@ static int openvpn_shutdown(luat_netdrv_t *drv, void *userdata) {
     if (drv == NULL || drv->userdata == NULL) {
         return -1;
     }
-    
+
     luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)drv->userdata;
     ovpn_client_t *client = ctx->client;
-    
+
     if (client != NULL) {
         ovpn_client_stop(client);
         LLOGI("[%d] OpenVPN client stopped", drv->id);
     }
-    
-    return 0;
-}
 
-/**
- * OpenVPN netdrv ready 函数（检查是否准备就绪）
- */
-static int openvpn_ready(luat_netdrv_t *drv, void *userdata) {
-    if (drv == NULL || drv->netif == NULL) {
-        return 0;
-    }
-    
-    // 检查网络接口是否已启用且有有效 IP
-    return netif_is_link_up(drv->netif) && !ip_addr_isany(&drv->netif->ip_addr);
+    return 0;
 }
 
 /**
@@ -163,16 +101,43 @@ static int openvpn_debug(luat_netdrv_t *drv, void *userdata, int enable) {
     if (drv == NULL || drv->userdata == NULL) {
         return -1;
     }
-    
+
     luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)drv->userdata;
     ovpn_client_t *client = ctx->client;
-    
+
     if (client != NULL) {
         ovpn_client_set_debug(client, enable);
         LLOGD("[%d] OpenVPN debug %s", drv->id, enable ? "enabled" : "disabled");
     }
-    
+
     return 0;
+}
+
+/**
+ * OpenVPN netdrv 控制命令
+ * @param cmd LUAT_NETDRV_CTRL_UPDOWN — param!=0 启动, param==0 停止
+ */
+static int openvpn_ctrl(luat_netdrv_t *drv, void *userdata, int cmd, void *param) {
+    luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)userdata;
+    if (!ctx || !ctx->client) return -1;
+
+    switch (cmd) {
+        case LUAT_NETDRV_CTRL_UPDOWN: {
+            int up = (int)(intptr_t)param;
+            if (up) {
+                LLOGI("[%d] OpenVPN ctrl: up", drv->id);
+                ovpn_client_start(ctx->client);
+            } else {
+                LLOGI("[%d] OpenVPN ctrl: down", drv->id);
+                ovpn_client_stop(ctx->client);
+            }
+            return 0;
+        }
+
+        default:
+            LLOGW("[%d] OpenVPN ctrl: unknown cmd %d", drv->id, cmd);
+            return -1;
+    }
 }
 
 /**
@@ -280,6 +245,21 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
         ovpn_cfg.tun_mtu = 1500;
     }
     
+    // 设置用户名 (可选)
+    if (conf->ovpn_conf->ovpn_username != NULL && conf->ovpn_conf->ovpn_username_len > 0) {
+        ovpn_cfg.username = conf->ovpn_conf->ovpn_username;
+        ovpn_cfg.username_len = conf->ovpn_conf->ovpn_username_len;
+    }
+
+    // 设置密码 (可选)
+    if (conf->ovpn_conf->ovpn_password != NULL && conf->ovpn_conf->ovpn_password_len > 0) {
+        ovpn_cfg.password = conf->ovpn_conf->ovpn_password;
+        ovpn_cfg.password_len = conf->ovpn_conf->ovpn_password_len;
+    }
+
+    // 设置传输网卡编号（物理出口网卡）
+    ovpn_cfg.transport_index = (uint8_t)network_register_get_default();
+
     // 设置事件回调
     ovpn_cfg.event_cb = ovpn_netdrv_event_callback;
     ovpn_cfg.user_data = (void *)drv;
@@ -313,9 +293,9 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
     drv->userdata = (void *)ctx;
     drv->netif = &client->netif;
     drv->boot = openvpn_boot;
-    drv->ready = openvpn_ready;
     drv->dhcp = openvpn_dhcp;
     drv->debug = openvpn_debug;
+    drv->ctrl = openvpn_ctrl;
     
     // 注册到 netdrv 系统
     int reg_ret = luat_netdrv_register(conf->id, drv);
@@ -328,5 +308,8 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
     }
     
     LLOGI("OpenVPN netdrv setup completed successfully");
+
+    ovpn_client_start(client);
+
     return drv;
 }

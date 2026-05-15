@@ -373,6 +373,7 @@ int luat_netdrv_is_ready(int id) {
     if (netdrv == NULL || netdrv->netif == NULL) {
         return 0;
     }
+
     ret = netif_is_link_up(netdrv->netif);
     ret &= netif_is_up(netdrv->netif);
     ret &= !ip_addr_isany(&netdrv->netif->ip_addr);

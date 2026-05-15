@@ -172,6 +172,14 @@ static int l_netdrv_setup(lua_State *L) {
                 conf.ovpn_conf->ovpn_retry_max_ms = luaL_checkinteger(L, -1);
             }
             lua_pop(L, 1);
+            if (lua_getfield(L, 3, "ovpn_username") == LUA_TSTRING) {
+                conf.ovpn_conf->ovpn_username = luaL_checklstring(L, -1, &conf.ovpn_conf->ovpn_username_len);
+            }
+            lua_pop(L, 1);
+            if (lua_getfield(L, 3, "ovpn_password") == LUA_TSTRING) {
+                conf.ovpn_conf->ovpn_password = luaL_checklstring(L, -1, &conf.ovpn_conf->ovpn_password_len);
+            }
+            lua_pop(L, 1);
             lua_pop(L, 1);
         }
         #endif
