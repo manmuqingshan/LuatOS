@@ -87,25 +87,6 @@ static int openvpn_shutdown(luat_netdrv_t *drv, void *userdata) {
 }
 
 /**
- * OpenVPN netdrv ready 函数（检查是否准备就绪）
- */
-static int openvpn_ready(luat_netdrv_t *drv, void *userdata) {
-    if (drv == NULL || drv->userdata == NULL || drv->netif == NULL) {
-        return 0;
-    }
-
-    luat_netdrv_openvpn_ctx_t *ctx = (luat_netdrv_openvpn_ctx_t *)drv->userdata;
-    ovpn_client_t *client = ctx->client;
-    if (client == NULL) {
-        return 0;
-    }
-
-    // VPN 隧道 readiness = TLS 握手完成 + PUSH_REPLY 收到 + 链路正常
-    return ovpn_client_is_ready(client)
-           && netif_is_link_up(drv->netif) && netif_is_up(drv->netif);
-}
-
-/**
  * OpenVPN netdrv DHCP 函数（不适用于 OpenVPN）
  */
 static int openvpn_dhcp(luat_netdrv_t *drv, void *userdata, int enable) {
@@ -312,7 +293,6 @@ luat_netdrv_t* luat_netdrv_openvpn_setup(luat_netdrv_conf_t *conf) {
     drv->userdata = (void *)ctx;
     drv->netif = &client->netif;
     drv->boot = openvpn_boot;
-    drv->ready = openvpn_ready;
     drv->dhcp = openvpn_dhcp;
     drv->debug = openvpn_debug;
     drv->ctrl = openvpn_ctrl;
