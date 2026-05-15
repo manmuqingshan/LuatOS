@@ -2,10 +2,13 @@
 --[[
 @module  stick_fighter_online_win
 @summary 双人联机火柴人格斗游戏窗口模块
-@version 1.1.0
-@date    2026.05.14
+@version 1.1.2
+@date    2026.05.15
 @author  王世豪
 ]]
+
+-- 游戏版本号（与@version保持一致）
+local GAME_VERSION = "1.1.2"
 
 local win_id = nil
 local main_container = nil
@@ -134,6 +137,17 @@ local game_state_mqtt = {
 
 local player1 = nil
 local player2 = nil
+
+-- UI 缓存变量，避免每帧重复更新
+local ui_cache = {
+    hp1_value = -1,
+    hp2_value = -1,
+    hp1_text = '',
+    hp2_text = '',
+    score_text = '',
+    peer_text = '',
+    score_color = nil
+}
 
 -- 发送用户输入消息
 local function send_input_message(input_type, duration, customX, customY)
@@ -834,7 +848,7 @@ function StickFighter:draw(otherX)
     end
 
     -- 取消 idle 状态下的呼吸晃动，减少不必要的同步
-    local breathe = 0 -- (state == 'idle') and math.sin(self.animPhase * 0.8) * 2 or 0
+    local breathe = 0
     shoulderY = shoulderY + breathe
     neckY = neckY + breathe
     headCY = headCY + breathe
@@ -863,8 +877,22 @@ function StickFighter:draw(otherX)
         headCY = shoulderY - self.headRadius * (1 - lieDown * 0.5)
     end
 
-    self.head:set_pos(math.floor(x - self.headRadius), math.floor(headCY))
-    self.torso:set_pos(math.floor(x - 4), math.floor(shoulderY))
+    -- 缓存位置，避免重复设置
+    local headX = math.floor(x - self.headRadius)
+    local headY = math.floor(headCY)
+    if headX ~= self._cache_headX or headY ~= self._cache_headY then
+        self._cache_headX = headX
+        self._cache_headY = headY
+        self.head:set_pos(headX, headY)
+    end
+
+    local torsoX = math.floor(x - 4)
+    local torsoY = math.floor(shoulderY)
+    if torsoX ~= self._cache_torsoX or torsoY ~= self._cache_torsoY then
+        self._cache_torsoX = torsoX
+        self._cache_torsoY = torsoY
+        self.torso:set_pos(torsoX, torsoY)
+    end
 
     local legTopY = hipY
     local legMidY = hipY + self.upperLegLen
@@ -883,8 +911,21 @@ function StickFighter:draw(otherX)
         flKneeY = legMidY - 20 * ext
     end
 
-    self.leftLeg:set_pos(math.floor(backLegX - 2), math.floor(legMidY))
-    self.rightLeg:set_pos(math.floor(flKneeX - 2), math.floor(flKneeY))
+    local leftLegX = math.floor(backLegX - 2)
+    local leftLegY = math.floor(legMidY)
+    if leftLegX ~= self._cache_leftLegX or leftLegY ~= self._cache_leftLegY then
+        self._cache_leftLegX = leftLegX
+        self._cache_leftLegY = leftLegY
+        self.leftLeg:set_pos(leftLegX, leftLegY)
+    end
+
+    local rightLegX = math.floor(flKneeX - 2)
+    local rightLegY = math.floor(flKneeY)
+    if rightLegX ~= self._cache_rightLegX or rightLegY ~= self._cache_rightLegY then
+        self._cache_rightLegX = rightLegX
+        self._cache_rightLegY = rightLegY
+        self.rightLeg:set_pos(rightLegX, rightLegY)
+    end
 
     local frontShoulderX = x + fd * 4
     local backShoulderX = x - fd * 4
@@ -917,8 +958,21 @@ function StickFighter:draw(otherX)
         fHandY = fElbowY + 10
     end
 
-    self.leftArm:set_pos(math.floor(backShoulderX - 2 - fd * 8), math.floor(bElbowY))
-    self.rightArm:set_pos(math.floor(frontShoulderX + fd * 8 - 2), math.floor(fElbowY))
+    local leftArmX = math.floor(backShoulderX - 2 - fd * 8)
+    local leftArmY = math.floor(bElbowY)
+    if leftArmX ~= self._cache_leftArmX or leftArmY ~= self._cache_leftArmY then
+        self._cache_leftArmX = leftArmX
+        self._cache_leftArmY = leftArmY
+        self.leftArm:set_pos(leftArmX, leftArmY)
+    end
+
+    local rightArmX = math.floor(frontShoulderX + fd * 8 - 2)
+    local rightArmY = math.floor(fElbowY)
+    if rightArmX ~= self._cache_rightArmX or rightArmY ~= self._cache_rightArmY then
+        self._cache_rightArmX = rightArmX
+        self._cache_rightArmY = rightArmY
+        self.rightArm:set_pos(rightArmX, rightArmY)
+    end
 end
 
 function StickFighter:reset(x, y)
@@ -1117,7 +1171,9 @@ local function rebuild_leaderboard_ui()
         return
     end
 
-    local endIdx = math.min(10, #leaderboardData)
+    -- 计算当前页的起始和结束索引（每页11个）
+    local startIdx = (leaderboardPage - 1) * 11 + 1
+    local endIdx = math.min(startIdx + 10, #leaderboardData)
 
     -- 前三名背景色和文字色
     local medalBgColors = {
@@ -1126,7 +1182,7 @@ local function rebuild_leaderboard_ui()
         [3] = 0xCD7F32   -- 铜黄色
     }
 
-    for i = 1, endIdx do
+    for i = startIdx, endIdx do
         local record = leaderboardData[i]
         local nickname = (record.s1 and #record.s1 > 0) and record.s1 or "匿名"
         local score = record.i1 or 0
@@ -1172,6 +1228,70 @@ local function rebuild_leaderboard_ui()
 
         yPos = yPos + cardH + gap
     end
+
+    -- 如果当前页包含第30名且是最后一条，显示提示
+    if endIdx == 30 and endIdx <= #leaderboardData then
+        yPos = yPos + 3
+        local tipLabel = airui.label({
+            parent = leaderboardMainContainer,
+            x = cardX, y = yPos, w = cardW, h = 18,
+            text = "—— 仅展示前30名，更多高手等你来挑战！——",
+            font_size = 11,
+            color = 0x888888,
+            align = airui.TEXT_ALIGN_CENTER
+        })
+        table.insert(leaderboardItems, tipLabel)
+    end
+
+    -- 分页控件区域（固定在列表下方，避免与底部按钮重叠）
+    local pageControlY = 400
+
+    -- 上一页按钮
+    local prevBtn = airui.button({
+        parent = leaderboardMainContainer,
+        x = 30, y = pageControlY, w = 60, h = 28,
+        text = "上一页",
+        font_size = 12,
+        text_color = 0xFFFFFF,
+        bg_color = leaderboardPage > 1 and 0x228844 or 0x888888,
+        radius = 4,
+        on_click = function()
+            if leaderboardPage > 1 then
+                leaderboardPage = leaderboardPage - 1
+                rebuild_leaderboard_ui()
+            end
+        end
+    })
+    table.insert(leaderboardItems, prevBtn)
+
+    -- 页码显示 <页数/总页数>
+    local pageLabel = airui.label({
+        parent = leaderboardMainContainer,
+        x = 100, y = pageControlY + 4, w = 120, h = 20,
+        text = string.format("<%d/%d>", leaderboardPage, leaderboardTotalPages),
+        font_size = 14,
+        color = 0x333333,
+        align = airui.TEXT_ALIGN_CENTER
+    })
+    table.insert(leaderboardItems, pageLabel)
+
+    -- 下一页按钮
+    local nextBtn = airui.button({
+        parent = leaderboardMainContainer,
+        x = 230, y = pageControlY, w = 60, h = 28,
+        text = "下一页",
+        font_size = 12,
+        text_color = 0xFFFFFF,
+        bg_color = leaderboardPage < leaderboardTotalPages and 0x228844 or 0x888888,
+        radius = 4,
+        on_click = function()
+            if leaderboardPage < leaderboardTotalPages then
+                leaderboardPage = leaderboardPage + 1
+                rebuild_leaderboard_ui()
+            end
+        end
+    })
+    table.insert(leaderboardItems, nextBtn)
 end
 
 local function on_leaderboard_query_callback(success, data)
@@ -1187,7 +1307,7 @@ local function on_leaderboard_query_callback(success, data)
             return (tonumber(a.i1) or 0) > (tonumber(b.i1) or 0)
         end)
         local total = data.total or #data.records
-        leaderboardTotalPages = math.max(1, math.ceil(total / 15))
+        leaderboardTotalPages = math.max(1, math.ceil(total / 11))
         rebuild_leaderboard_ui()
     end
 end
@@ -1296,7 +1416,7 @@ local function on_leaderboard_db_result(endpoint, success, data)
         return (tonumber(a.i1) or 0) > (tonumber(b.i1) or 0)
     end)
     local total = data.total or #data.records
-    leaderboardTotalPages = math.max(1, math.ceil(total / 15))
+    leaderboardTotalPages = math.max(1, math.ceil(total / 11))
     rebuild_leaderboard_ui()
 end
 
@@ -1349,7 +1469,7 @@ local function open_leaderboard_win()
 
             -- 打开时自动刷新一次（带回调）
             -- log.info("leaderboard", "【打开窗口】开始查询排行榜")
-            exapp.list_record({cls = SCORE_CLS, sort = "i1 desc", size = 15}, on_leaderboard_query_callback)
+            exapp.list_record({cls = SCORE_CLS, sort = "i1 desc", size = 30}, on_leaderboard_query_callback)
 
             -- 底部按钮行：刷新 | 删除 | 关闭
             -- 刷新按钮（左）
@@ -1363,7 +1483,7 @@ local function open_leaderboard_win()
                 radius = 5,
                 on_click = function()
                     -- log.info("leaderboard", "【刷新按钮】开始查询排行榜")
-                    exapp.list_record({cls = SCORE_CLS, sort = "i1 desc", size = 15}, on_leaderboard_query_callback)
+                    exapp.list_record({cls = SCORE_CLS, sort = "i1 desc", size = 30}, on_leaderboard_query_callback)
                 end
             })
 
@@ -1441,7 +1561,7 @@ local function open_leaderboard_win()
                                 -- log.info("score", "【删除积分】300ms后刷新排行榜")
                                 sys.timerStart(function()
                                     -- log.info("leaderboard", "【删除后刷新】开始查询排行榜")
-                                    exapp.list_record({cls = SCORE_CLS, sort = "i1 desc", size = 15}, on_leaderboard_query_callback)
+                                    exapp.list_record({cls = SCORE_CLS, sort = "i1 desc", size = 30}, on_leaderboard_query_callback)
                                 end, 300)
                             end
                         end
@@ -1464,9 +1584,9 @@ local function open_leaderboard_win()
                 end
             })
 
-            -- 查询积分前 15 名（按 i1 降序，带回调）
+            -- 查询积分前 30 名（按 i1 降序，带回调）
             -- log.info("leaderboard", "【on_create】开始查询排行榜")
-            exapp.list_record({cls = SCORE_CLS, sort = "i1 desc", size = 15}, on_leaderboard_query_callback)
+            exapp.list_record({cls = SCORE_CLS, sort = "i1 desc", size = 30}, on_leaderboard_query_callback)
         end,
         on_destroy = function()
             for _, item in ipairs(leaderboardItems) do
@@ -1493,6 +1613,162 @@ local function close_leaderboard_win_impl()
     end
 end
 close_leaderboard_win = close_leaderboard_win_impl
+
+----------------------------------------------------------------------
+-- 信息弹窗（积分规则、扣血规则、游戏版本）
+----------------------------------------------------------------------
+local infoWinId = nil
+local infoMainContainer = nil
+
+local function close_info_win_impl()
+    if infoWinId then
+        exwin.close(infoWinId)
+    end
+end
+
+local function open_info_win()
+    if infoWinId then
+        exwin.close(infoWinId)
+        return
+    end
+
+    infoWinId = exwin.open({
+        on_create = function()
+            infoMainContainer = airui.container({
+                parent = airui.screen,
+                x = 0, y = 0, w = W, h = H,
+                color = 0xFFFFFF
+            })
+
+            -- 标题
+            airui.label({
+                parent = infoMainContainer,
+                x = 0, y = 12, w = W, h = 36,
+                text = "游戏信息",
+                font_size = 20,
+                color = 0x333333,
+                align = airui.TEXT_ALIGN_CENTER
+            })
+
+            -- 版本号
+            airui.label({
+                parent = infoMainContainer,
+                x = 0, y = 45, w = W, h = 20,
+                text = "版本: " .. GAME_VERSION,
+                font_size = 16,
+                color = 0x888888,
+                align = airui.TEXT_ALIGN_CENTER
+            })
+
+            -- 积分规则标题
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 75, w = W - 30, h = 22,
+                text = "【积分规则】",
+                font_size = 16,
+                color = 0x228844,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            -- 积分规则内容
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 98, w = W - 30, h = 18,
+                text = "1、加分：拳击 +2，脚踢 +3",
+                font_size = 14,
+                color = 0x333333,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 118, w = W - 30, h = 18,
+                text = "2、扣分：被打/被踢 -1（最低0分）",
+                font_size = 14,
+                color = 0x333333,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            -- 扣血规则标题
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 150, w = W - 30, h = 22,
+                text = "【扣血规则】",
+                font_size = 16,
+                color = 0xCC4444,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            -- 扣血规则内容
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 173, w = W - 30, h = 18,
+                text = "1、拳击 -8 血量",
+                font_size = 14,
+                color = 0x333333,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 193, w = W - 30, h = 18,
+                text = "2、脚踢 -12 血量",
+                font_size = 14,
+                color = 0x333333,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 213, w = W - 30, h = 18,
+                text = "3、防御减伤 75%，持续 1.5 秒",
+                font_size = 14,
+                color = 0x333333,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            -- 提示
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 245, w = W - 30, h = 18,
+                text = "注：防御过程积分照样扣 1 分",
+                font_size = 14,
+                color = 0xFF8800,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            airui.label({
+                parent = infoMainContainer,
+                x = 15, y = 263, w = W - 30, h = 18,
+                text = "（防御保护血量，不保护积分）",
+                font_size = 14,
+                color = 0x888888,
+                align = airui.TEXT_ALIGN_LEFT
+            })
+
+            -- 关闭按钮
+            airui.button({
+                parent = infoMainContainer,
+                x = 110, y = 435, w = 100, h = 32,
+                text = "关闭",
+                font_size = 14,
+                text_color = 0xFFFFFF,
+                bg_color = 0xCC0000,
+                radius = 5,
+                on_click = function()
+                    close_info_win_impl()
+                end
+            })
+        end,
+        on_destroy = function()
+            if infoMainContainer then
+                infoMainContainer:destroy()
+                infoMainContainer = nil
+            end
+            infoWinId = nil
+        end
+    })
+end
 
 ----------------------------------------------------------------------
 -- IOT 登录状态显示（登录由首页应用商店完成，本应用只读取状态）
@@ -1719,6 +1995,44 @@ local function show_invite_waiting()
     end
 end
 
+local function update_score_display()
+    if scoreLabel and peerModelLabel then
+        local role = nil
+        local pid = game_state_mqtt.peer_device_id
+        if pid then
+            role = (my_device_id < pid) and '红方' or '蓝方'
+        end
+        -- 第一行：角色 + 对方机型（只在连接建立后显示）
+        local peerText = ''
+        if role then
+            peerText = '您是' .. role
+            if game_state_mqtt.peer_device_model then
+                peerText = peerText .. ' | 对方机型：' .. game_state_mqtt.peer_device_model
+            end
+        end
+        -- 带缓存更新
+        if peerText ~= ui_cache.peer_text then
+            ui_cache.peer_text = peerText
+            peerModelLabel:set_text(peerText)
+        end
+
+        -- 第二行：本场积分（带缓存）
+        local score_text = '本场积分: ' .. myScore
+        if score_text ~= ui_cache.score_text then
+            ui_cache.score_text = score_text
+            scoreLabel:set_text(score_text)
+        end
+        -- 颜色缓存
+        if scoreLabel.set_color then
+            local score_color = myScore >= 0 and 0xffcc00 or 0xff4444
+            if score_color ~= ui_cache.score_color then
+                ui_cache.score_color = score_color
+                scoreLabel:set_color(score_color)
+            end
+        end
+    end
+end
+
 local function start_game_connect(peer_device_id)
     if not peer_device_id then return end
     close_invite_waiting()
@@ -1726,12 +2040,19 @@ local function start_game_connect(peer_device_id)
         exwin.close(leaderboardWinId)
         leaderboardWinId = nil
     end
+    if infoWinId then
+        exwin.close(infoWinId)
+        infoWinId = nil
+    end
     game_state_mqtt.peer_device_id = peer_device_id
     game_state_mqtt.peer_connected = true
     game_state_mqtt.is_server = my_device_id < peer_device_id
     game_state_mqtt.i_am_ready = false
     game_state_mqtt.peer_ready = false
     gameState = STATE.WAITING
+
+    -- 更新显示（显示您是红方/蓝方和对方机型）
+    update_score_display()
 
     if game_state_mqtt.is_server then
         player1:reset(80, GROUND_Y)
@@ -1836,35 +2157,6 @@ local function show_invite_dialog(nickname, sender_device_id)
             end
         end
     })
-end
-
-local function update_score_display()
-    if scoreLabel and peerModelLabel then
-        local role = nil
-        local pid = game_state_mqtt.peer_device_id
-        if pid then
-            role = (my_device_id < pid) and '红方' or '蓝方'
-        end
-        -- 第一行：角色 + 对方机型
-        local peerText = ''
-        if role then
-            peerText = '您是' .. role
-        end
-        if game_state_mqtt.peer_device_model then
-            peerText = peerText .. ' | 对方机型：' .. game_state_mqtt.peer_device_model
-        end
-        peerModelLabel:set_text(peerText)
-
-        -- 第二行：本场积分
-        scoreLabel:set_text('本场积分: ' .. myScore)
-        if scoreLabel.set_color then
-            if myScore >= 0 then
-                scoreLabel:set_color(0xffcc00)
-            else
-                scoreLabel:set_color(0xff4444)
-            end
-        end
-    end
 end
 
 local function reset_to_menu()
@@ -2025,8 +2317,9 @@ local function resetGame(fromRemote)
 end
 
 local accumulatedDt = 0
-local fixedDt = 1 / 60
+local fixedDt = 1 / 60  -- 60 FPS，流畅度优先
 local gameTimerId = nil
+local GAME_LOOP_INTERVAL = 16  -- 约60 FPS
 
 local function update(dt)
     if shakeAmount > 0.05 then
@@ -2115,40 +2408,41 @@ local function update(dt)
 end
 
 local function updateUI()
+    -- 左血条永远显示红方血量（带缓存）
     if hp1Bar then
-        -- 左血条永远显示红方血量
-        if game_state_mqtt.is_server then
-            hp1Bar:set_value(player1.hp, false)
-        else
-            hp1Bar:set_value(player2.hp, false)
+        local hp1_value = game_state_mqtt.is_server and player1.hp or player2.hp
+        if hp1_value ~= ui_cache.hp1_value then
+            ui_cache.hp1_value = hp1_value
+            hp1Bar:set_value(hp1_value, false)
         end
     end
+    -- 右血条永远显示蓝方血量（带缓存）
     if hp2Bar then
-        -- 右血条永远显示蓝方血量
-        if game_state_mqtt.is_server then
-            hp2Bar:set_value(player2.hp, false)
-        else
-            hp2Bar:set_value(player1.hp, false)
+        local hp2_value = game_state_mqtt.is_server and player2.hp or player1.hp
+        if hp2_value ~= ui_cache.hp2_value then
+            ui_cache.hp2_value = hp2_value
+            hp2Bar:set_value(hp2_value, false)
         end
     end
+    -- 左HP文字显示红方（带缓存）
     if hp1Text then
-        -- 左HP文字显示红方，确保maxHp总是100
-        if game_state_mqtt.is_server then
-            hp1Text:set_text('HP: ' .. player1.hp .. ' / 100')
-        else
-            hp1Text:set_text('HP: ' .. player2.hp .. ' / 100')
+        local hp1_text = 'HP: ' .. (game_state_mqtt.is_server and player1.hp or player2.hp) .. ' / 100'
+        if hp1_text ~= ui_cache.hp1_text then
+            ui_cache.hp1_text = hp1_text
+            hp1Text:set_text(hp1_text)
         end
     end
+    -- 右HP文字显示蓝方（带缓存）
     if hp2Text then
-        -- 右HP文字显示蓝方，确保maxHp总是100
-        if game_state_mqtt.is_server then
-            hp2Text:set_text('HP: ' .. player2.hp .. ' / 100')
-        else
-            hp2Text:set_text('HP: ' .. player1.hp .. ' / 100')
+        local hp2_text = 'HP: ' .. (game_state_mqtt.is_server and player2.hp or player1.hp) .. ' / 100'
+        if hp2_text ~= ui_cache.hp2_text then
+            ui_cache.hp2_text = hp2_text
+            hp2Text:set_text(hp2_text)
         end
     end
 
-    if scoreLabel then
+    -- 只在连接建立后更新积分显示（避免每帧不必要的调用）
+    if scoreLabel and game_state_mqtt.peer_connected then
         update_score_display()
     end
 
@@ -2364,16 +2658,20 @@ local function handle_message(topic, payload)
             end
             return
         end
-        -- 关闭排行榜和设备列表窗口，让邀请弹窗显示在最前面
+        -- 关闭排行榜、帮助弹窗和设备列表窗口，让邀请弹窗显示在最前面
         close_device_list_win()
         if leaderboardWinId then
             exwin.close(leaderboardWinId)
             leaderboardWinId = nil
         end
+        if infoWinId then
+            exwin.close(infoWinId)
+            infoWinId = nil
+        end
         local nickname = data.nickname or data.device_id:sub(#data.device_id - 5)
+        -- 保存对方机型（被邀请方收到邀请时就知道对方机型了）
         if data.model then
             game_state_mqtt.peer_device_model = data.model
-            update_score_display()
         end
         show_invite_dialog(nickname, data.device_id)
         return
@@ -2385,9 +2683,9 @@ local function handle_message(topic, payload)
         end
         close_invite_waiting()
         local nickname = data.nickname or data.device_id:sub(#data.device_id - 5)
+        -- 保存对方机型，在 start_game_connect 中会显示
         if data.model then
             game_state_mqtt.peer_device_model = data.model
-            update_score_display()
         end
         show_toast(nickname .. ' 已接受邀请')
         close_device_list_win()
@@ -2405,6 +2703,9 @@ local function handle_message(topic, payload)
     elseif data.type == 'connect_cancel' and data.device_id then
         -- 对方取消了邀请，关闭邀请弹窗
         close_invite_dialog()
+        -- 清除机型信息（被邀请方收到邀请时保存了机型）
+        game_state_mqtt.peer_device_model = nil
+        update_score_display()
         show_toast('对方取消了邀请')
         return
     end
@@ -2435,10 +2736,14 @@ local function handle_message(topic, payload)
                 '对方设备ID:', data.device_id:sub(1, 10),
                 '我的设备ID:', my_device_id:sub(1, 10),
                 '我是服务器:', my_device_id < data.device_id)
-            -- 关闭排行榜窗口（如果开着）
+            -- 关闭排行榜和帮助弹窗（如果开着）
             if leaderboardWinId then
                 exwin.close(leaderboardWinId)
                 leaderboardWinId = nil
+            end
+            if infoWinId then
+                exwin.close(infoWinId)
+                infoWinId = nil
             end
             game_state_mqtt.peer_device_id = data.device_id
             game_state_mqtt.peer_connected = true
@@ -3324,12 +3629,12 @@ local function create_ui()
     })
     airui.button({
         parent = menuContainer,
-        x = 15,
+        x = 10,
         y = 180,
-        w = 145,
+        w = 95,
         h = 45,
         text = '查找对手',
-        font_size = 16,
+        font_size = 14,
         text_color = 0xffffff,
         bg_color = 0x228844,
         radius = 5,
@@ -3341,17 +3646,33 @@ local function create_ui()
 
     airui.button({
         parent = menuContainer,
-        x = 170,
+        x = 112,
         y = 180,
-        w = 135,
+        w = 95,
         h = 45,
         text = '积分排行榜',
-        font_size = 16,
+        font_size = 14,
         text_color = 0xffffff,
         bg_color = 0xff8800,
         radius = 5,
         on_click = function()
             open_leaderboard_win()
+        end
+    })
+
+    airui.button({
+        parent = menuContainer,
+        x = 214,
+        y = 180,
+        w = 95,
+        h = 45,
+        text = '帮助',
+        font_size = 14,
+        text_color = 0xffffff,
+        bg_color = 0x3366cc,
+        radius = 5,
+        on_click = function()
+            open_info_win()
         end
     })
 
@@ -3425,8 +3746,8 @@ local function create_ui()
     }
 
     for _, btn in ipairs(buttonConfigs) do
-        local isAction = btn.action == 'punch' or btn.action == 'kick'
-        local isSpecial = btn.action == 'block' or btn.action == 'jump'
+        local isAction = btn.action == 'punch' or btn.action == 'kick' or btn.action == 'block'
+        local isSpecial = btn.action == 'jump'
         local bgColor = 0x667788
         if isAction then bgColor = 0xd04040 end
         if isSpecial then bgColor = 0x3366aa end
@@ -3483,7 +3804,7 @@ local function create_ui()
     gameState = STATE.MENU
     accumulatedDt = 0
 
-    gameTimerId = sys.timerLoopStart(gameLoop, 16)
+    gameTimerId = sys.timerLoopStart(gameLoop, GAME_LOOP_INTERVAL)
 
     ---- 每分钟自动上传一次积分
     -- scoreUploadTimer = sys.timerLoopStart(upload_score, 60000)
