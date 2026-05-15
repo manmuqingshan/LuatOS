@@ -68,8 +68,9 @@ local function http_upload_task()
         url = "https://airtest.luatos.com/iot/luat_test_file/add",
         files = {
             -- 服务器要求文件名必须为"f"
-            ["f"] = upload_file_path, 
+            ["f"] = upload_file_path,
         },
+        timeout = 60,
     })
 
     -- 阶段5: 记录上传结果
