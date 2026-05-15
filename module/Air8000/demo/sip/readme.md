@@ -51,7 +51,7 @@
 
 1、Luatools下载调试工具
 
-2、[必须使用Air8000 V2033或者更高版本带audio的固件](https://gitee.com/openLuat/LuatOS/tree/master/module/Air8000/core)（理论上最新版本固件也可以，如果使用最新版本的固件不可以，可以烧录V2033-9固件对比验证）
+2、[必须使用Air8000 V2034或者更高版本带audio的固件](https://gitee.com/openLuat/LuatOS/tree/master/module/Air8000/core)（理论上最新版本固件也可以，如果使用最新版本的固件不可以，可以烧录V2034-1固件对比验证）
 
 3、PC端下载MicroSIP软件，用于测试sip通话功能
 
@@ -69,7 +69,7 @@
 
 以下是使用sip demo演示的日志
 
-日志中如果出现"SIP 服务已就绪"，就可以开始测试通话，本例设置了自动接听，收到来电，通话自动建立，日志如下：
+日志中如果出现"SIP 服务已就绪"，就可以开始测试通话，收到来电，按boot键接听，通话建立，日志如下：
 
 ```
 [2026-05-08 11:04:41.975][000000129.901] I/user.sip req INVITE from 180.152.6.34 8910
