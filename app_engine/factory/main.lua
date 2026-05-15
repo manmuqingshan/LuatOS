@@ -91,8 +91,6 @@ elseif _G.model_str:find("Air1601") or _G.model_str:find("Air1602") then
         tp_drv = require "tp_drv_air1601_7or10"
     elseif Air1602_lcd == 9 then
         -- 9寸屏显示驱动
-        -- lcd_drv = require "lcd_drv_air1601_9in"
-        -- tp_drv = require "tp_drv_air1601_9in"
         -- elseif Air1602_lcd == 10 then
         -- 10寸屏显示驱动
         -- lcd_drv = require "lcd_drv_air1601_10in"
