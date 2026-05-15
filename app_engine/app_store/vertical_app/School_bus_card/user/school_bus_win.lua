@@ -1,3 +1,4 @@
+-- school_bus_win.lua - 智慧校车刷卡系统
 local school_bus_win = {}
 
 -- ==================== 常量定义 ====================
@@ -409,6 +410,7 @@ local function refresh_info_panel(student, action, is_unknown, is_special)
         })
         table.insert(current_info_labels, info_row)
         
+        -- 班级行：添加图片
         airui.image({
             parent = info_row,
             src = "/luadb/school_20x20.png",
@@ -432,7 +434,7 @@ local function refresh_info_panel(student, action, is_unknown, is_special)
             align = airui.TEXT_ALIGN_LEFT
         })
         
-
+        -- 监护人行：添加 family_guardian_20x20.png 图片
         airui.image({
             parent = info_row,
             src = "/luadb/family_guardian_20x20.png",
@@ -456,11 +458,12 @@ local function refresh_info_panel(student, action, is_unknown, is_special)
             align = airui.TEXT_ALIGN_LEFT
         })
         
+        -- 上车/下车记录行：添加 card_20x20.png 图片
         airui.image({
             parent = info_row,
             src = "/luadb/card_20x20.png",
             x = 5,
-            y = 82,
+            y = 76,
             w = 20,
             h = 20,
             zoom = 256,
@@ -490,20 +493,10 @@ local function refresh_info_panel(student, action, is_unknown, is_special)
         })
         table.insert(current_info_labels, divider)
         
-        airui.image({
-            parent = student_info_container,
-            src = "/luadb/stopwatch_15x15.png",
-            x = 5,
-            y = 142,
-            w = 15,
-            h = 15,
-            zoom = 256,
-            opacity = 255
-        })
         
         local time_label_info = airui.label({
             parent = student_info_container,
-            x = 25,
+            x = 10,
             y = 140,
             w = 300,
             h = 24,
@@ -550,7 +543,7 @@ local function refresh_info_panel(student, action, is_unknown, is_special)
     })
     table.insert(current_info_labels, info_row)
     
-
+    -- 班级行：添加 school_20x20.png 图片
     airui.image({
         parent = info_row,
         src = "/luadb/school_20x20.png",
@@ -574,6 +567,7 @@ local function refresh_info_panel(student, action, is_unknown, is_special)
         align = airui.TEXT_ALIGN_LEFT
     })
     
+    -- 监护人行：添加 family_guardian_20x20.png 图片
     airui.image({
         parent = info_row,
         src = "/luadb/family_guardian_20x20.png",
@@ -597,11 +591,12 @@ local function refresh_info_panel(student, action, is_unknown, is_special)
         align = airui.TEXT_ALIGN_LEFT
     })
     
+    -- 上车/下车记录行：添加 card_20x20.png 图片
     airui.image({
         parent = info_row,
         src = "/luadb/card_20x20.png",
         x = 5,
-        y = 82,
+        y = 76,
         w = 20,
         h = 20,
         zoom = 256,
@@ -631,20 +626,10 @@ local function refresh_info_panel(student, action, is_unknown, is_special)
     })
     table.insert(current_info_labels, divider)
     
-    airui.image({
-        parent = student_info_container,
-        src = "/luadb/stopwatch_15x15.png",
-        x = 5,
-        y = 142,
-        w = 15,
-        h = 15,
-        zoom = 256,
-        opacity = 255
-    })
     
     local time_label_info = airui.label({
         parent = student_info_container,
-        x = 25,
+        x = 10,
         y = 140,
         w = 300,
         h = 24,
@@ -956,7 +941,7 @@ local function create_ui()
         end
     })
     
-    -- 设备名称
+    -- 设备名称（移动到中间）
     local device_badge = airui.container({
         parent = status_bar,
         x = (SCREEN_W - 80) / 2,
@@ -1095,7 +1080,7 @@ local function create_ui()
         color = 0x4A5B7A
     })
     
-    -- 方向标签
+    -- 方向标签（初始状态）
     direction_badge = airui.label({
         parent = title_row,
         x = SCREEN_W - 180,
