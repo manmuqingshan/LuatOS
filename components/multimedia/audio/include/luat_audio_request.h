@@ -23,12 +23,19 @@
 #include "luat_audio_driver.h"
 #include "luat_fs.h"
 
+
 typedef struct {
     char *path;                /**< 文件路径，如果为NULL，则表示是ROM数组 */
-    uint32_t address;          /**< ROM数组地址 */
+    const uint8_t *rom_data;   /**< ROM数组地址 */
     uint32_t rom_data_len;     /**< ROM数组长度 */
     uint32_t fail_continue;    /**< 如果解码失败是否跳过继续下一个，如果是最后一个文件，强制停止并设置错误信息 */
 } luat_audio_play_file_info_t;
+
+typedef struct {
+    luat_audio_play_file_info_t *file_info;
+    FILE *fd;
+    uint32_t rom_data_offset;
+} luat_audio_decode_file_info_t;
 
 /**
  * @brief 音频请求回调函数
@@ -62,6 +69,8 @@ struct luat_audio_request_block {
             luat_audio_play_file_info_t *file_info;  /**< 音频文件信息数组指针，只引用不复制，由用户负责管理，注意生命周期 */
             uint32_t file_info_cnt;                  /**< 音频文件信息数组的元素数量 */
             uint32_t file_done_cnt;                  /**< 已处理的文件信息数量 */
+            uint32_t rom_data_offset;           /**< ROM数组偏移量，从ROM数组开头开始 */
+            luat_audio_decode_file_info_t decode_file;
         };
         struct {                                /**< 文本转语音模式下的必须字段 */
             const char *tts_data;               /**< 文本转语音数据指针，只引用不复制，由用户负责管理，注意生命周期 */
@@ -69,8 +78,8 @@ struct luat_audio_request_block {
         };
         uint32_t record_fifo_enough_data_level; /**< 录音模式下，回调函数触发条件，FIFO缓冲区数据量是否足够 */
     };
-    FILE *fd;                                /**< 音频文件句柄 */
-    luat_fifo_t *input_data_fifo;            /**< 输入数据FIFO缓冲区 */
+
+    luat_fifo_t *input_data_fifo;            /**< 输入数据缓冲区 */
     luat_buffer_t out_buffer;                /**< 输出数据缓冲区 */
     luat_audio_dsp_t *dsp;                  /**< 关联的DSP处理实例 */
     luat_audio_data_codec_t codec;          /**< 关联的编解码器实例 */

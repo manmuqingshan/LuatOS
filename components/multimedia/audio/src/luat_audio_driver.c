@@ -1,5 +1,6 @@
 #include "luat_audio_driver.h"
 #include "luat_common_api.h"
+#include "luat_audio_channel.h"
 #include "luat_rtos.h"
 #include "luat_mem.h"
 #include "luat_rtos_legacy.h"
@@ -111,7 +112,7 @@ int luat_audio_driver_config_private_param(struct luat_audio_driver_ctrl *ctrl, 
     return -LUAT_ERROR_DEVICE_BUSY;
 }
 
-int luat_audio_driver_config_audio_common_param(struct luat_audio_driver_ctrl *ctrl, uint32_t sample_rate, uint8_t data_bits, uint8_t channel_nums)
+int luat_audio_driver_config_audio_common_param(struct luat_audio_driver_ctrl *ctrl, uint32_t sample_rate, uint8_t data_align, uint8_t channel_nums)
 {
     if (!ctrl) {
         return -LUAT_ERROR_PARAM_INVALID;
@@ -120,7 +121,7 @@ int luat_audio_driver_config_audio_common_param(struct luat_audio_driver_ctrl *c
         return -LUAT_ERROR_NO_SUCH_ID;
     }
     if (LUAT_AUDIO_DRIVER_STATE_RUNNING > ctrl->state) {
-        return ctrl->opts->modify_audio_common_param(ctrl, sample_rate, data_bits, channel_nums);
+        return ctrl->opts->modify_audio_common_param(ctrl, sample_rate, data_align, channel_nums);
     }
     return -LUAT_ERROR_DEVICE_BUSY;
 }
@@ -133,15 +134,15 @@ int luat_audio_driver_change_sample_rate(struct luat_audio_driver_ctrl *ctrl, ui
     if (LUAT_AUDIO_DRIVER_STATE_IDLE == ctrl->state) {
         return -LUAT_ERROR_NO_SUCH_ID;
     }
-    return ctrl->opts->change_sample_rate(ctrl, sample_rate);
+    return ctrl->opts->modify_audio_common_param(ctrl, sample_rate, ctrl->common_param.data_align, ctrl->common_param.channel_nums);
 }
 
-int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, uint8_t mode, uint32_t *play_buff, uint32_t one_block_len, uint8_t block_nums)
+int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, luat_audio_common_param_t *common_param, uint32_t *play_buff, uint32_t one_block_len, uint8_t block_nums)
 {
     if (!ctrl) {
         return -LUAT_ERROR_PARAM_INVALID;
     }
-    LLOGC(luat_audio_debug_flag, "audio driver start mode %d driver state %d", mode, ctrl->state);
+    LLOGC(luat_audio_debug_flag, "audio driver start mode %d driver state %d", common_param->driver_work_mode, ctrl->state);
     if (LUAT_AUDIO_DRIVER_STATE_IDLE == ctrl->state) {
         return -LUAT_ERROR_NO_SUCH_ID;
     }
@@ -152,84 +153,53 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, uint8_t mode, u
             return -LUAT_ERROR_OPERATION_FAILED;
         }
         ctrl->state = LUAT_AUDIO_DRIVER_STATE_ACTIVE;
-        ctrl->tx_is_work = 0;
-        ctrl->rx_is_work = 0;
     }
-    LLOGC(luat_audio_debug_flag, "audio driver tx is work %d rx is work %d ", ctrl->tx_is_work, ctrl->rx_is_work);
+    LLOGC(luat_audio_debug_flag, "start check commom param old %u,%u,%u,%d, new %u,%u,%u,%d", 
+        ctrl->common_param.sample_rate, ctrl->common_param.data_align, ctrl->common_param.channel_nums, ctrl->common_param.driver_work_mode,
+        common_param->sample_rate, common_param->data_align, common_param->channel_nums, common_param->driver_work_mode);
+
+    if (ctrl->common_param.driver_work_mode != common_param->driver_work_mode) {
+        if (LUAT_AUDIO_DRIVER_STATE_RUNNING == ctrl->state) {
+            ctrl->opts->stop(ctrl);
+            ctrl->state = LUAT_AUDIO_DRIVER_STATE_ACTIVE;
+            	//先关闭录音中断，并且清楚录音fifo中的数据
+	        luat_fifo_clear(ctrl->data_channel->record_fifo);
+        }
+    }
+    ret = ctrl->opts->modify_audio_common_param(ctrl, common_param->sample_rate, common_param->data_align, common_param->channel_nums);
+    if (ret) {
+        return -LUAT_ERROR_OPERATION_FAILED;
+    }
     if (LUAT_AUDIO_DRIVER_STATE_ACTIVE == ctrl->state) {
-        switch (mode) {
+        switch (common_param->driver_work_mode) {
             case LUAT_AUDIO_DRIVER_MODE_PLAY:
-                if (ctrl->tx_is_work) { // 已经在发送音频数据，不需要重新启动
-                    if (ctrl->opts->rx_interrupt_switch) {
-                        ctrl->opts->rx_interrupt_switch(ctrl, 0);
-                    }
-                    ret = LUAT_ERROR_NONE;
-                    break;
-                }
                 if (ctrl->opts->support_full_loop) { // 支持全双工模式
                     ret = ctrl->opts->start_full_loop(ctrl, &ctrl->play_buff, one_block_len, block_nums, &ctrl->record_buff, one_block_len, block_nums);
-                    if (!ret) {
-                        ctrl->tx_is_work = 1;
-                        ctrl->rx_is_work = 1;
-                    }
-                    if (ctrl->opts->rx_interrupt_switch) {
-                        ctrl->opts->rx_interrupt_switch(ctrl, 0);
-                    }
                 } else if (ctrl->opts->support_tx_loop){  // 支持单向发送模式
                     ret = ctrl->opts->start_tx_loop(ctrl, &ctrl->play_buff, one_block_len, block_nums);
-                    if (!ret) {
-                        ctrl->tx_is_work = 1;
-                    }
                 } else {
                     ret = -LUAT_ERROR_PERMISSION_DENIED;
                 }
                 break;
             case LUAT_AUDIO_DRIVER_MODE_RECORD:
-                if (ctrl->rx_is_work) { // 已经在接收音频数据，不需要重新启动
-                    ret = LUAT_ERROR_NONE;
-                    break;
-                }
                 if (ctrl->opts->support_full_loop) { // 支持全双工模式
                     ret = ctrl->opts->start_full_loop(ctrl, &ctrl->play_buff, one_block_len, block_nums, &ctrl->record_buff, one_block_len, block_nums);
-                    if (!ret) {
-                        ctrl->tx_is_work = 1;
-                        ctrl->rx_is_work = 1;
-                    }
                 } else if (ctrl->opts->support_rx_loop){  // 支持单向接收模式
                     ret = ctrl->opts->start_rx_loop(ctrl, &ctrl->record_buff, one_block_len, block_nums);
-                    if (!ret) {
-                        ctrl->rx_is_work = 1;
-                    }
                 } else {
                     ret = -LUAT_ERROR_PERMISSION_DENIED;
                 }
                 break;
             case LUAT_AUDIO_DRIVER_MODE_CALL:
-                if (ctrl->tx_is_work && ctrl->rx_is_work) { // 已经在双工模式中，不需要重新启动
-                    ret = LUAT_ERROR_NONE;
-                    break;
-                }
                 if (ctrl->opts->support_full_loop) { // 支持全双工模式
                     ret = ctrl->opts->start_full_loop(ctrl, &ctrl->play_buff, one_block_len, block_nums, &ctrl->record_buff, one_block_len, block_nums);
-                    if (!ret) {
-                        ctrl->tx_is_work = 1;
-                        ctrl->rx_is_work = 1;
-                    }
                 } else {
                     ret = -LUAT_ERROR_PERMISSION_DENIED;
                 }
                 break;
             case LUAT_AUDIO_DRIVER_MODE_CALL_WITH_BUFFER:
-                if (ctrl->tx_is_work && ctrl->rx_is_work) { // 已经在双工模式中，不需要重新启动
-                    ret = LUAT_ERROR_NONE;
-                    break;
-                }
                 if (ctrl->opts->support_full_loop) { // 支持全双工模式
                     ret = ctrl->opts->start_full_loop_with_play_buff(ctrl, play_buff, one_block_len, block_nums, &ctrl->record_buff, one_block_len, block_nums);
-                    if (!ret) {
-                        ctrl->tx_is_work = 1;
-                        ctrl->rx_is_work = 1;
-                    }
                 } else {
                     ret = -LUAT_ERROR_PERMISSION_DENIED;
                 }
@@ -243,8 +213,10 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, uint8_t mode, u
         }
         ctrl->state = LUAT_AUDIO_DRIVER_STATE_RUNNING;
     }
-    LLOGC(luat_audio_debug_flag, "audio driver tx is work %d rx is work %d ", ctrl->tx_is_work, ctrl->rx_is_work);
-    LLOGC(luat_audio_debug_flag, "audio driver check codec power %d , param %d %d %d", ctrl->codec_power_state,
+    ctrl->common_param.driver_work_mode = common_param->driver_work_mode;
+    LLOGC(luat_audio_debug_flag, "start commom param now %u,%u,%u,%d", 
+        ctrl->common_param.sample_rate, ctrl->common_param.data_align, ctrl->common_param.channel_nums, ctrl->common_param.driver_work_mode);
+    LLOGC(luat_audio_debug_flag, "start check codec power %d , param %d %d %d", ctrl->codec_power_state,
         ctrl->codec_power_ctrl_enable, ctrl->codec_power_pin, ctrl->codec_power_on_level);
     if (!ctrl->codec_power_state) {
         if (ctrl->codec_power_ctrl_enable) {
@@ -253,7 +225,7 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, uint8_t mode, u
         ctrl->codec_power_state = 1;
         ctrl->codec_ready_state = 0;
     }
-    LLOGC(luat_audio_debug_flag, "audio driver check codec ready %d , param %u", ctrl->codec_ready_state,
+    LLOGC(luat_audio_debug_flag, "start check codec ready %d , param %u", ctrl->codec_ready_state,
         ctrl->codec_ready_after_wakeup_time_ms);
     if (!ctrl->codec_ready_state) {
         if (ctrl->codec_ready_after_wakeup_time_ms) {
@@ -262,7 +234,7 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, uint8_t mode, u
             ctrl->codec_ready_state = 1;
         }
     }
-    LLOGC(luat_audio_debug_flag, "audio driver check pa power %d, param %d %d %d %u", ctrl->pa_power_state,
+    LLOGC(luat_audio_debug_flag, "start check pa power %d, param %d %d %d %u", ctrl->pa_power_state,
     ctrl->pa_power_ctrl_enable, ctrl->pa_power_pin, ctrl->pa_power_on_level, ctrl->pa_power_on_delay_time_ms);
     if (!ctrl->pa_power_state) {
         if (ctrl->pa_power_ctrl_enable) {
@@ -277,10 +249,9 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, uint8_t mode, u
         }
     }
     if (ctrl->pa_power_state && ctrl->codec_power_state && ctrl->codec_ready_state) {
-        LLOGC(luat_audio_debug_flag, "audio driver enable audio output");
+        LLOGC(luat_audio_debug_flag, "start enable audio output");
         ctrl->audio_output_enable = 1;
     }
-
     return LUAT_ERROR_NONE;
 }
 

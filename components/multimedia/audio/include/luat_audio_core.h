@@ -66,7 +66,16 @@ luat_audio_driver_ctrl_t *luat_audio_driver_probe(luat_audio_driver_probe_t *pro
  */
 int luat_audio_driver_set_default(luat_audio_driver_probe_t *probe);
 
-
+/**
+ * @brief 获取音频文件的播放信息
+ * 
+ * 此函数用于获取音频文件的播放信息，如采样率、声道数、采样深度等。
+ * 
+ * @param codec 音频编解码器指针
+ * @param decode_file 音频文件解码结构体指针
+ * @return LUAT_ERROR_NONE 表示成功，其他值表示失败
+ */
+int luat_audio_get_play_info_from_file(luat_audio_data_codec_t *codec, luat_audio_decode_file_info_t *decode_file);
 /**
  * @brief 音频驱动事件回调函数，已经有默认实现，CSDK用户可以自定义实现，但是不建议修改默认实现的基本逻辑，除非打算自己实现audio功能
  * 

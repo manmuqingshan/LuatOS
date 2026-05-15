@@ -1,6 +1,7 @@
 #ifndef __LUAT_AUDIO_DEFINE_H__
 #define __LUAT_AUDIO_DEFINE_H__
 
+#include "stdint.h"
 /**
  * @file luat_audio_define.h
  * @brief LuatOS 音频框架通用定义头文件
@@ -27,6 +28,8 @@ enum {
     LUAT_AUDIO_DRIVER_TYPE_DAC,            /**< DAC 接口驱动（仅播放） */
     LUAT_AUDIO_DRIVER_TYPE_ADC,            /**< ADC 接口驱动（仅录音） */
     LUAT_AUDIO_DRIVER_TYPE_DAC_ADC,        /**< DAC+ADC 组合驱动 */
+    LUAT_AUDIO_DRIVER_TYPE_DAC_I2S,        /**< DAC+I2S 组合驱动 */
+    LUAT_AUDIO_DRIVER_TYPE_ADC_I2S,        /**< ADC+I2S 组合驱动 */
     LUAT_AUDIO_DRIVER_TYPE_USB,            /**< USB 音频驱动 */
 
     LUAT_AUDIO_DRIVER_CONFIG_PARAM_I2S_MODE = 0,       /**< I2S 模式参数 */
