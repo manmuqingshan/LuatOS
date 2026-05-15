@@ -47,11 +47,11 @@ local function http_download_file_task()
     -- 初始化后拉高pin_cs,准备开始挂载TF卡
     gpio.setup(pin_cs, 1)
 
-    -- Air780EHM/EHV/EGH开发板上的pin_cs为gpio16，spi_id为0.请根据实际硬件修改
+    -- -- Air780EHM/EHV/EGH开发板上的pin_cs为gpio16，spi_id为0.请根据实际硬件修改
     -- spi_id, pin_cs = 0, 16
     -- spi.setup(spi_id, nil, 0, 0, 8, 2000000)
-    -- 设置片选引脚同一spi总线上的所有从设备在初始化时必须要先拉高CS脚，防止从设备之间互相干扰。
-    -- 在Air780EHM/EHV/EGH开发板上，TF卡和ch390共用SPI0总线。
+    -- -- 设置片选引脚同一spi总线上的所有从设备在初始化时必须要先拉高CS脚，防止从设备之间互相干扰。
+    -- -- 在Air780EHM/EHV/EGH开发板上，TF卡和ch390共用SPI0总线。
     -- gpio.setup(pin_cs, 1)
 
     -- 挂载文件系统
@@ -67,11 +67,11 @@ local function http_download_file_task()
     log.info("HTTP下载", "开始下载任务")
 
     -- 核心下载操作开始 (支持http和https)
-    -- local code, headers, body = http.request("GET", "...", nil, nil, {dst = "/sd/1.mp3"}).wait()
+    -- local code, headers, body = http.request("GET", "...", nil, nil, {dst = "/sd/3_23MB.bin"}).wait()
     -- 其中 "..."为url地址, 支持 http和https, 支持域名, 支持自定义端口。
     local code, headers, body_size = http.request("GET",
-                                    "https://gitee.com/openLuat/LuatOS/raw/master/module/Air780EHM_Air780EHV_Air780EGH/demo/audio/1.mp3",
-                                    nil, nil, {dst = "/sd/1.mp3"}).wait()
+                                    "https://cdn.openluat-erp.openluat.com/erp_site_file/product_file/AirM2M_780EHT_V2017_LTE_AT.dfota.bin",
+                                    nil, nil, {dst = "/sd/3_23MB.bin"}).wait()
     -- 阶段3: 记录下载结果
     log.info("HTTP下载", "下载完成", 
         code==200 and "success" or "error", 
@@ -83,7 +83,7 @@ local function http_download_file_task()
         
     if code == 200 then
         -- 获取实际文件大小
-        local actual_size = io.fileSize("/sd/1.mp3")
+        local actual_size = io.fileSize("/sd/3_23MB.bin")
         log.info("HTTP下载", "文件大小验证", "预期:", body_size, "实际:", actual_size)
         
         if actual_size~= body_size then
