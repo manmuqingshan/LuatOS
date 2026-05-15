@@ -873,7 +873,7 @@ static void ovpn_feed_tls(ovpn_client_t *cli, const uint8_t *data, int len) {
 static void ovpn_process_tls_app_data(ovpn_client_t *cli) {
     uint8_t app_buf[1024];
 
-    while (true) {
+    while (1) {
         int ret = mbedtls_ssl_read(&cli->ssl, app_buf, sizeof(app_buf) - 1);
         if (ret <= 0) {
             if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {

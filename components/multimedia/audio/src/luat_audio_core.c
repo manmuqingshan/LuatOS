@@ -341,6 +341,17 @@ static int _audio_decode_file_start(luat_audio_request_block_t *request_block)
 		_audio_data_close(&request_block->decode_file);
 		return -LUAT_ERROR_OPERATION_FAILED;
 	}
+	luat_fifo_destroy(request_block->input_data_fifo);
+	uint32_t hope_data_len = request_block->codec.common_param.sample_rate * request_block->codec.common_param.channel_nums * request_block->codec.common_param.data_align;
+	if (!request_block->input_data_fifo) {
+		request_block->input_data_fifo = luat_fifo_create(12);
+		if (!request_block->input_data_fifo) {
+			_audio_data_close(&request_block->decode_file);
+			return -LUAT_ERROR_NO_MEMORY;
+		}
+	}
+	luat_buffer_reinit(&request_block->out_buffer, request_block->codec.opts->decode_max_output_len * 4);
+	request_block->is_stream_end = 0;	
 	return LUAT_ERROR_NONE;
 }
 
