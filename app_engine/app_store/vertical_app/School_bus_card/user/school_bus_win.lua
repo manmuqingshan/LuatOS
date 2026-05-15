@@ -706,10 +706,10 @@ local function update_direction_badge(action)
         })
     end
     
-    local text_x = action == "上车" or action == "下车" and 32 or 20
+    local text_x = action == "上车" or action == "下车"
     airui.label({
         parent = direction_badge,
-        x = text_x,
+        x = 32,
         y = 2,
         w = 60,
         h = 20,
