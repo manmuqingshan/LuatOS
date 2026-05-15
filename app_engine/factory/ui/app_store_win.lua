@@ -994,6 +994,21 @@ local function on_action_done(app_id, action, success)
             local_installed_info[key] = false
         end
 
+        -- 卸载后调整分页：如果当前页已空且非首页，回退一页
+        if action == "uninstall" and success then
+            if current_category == "已安装" then
+                local ia = exapp.list_installed()
+                local installed_cnt = 0
+                for _ in pairs(ia) do installed_cnt = installed_cnt + 1 end
+                total_pages = math.max(1, math.ceil(installed_cnt / page_limit))
+                if current_page > total_pages then
+                    current_page = total_pages
+                end
+                has_more = current_page < total_pages
+            end
+            update_page_label()
+        end
+
         -- 后台用当前页码重新请求服务端数据，不跳回第1页
         sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
     end

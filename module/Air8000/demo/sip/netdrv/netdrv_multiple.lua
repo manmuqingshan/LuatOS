@@ -42,14 +42,13 @@ local function netdrv_multiple_notify_cbfunc(net_type,adapter)
         log.warn("netdrv_multiple_notify_cbfunc", "unknown status", net_type, adapter)
     end
     
-    -- 发送全局事件，通知其他模块
-    sys.publish("NETDRV_NETWORK_STATUS", net_type, adapter)
 end
 
 local function netdrv_multiple_task_func()
     --设置网卡优先级
     exnetif.set_priority_order(
         {
+
             -- “通过SPI外挂CH390H芯片”的以太网卡，使用Air8000开发板验证
             {
                 ETHERNET = {
@@ -88,7 +87,9 @@ local function netdrv_multiple_task_func()
             -- 4G网卡
             {
                 LWIP_GP = true
-            }
+            },
+
+
         }
     )    
 end

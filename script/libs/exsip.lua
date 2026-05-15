@@ -74,6 +74,7 @@ exsip.DEFAULT_EXPIRES = 600
 -- socket.LWIP_ETH = 以太网
 -- nil = 使用系统默认网卡
 
+local exnetif = require "exnetif"
 
 local sipclient = nil
 local g_config = nil
@@ -82,6 +83,13 @@ local g_registered = false
 local g_callbacks = {}
 local g_current_call = nil
 local g_netdrv_subscribed = false
+
+-- SIP 当前实际使用的网卡（由 exsipclient 启动时确定）
+local g_current_adapter = nil
+-- 记录当前可用的网卡（收到 IP_READY 添加，收到 IP_LOSE 移除）
+local g_ready_adapters = {}
+-- 是否已订阅 IP 状态事件
+local g_ip_event_subscribed = false
 
 -- 默认配置
 local default_config = {
@@ -138,6 +146,7 @@ local function start_voip_engine(session)
     }
     local codec = codec_map[session.codec] or voip.PCMU
 
+    log_info("start voip engine with adapter:", g_current_adapter, "remote:", session.remote_ip .. ":" .. session.remote_port)
     local ok = voip.start({
         remote_ip = session.remote_ip,
         remote_port = tonumber(session.remote_port) or 10000,
@@ -149,7 +158,7 @@ local function start_voip_engine(session)
         multimedia_id = 0,  --多媒体ID
         stats_interval = 5000,  --统计信息上报间隔
         -- 使用 SIP 层锁定的网卡适配器，确保媒体和 SIP 使用同一个网卡
-        adapter = g_config and g_config.adapter or socket.dft(),
+        adapter = g_current_adapter,
         -- adapter = session.adapter or (g_config and g_config.adapter) or socket.dft(),
         aec = true,
         aec_denoise =true,
@@ -174,23 +183,31 @@ local function stop_voip_engine()
     end
 end
 
-local function netdrv_network_status_handler(net_type, adapter)
-    log_info("NETDRV_NETWORK_STATUS", net_type, adapter, "g_started", g_started)
-    
+-- 网卡 IP 就绪/丢失事件处理
+local function ip_ready_handler(ip, adapter)
+    log_info("IP_READY", ip, adapter)
+    g_ready_adapters[adapter] = true
+end
+
+local function ip_lose_handler(adapter)
+    log_info("IP_LOSE", adapter)
+    g_ready_adapters[adapter] = nil
     if not g_started then
         return
     end
-    
-    if net_type == nil then
-        -- 当前所有网卡都断开
-        log_warn("all network adapters disconnected, stopping SIP")
-        exsip.stop()
-        return
+    if adapter == g_current_adapter then
+        local all_down = true
+        for _ in pairs(g_ready_adapters) do
+            all_down = false
+            break
+        end
+        log_warn("current adapter lost, triggering error", adapter)
+        emit_callback("error", "network_changed", {
+            reason = "current_adapter_lost",
+            adapter = adapter,
+            all_down = all_down
+        })
     end
-    
-    -- 网络类型发生变化，触发错误事件
-    log_warn("network status changed, triggering error")
-    emit_callback("error", "network_changed", {net_type = net_type, adapter = adapter})
 end
 
 local function sip_event_handler(event, action, payload)
@@ -231,9 +248,11 @@ local function sip_event_handler(event, action, payload)
         elseif action == "ringing" then
             emit_callback("call", "ringing", payload)
         elseif action == "connected" or action == "established" then
+            sys.publish("EXNETIF_LOCK_NETWORK")
             emit_callback("call", "connected", payload)
         elseif action == "ended" or action == "failed" then
             stop_voip_engine()
+            sys.publish("EXNETIF_UNLOCK_NETWORK")
             emit_callback("call", "ended", payload)
             g_current_call = nil
         end
@@ -260,8 +279,11 @@ local function sip_event_handler(event, action, payload)
         end
     elseif event == "lifecycle" then
         log_info("lifecycle:", action)
-        if action == "offline" or action == "stopped" then
+        if action == "offline" then
             -- SIP 离线时，停止 voip 引擎，让下次重连时使用新网卡
+            stop_voip_engine()
+            g_registered = false
+        elseif action == "stopped" then
             stop_voip_engine()
             g_registered = false
         end
@@ -380,12 +402,17 @@ function exsip.start()
 
     setup_voip_callbacks()
 
-    -- 订阅网络状态事件
-    if not g_netdrv_subscribed then
-        sys.subscribe("EXLIB_NETDRV_NETWORK_STATUS", netdrv_network_status_handler)
-        g_netdrv_subscribed = true
-        log_info("subscribed to EXLIB_NETDRV_NETWORK_STATUS")
+    -- 订阅 IP 就绪/丢失事件
+    if not g_ip_event_subscribed then
+        sys.subscribe("IP_READY", ip_ready_handler)
+        sys.subscribe("IP_LOSE", ip_lose_handler)
+        g_ip_event_subscribed = true
+        log_info("subscribed to IP_READY and IP_LOSE")
     end
+
+    -- 确定并记录当前实际使用的网卡
+    g_current_adapter = g_config.adapter or socket.dft()
+    log_info("current adapter set:", g_current_adapter)
 
     sipclient.start({
         sip_server_addr = g_config.sip_server_addr,
@@ -404,6 +431,7 @@ function exsip.start()
     })
 
     g_started = true
+    -- exnetif.lock_network()
     log_info("started", "adapter", g_config.adapter)
     return true
 end
@@ -421,16 +449,18 @@ function exsip.stop()
     end
 
     stop_voip_engine()
+    sys.publish("EXNETIF_UNLOCK_NETWORK")
 
     if sipclient and sipclient.stop then
         sipclient.stop()
     end
 
-    -- 取消订阅网络状态事件
-    if g_netdrv_subscribed then
-        sys.unsubscribe("EXLIB_NETDRV_NETWORK_STATUS", netdrv_network_status_handler)
-        g_netdrv_subscribed = false
-        log_info("unsubscribed from EXLIB_NETDRV_NETWORK_STATUS")
+    -- 取消订阅 IP 就绪/丢失事件
+    if g_ip_event_subscribed then
+        sys.unsubscribe("IP_READY", ip_ready_handler)
+        sys.unsubscribe("IP_LOSE", ip_lose_handler)
+        g_ip_event_subscribed = false
+        log_info("unsubscribed from IP_READY and IP_LOSE")
     end
 
     local timeout = 1000
@@ -441,6 +471,8 @@ function exsip.stop()
     g_started = false
     g_registered = false
     g_current_call = nil
+    g_current_adapter = nil
+    g_ready_adapters = {}
     log_info("stopped")
 end
 

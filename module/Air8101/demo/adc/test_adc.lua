@@ -16,13 +16,17 @@
 --[[
 1. Air8101内部ADC接口为12bits,ADC量程为0-2.4V
 2. Air8101有ADC1，ADC2，ADC3，ADC4，ADC5，ADC6，ADC10，ADC12，ADC13，ADC14，一共10路外部ADC；
-这10路ADC复用的对应关系为：
-ADC1 对应 ADC10；
-ADC2 对应 ADC12；
-ADC3 对应 ADC13；
-ADC4 对应 ADC14；
-ADC5 和 ADC6没有对应的其他ADC通道；
-每个通道对应的关系如下：例如ADC1对应通道1
+每个通道对应的关系如下：
+ADC1对应通道1
+ADC2对应通道2
+ADC3对应通道3
+ADC4对应通道4
+ADC5对应通道5
+ADC6对应通道6
+ADC10对应通道10
+ADC12对应通道12
+ADC13对应通道13
+ADC14对应通道14
 3. 特殊通道,CPU内部温度Temp -- adc.CH_CPU,主供电脚电压 VBAT -- adc.CH_VBAT
 ]]
 

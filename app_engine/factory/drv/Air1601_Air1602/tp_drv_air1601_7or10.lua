@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  tp_drv
 @summary 触摸面板驱动模块，基于tp核心库

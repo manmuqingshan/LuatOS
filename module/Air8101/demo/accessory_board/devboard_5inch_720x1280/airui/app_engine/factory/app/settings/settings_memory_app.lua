@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  settings_memory_app
 @summary 内存信息业务逻辑层

@@ -917,7 +917,7 @@ local function app_task(app_path)
 
         -- 规则(8.6): /little_flash/* → /little_flash/app_store/<app_name>/data/*
         if path:sub(1, 14) == "/little_flash/" then
-            local relative_path = path:sub(16)
+            local relative_path = path:sub(15)
             return "/little_flash/app_store/" .. app_name .. "/data/" .. relative_path
         end
 
@@ -2650,6 +2650,9 @@ end
 function exapp.init(storage_params)
     log.info("ei", "start scanning apps with multi-storage support")
 
+    -- 0. 确保 fskv 已初始化（可能在 factory 初始化之前被调用）
+    fskv.init()
+
     -- 1. 加载存储优先级配置
     load_storage_config()
 
@@ -2680,6 +2683,7 @@ function exapp.init(storage_params)
     log.info("ei", "scan completed, found", installed_cnt, "apps across all storages")
     sys.publish("APP_STORE_INSTALLED_UPDATED", installed_info)
 
+    -- 5. 启动 IOT 自动登录
     sys.taskInit(function()
         exapp.iot_auto_login()
     end)
@@ -3225,7 +3229,11 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
             end
         end
 
-        -- 2. 选择合适的存储位置
+        -- 2. 安装时重新探测外部存储状态（驱动可能后于 init 完成初始化）
+        storage_available.sd_tf = probe_storage("/sd/")
+        storage_available.little_flash = probe_storage("/little_flash/")
+
+        -- 3. 选择合适的存储位置
         local storage_type, mount_point, reason = select_storage_location(estimated_size_kb)
         if not storage_type then
             sys.publish("APP_STORE_ERROR", reason or "没有可用的存储位置")
@@ -3865,6 +3873,28 @@ sys.subscribe("STORAGE_PRIORITY_CHANGED", function(priority_list)
     if type(priority_list) == "table" and #priority_list > 0 then
         storage_priority = priority_list
         log.info("exapp", "storage priority updated at runtime:", json.encode(priority_list))
+    end
+end)
+
+-- 响应外部存储挂载事件，增量扫描新挂载的存储
+-- 驱动层挂载完成后发布: sys.publish("STORAGE_MOUNTED", "/sd/")
+sys.subscribe("STORAGE_MOUNTED", function(mount_point)
+    log.info("exapp", "storage mounted:", mount_point)
+    local storage_type = nil
+    if mount_point == "/sd/" then
+        storage_available.sd_tf = probe_storage("/sd/")
+        storage_type = "sd_tf"
+    elseif mount_point == "/little_flash/" then
+        storage_available.little_flash = probe_storage("/little_flash/")
+        storage_type = "little_flash"
+    end
+    if storage_type and storage_available[storage_type] then
+        local added = scan(mount_point .. "app_store/", storage_type)
+        if added > 0 then
+            installed_total_count = installed_cnt
+            log.info("exapp", "mounted scan found", added, "apps, total:", installed_cnt)
+            sys.publish("APP_STORE_INSTALLED_UPDATED", installed_info)
+        end
     end
 end)
 

@@ -8,8 +8,8 @@
  * Only compiled when LUAT_USE_MP4PLAYER is defined.
  */
 #include "luat_base.h"
-#ifdef LUAT_USE_MP4PLAYER
 #include "luat_mcu.h"
+#ifdef LUAT_USE_MP4PLAYER
 #include "luat_mp4_videoplayer.h"
 #include "luat_videoplayer.h"
 /* minimp4 public API types — implementation symbols come from mp4_decode.c */
