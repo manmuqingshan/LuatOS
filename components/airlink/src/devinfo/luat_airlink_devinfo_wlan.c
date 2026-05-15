@@ -56,6 +56,7 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
 
         luat_airlink_syspub_send(buff, ptr - buff);
         luat_airlink_self_dev_info_notify();
+        luat_airlink_drv_wlan_sta_connected_cb((const char*)sta_connected->ssid, sta_connected->bssid);
         break;
 
     case LUAT_WLAN_EVENT_WIFI_STA_DISCONNECTED:
@@ -78,6 +79,7 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
         remain -= ret;
         luat_airlink_syspub_send(buff, ptr - buff);
         luat_airlink_self_dev_info_notify();
+        luat_airlink_drv_wlan_sta_disconnected_cb(sta_disconnected->disconnect_reason);
         break;
     case LUAT_WLAN_EVENT_WIFI_AP_CONNECTED:
         ap_connected = (luat_wifi_event_ap_connected_t *)event_data;
@@ -97,6 +99,7 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
         
         luat_airlink_syspub_send(buff, ptr - buff);
         luat_airlink_self_dev_info_notify();
+        luat_airlink_drv_wlan_ap_connected_cb(ap_connected->mac);
         break;
     case LUAT_WLAN_EVENT_WIFI_AP_DISCONNECTED:
         ap_disconnected = (luat_wifi_event_ap_disconnected_t *)event_data;
@@ -116,6 +119,7 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
 
         luat_airlink_syspub_send(buff, ptr - buff);
         luat_airlink_self_dev_info_notify();
+        luat_airlink_drv_wlan_ap_disconnected_cb(ap_disconnected->mac);
         break;
     case LUAT_WLAN_EVENT_WIFI_NETWORK_FOUND:
         network_found = (luat_wifi_event_network_found_t *)event_data;
