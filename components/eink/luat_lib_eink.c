@@ -158,7 +158,7 @@ static int l_eink_init(lua_State* L) {
         return 0;
     }
     for (size_t i = 0; i < colors; i++){
-        econf.ctxs[i] = luat_heap_malloc( sizeof(eink_ctx_t) +  (epd_w * epd_h + 7) / 8);
+        econf.ctxs[i] = luat_heap_malloc( sizeof(eink_ctx_t) +  (((epd_w + 7) & (~7)) * epd_h) / 8);
         if (econf.ctxs[i] == NULL) {
             LLOGE("out of memory when malloc buff for eink");
             for (size_t j = 0; j < i - 1; j++)
