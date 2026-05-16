@@ -162,21 +162,27 @@ local TEMP_DOWNLOAD_PATH = "/ram/app_%s.zip"
 -- order: 默认优先级序号（越小越优先）
 local STORAGE_DEFS = {
     sd_tf        = { mount_point = "/sd/",          label = "外挂TF卡",     order = 1 },
-    little_flash = { mount_point = "/little_flash/", label = "外挂Flash",    order = 2 },
-    internal     = { mount_point = "/",              label = "内置文件系统", order = 3 },
+    little_flash = { mount_point = "/little_flash/", label = "外挂NOR Flash", order = 2 },
+    nand_flash   = { mount_point = "/little_flash/", label = "外挂NAND Flash",order = 3 },
+    internal     = { mount_point = "/",              label = "内置文件系统", order = 4 },
 }
 
 -- 当前生效的存储优先级配置（type_key 数组，高优先级在前）
--- 默认值：TF > Flash > 内置
-local storage_priority = { "sd_tf", "little_flash", "internal" }
+-- 默认值：TF > NOR Flash > NAND Flash > 内置
+local storage_priority = { "sd_tf", "little_flash", "nand_flash", "internal" }
 
 -- 存储介质可用状态（init 时探测）
 -- true = 介质已挂载且 app_store 目录存在（或可创建）
 local storage_available = {
-    internal     = true,  -- 内置文件系统永远可用
+    internal     = true,
     sd_tf        = false,
     little_flash = false,
+    nand_flash   = false,
 }
+
+-- Flash 设备全局变量（防止 GC 回收导致死机）
+little_flash_spi_device = nil
+little_flash_device     = nil
 
 -- ==============================================
 -- 存储配置管理函数
@@ -207,7 +213,7 @@ local function load_storage_config()
         log.warn("storage_config", "invalid config, using default")
     end
     -- 回退到默认值
-    storage_priority = { "sd_tf", "little_flash", "internal" }
+    storage_priority = { "sd_tf", "little_flash", "nand_flash", "internal" }
 end
 
 -- 保存存储优先级配置到 fskv
@@ -382,7 +388,7 @@ local function iot_gen_device_uid()
     else
         device_uid = mcu.unique_id() or "unknown"
     end
-    -- log.info("ea", "device_uid generated:", model, device_uid)
+    -- log.info("exapp", "device_uid generated:", model, device_uid)
     return device_uid
 end
 
@@ -618,7 +624,7 @@ local function app_task(app_path)
         end
     end
     local app_id = meta_appid or app_name
-    my_env.log.info("ea", "DB appid:", app_id)
+    my_env.log.info("exapp", "DB appid:", app_id)
 
     my_env.exapp.add_record = function(params, callback)
         return exapp.add_record(params, app_id, callback)
@@ -1493,7 +1499,7 @@ local function app_task(app_path)
         else
             ctx.adapt_enabled = not (ctx.ui_w == ctx.screen_w and ctx.ui_h == ctx.screen_h)
         end
-        my_env.log.info("ea", app_path, "ui", ctx.ui_w, ctx.ui_h, "screen", ctx.screen_w, ctx.screen_h,
+        my_env.log.info("exapp", app_path, "ui", ctx.ui_w, ctx.ui_h, "screen", ctx.screen_w, ctx.screen_h,
             "rotation", ctx.rotation, "display_zoom", display_zoom, "scale", ctx.scale_x, ctx.scale_y, "adapt", ctx.adapt_enabled)
         return ctx
     end
@@ -1900,7 +1906,7 @@ local function app_task(app_path)
     local function install_component(component_name)
         local orig_func = ui[component_name]
         if type(orig_func) ~= "function" then
-            my_env.log.info("ea", app_path, component_name, "no original")
+            my_env.log.info("exapp", app_path, component_name, "no original")
             return
         end
         my_env.airui[component_name] = function(...)
@@ -2228,35 +2234,26 @@ function exapp.open(app_path)
         end
     end
 
-    -- 预创建所有存储位置的 data 目录
-    -- PC: 强制创建全部路径用于测试；真机: 仅已挂载的存储
+    -- 预创建所有存储位置的 data 目录（仅创建已存在 parent 的，防止空壳目录污染扫描）
     local app_name_for_open = app_path:match("/app_store/([^/]+)/?$")
         or app_path:match("/sd/app_store/([^/]+)/?$")
         or app_path:match("/little_flash/app_store/([^/]+)/?$")
     if app_name_for_open then
-        local is_pc = rtos.bsp():find("PC") ~= nil
         local data_dirs_to_create = build_data_dirs(app_name_for_open)
         for _, dir in ipairs(data_dirs_to_create) do
-            -- 真机上检查挂载点是否存在
-            if not is_pc then
-                if dir:sub(1, 4) == "/sd/" and not io.dexist("/sd/") then
-                    goto next_data_dir
-                elseif dir:sub(1, 14) == "/little_flash/" and not io.dexist("/little_flash/") then
-                    goto next_data_dir
-                end
+            -- 检查挂载点是否存在
+            if dir:sub(1, 4) == "/sd/" and not io.dexist("/sd/") then
+                goto next_data_dir
+            elseif dir:sub(1, 14) == "/little_flash/" and not io.dexist("/little_flash/") then
+                goto next_data_dir
+            end
+            -- 检查 app_store/<app> 父目录是否存在，不存在说明 app 未安装在此存储，跳过
+            local parent_app_dir = dir:match("^(.*/app_store/[^/]+)/data$")
+            if parent_app_dir and not io.dexist(parent_app_dir) then
+                goto next_data_dir
             end
             if not io.dexist(dir) then
-                local parts = {}
-                for part in dir:gmatch("[^/]+") do
-                    parts[#parts + 1] = part
-                end
-                local current = ""
-                for _, part in ipairs(parts) do
-                    current = current .. "/" .. part
-                    if not io.dexist(current) then
-                        io.mkdir(current)
-                    end
-                end
+                io.mkdir(dir)
                 log.info("eo", "created data dir:", dir, io.dexist(dir) and "ok" or "FAIL")
             end
             ::next_data_dir::
@@ -2627,36 +2624,133 @@ local function scan(base_dir, storage_type)
     return cnt
 end
 
+-- ==============================================
+-- 内置设备 SD 引脚配置
+-- ==============================================
+local BUILT_IN_DEVICES = {
+    Air8000 = { spi_id = 1, pin_cs = 20, speed = 2000000 },
+    Air8101 = { spi_id = 1, pin_cs = 14, speed = 2000000 },
+    Air1601 = { spi_id = 1, pin_cs = 10, speed = 2000000 },
+}
+
+-- ==============================================
+-- SD卡 / Flash 挂载（含 SPI/GPIO 初始化）
+-- ==============================================
+local function mount_storage(cfg)
+    local storage = cfg.storage_type or "sd_tf"
+    local mount_point = STORAGE_DEFS[storage] and STORAGE_DEFS[storage].mount_point or "/sd/"
+    if io.dexist(mount_point) then
+        log.info("ei", "storage already mounted:", mount_point)
+        return true
+    end
+
+    -- PC 环境：不操作硬件，直接创建挂载点目录模拟挂载
+    local is_pc = (rtos.bsp() == "PC")
+    if is_pc then
+        log.info("ei", "PC mode: creating directory", mount_point)
+        local ok = io.mkdir(mount_point)
+        if ok then
+            io.mkdir(mount_point .. "app_store")
+        end
+        return ok
+    end
+
+    local spi_id   = cfg.spi_id or 1
+    local pin_cs   = cfg.pin_cs or 20
+    local speed    = cfg.speed  or 2000000
+
+    if storage == "sd_tf" then
+        log.info("ei", "mounting sd: spi", spi_id, "cs", pin_cs, "speed", speed)
+        spi.setup(spi_id, nil, 0, 0, 8, speed)
+        gpio.setup(pin_cs, 1)
+        local ok, err = fatfs.mount(fatfs.SPI, mount_point, spi_id, pin_cs, speed)
+        if not ok then
+            log.warn("ei", "sd mount failed:", err)
+            return false
+        end
+        return true
+    elseif storage == "little_flash" or storage == "nand_flash" then
+        local label = STORAGE_DEFS[storage] and STORAGE_DEFS[storage].label or "Flash"
+        log.info("ei", "mounting", label, ": spi", spi_id, "cs", pin_cs)
+        spi.setup(spi_id, nil, 0, 0, 8, speed)
+        gpio.setup(pin_cs, 1)
+        -- 使用全局变量存储，避免 GC 回收导致 flash 操作死机
+        little_flash_spi_device = spi.deviceSetup(spi_id, pin_cs, 0, 0, 8, speed)
+        if not little_flash_spi_device then
+            log.warn("ei", "spi device setup failed")
+            return false
+        end
+        little_flash_device = lf.init(little_flash_spi_device)
+        if not little_flash_device then
+            log.warn("ei", "lf.init failed")
+            return false
+        end
+        local ok = lf.mount(little_flash_device, mount_point)
+        if not ok then
+            -- 挂载失败尝试后再试一次（可能是首次使用需要初始化）
+            ok = lf.mount(little_flash_device, mount_point)
+            if not ok then
+                log.warn("ei", "lf.mount failed:", mount_point)
+                return false
+            end
+        end
+        log.info("ei", label, "mounted at", mount_point)
+        return true
+    end
+    return false
+end
+
 --[[
 初始化应用管理库，扫描设备上的已安装应用（支持多存储）
 
     功能说明：
     - 加载存储优先级配置（从 fskv）
-    - 探测所有存储介质状态（仅检查挂载点是否已存在，不执行硬件挂载）
+    - 根据参数挂载外部存储（SD卡/Flash，含 SPI/GPIO 初始化）
+    - 探测所有存储介质状态
     - 扫描 /app_store/、/sd/app_store/、/little_flash/app_store/
-    - 将应用信息保存到 installed_info（含存储位置信息）
 
-    @return bool 初始化成功返回 true
-    注：外部存储（/sd/、/little_flash/）的硬件挂载由各型号驱动层在系统启动时完成，
-        exapp 只检查挂载点是否已存在，不执行实际的硬件初始化。
+    调用方式：
+    1. exapp.init()                                    -- 不做硬件挂载，仅扫描
+    2. exapp.init(dev_type)                             -- 内置型号
+    3. exapp.init("custom", { storage_type, spi_id, pin_cs, speed })  -- 自定义
 
-    @param storage_params table|nil 预留参数（可选），用于未来扩展
-    @return bool 初始化成功返回 true
+    @param dev_type string|nil  内置型号名或 "custom"
+    @param sdcard_opts table|nil  自定义参数 {storage_type, spi_id, pin_cs, speed}
+    @return bool
 
     @usage
     exapp.init()
-    exapp.init({})  -- 可传入空表或预留参数
+    exapp.init("Air8000")
+    exapp.init("custom", { storage_type = "sd_tf", spi_id = 1, pin_cs = 12, speed = 20000000 })
 ]]
-function exapp.init(storage_params)
-    log.info("ei", "start scanning apps with multi-storage support")
+function exapp.init(...)
+    local args = {...}
+    local dev_type = args[1]
+    local sdcard_opts = args[2]
 
-    -- 0. 确保 fskv 已初始化（可能在 factory 初始化之前被调用）
+    log.info("exapp.init", "start scanning apps with multi-storage support")
+
+    -- 0. 确保 fskv 已初始化
     fskv.init()
 
     -- 1. 加载存储优先级配置
     load_storage_config()
 
-    -- 2. 探测所有存储介质状态（仅检查挂载点是否存在）
+    -- 2. 根据参数挂载外部存储（含 SPI/GPIO 初始化）
+    if dev_type then
+        local cfg
+        if dev_type == "custom" and type(sdcard_opts) == "table" then
+            cfg = sdcard_opts
+        else
+            cfg = BUILT_IN_DEVICES[dev_type]
+            if cfg then cfg.storage_type = "sd_tf" end
+        end
+        if cfg then
+            mount_storage(cfg)
+        end
+    end
+
+    -- 3. 探测所有存储介质状态
     storage_available.internal = true
     storage_available.sd_tf = probe_storage("/sd/")
     storage_available.little_flash = probe_storage("/little_flash/")
@@ -2785,7 +2879,7 @@ local function http_request(params)
         ["Content-Type"] = "application/json"
     }, body, { timeout = 10000 }).wait()
 
-    -- log.info("ea", json.encode(body))
+    -- log.info("exapp", json.encode(body))
 
     -- 处理通信异常（code < 0）
     if code < 0 then
@@ -2864,20 +2958,20 @@ local function enrich(server_apps)
                     -- */
                     local wf_ok, wf_err = io.writeFile(icon_path, decoded)
                     if wf_ok then
-                        log.info("ea", "icon saved:", icon_path, #decoded)
+                        log.info("exapp", "icon saved:", icon_path, #decoded)
                     else
-                        log.warn("ea", "io.writeFile failed:", wf_err)
+                        log.warn("exapp", "io.writeFile failed:", wf_err)
                         local f = io.open(icon_path, "wb")
                         if f then
                             f:write(decoded)
                             f:close()
-                            log.info("ea", "icon saved via io.open:", icon_path, #decoded)
+                            log.info("exapp", "icon saved via io.open:", icon_path, #decoded)
                         end
                     end
                     app.icon_path = icon_path
                 end
             else
-                log.warn("ea", "icon_binary too large for", app.aid, "size:", #app.icon_binary)
+                log.warn("exapp", "icon_binary too large for", app.aid, "size:", #app.icon_binary)
             end
             app.icon_binary = nil
         end
@@ -3069,7 +3163,7 @@ end
 
 -- 下载文件
 local function download_file(url, dest_path, aid)
-    log.info("ea", "downloading", url, "->", dest_path)
+    log.info("exapp", "downloading", url, "->", dest_path)
     -- 尝试从服务器返回字段获取 zip 大小信息（若服务端支持）
     local app_entry = nil
     if remote_app_list and remote_app_list.apps then
@@ -3088,7 +3182,7 @@ local function download_file(url, dest_path, aid)
     if type(ram_stat) ~= "table" then ram_stat = nil end
     if ram_stat and type(ram_stat.free_kb) == "number" then ram_free_kb = ram_stat.free_kb end
     if expected_size_kb > 0 and ram_free_kb > 0 and expected_size_kb > ram_free_kb then
-        log.error("ea", "not enough memory to download app", aid, expected_size_kb, ram_free_kb)
+        log.error("exapp", "not enough memory to download app", aid, expected_size_kb, ram_free_kb)
         sys.publish("APP_STORE_ERROR", "内存空间不足无法安装")
         return false
     end
@@ -3114,17 +3208,17 @@ local function download_file(url, dest_path, aid)
                 local diff_percent = math.abs(actual_kb - expected) / expected * 100
                 -- 允许10%差异或最多20KB差异，取较大值（对小文件更宽松）
                 if diff > math.max(expected * 0.10, 20) then
-                    log.warn("ea", "download size mismatch for", aid, actual_kb, expected, "diff:", diff, "KB", string.format("%.1f", diff_percent), "%")
+                    log.warn("exapp", "download size mismatch for", aid, actual_kb, expected, "diff:", diff, "KB", string.format("%.1f", diff_percent), "%")
                     if io.exists(dest_path) then os.remove(dest_path) end
                     return false
                 elseif diff > 0 then
-                    log.info("ea", "download size minor mismatch for", aid, actual_kb, expected, "diff:", diff, "KB", string.format("%.1f", diff_percent), "%")
+                    log.info("exapp", "download size minor mismatch for", aid, actual_kb, expected, "diff:", diff, "KB", string.format("%.1f", diff_percent), "%")
                 end
             end
         end
         return true
     else
-        log.error("ea", "download failed", code)
+        log.error("exapp", "download failed", code)
         -- 下载失败，清理已下载的文件
         if dest_path and io.exists(dest_path) then os.remove(dest_path) end
         return false
@@ -3150,14 +3244,14 @@ end
 
 -- 解压ZIP
 local function unzip_file(zip_path, dest_dir)
-    log.info("ea", "extracting", zip_path, "->", dest_dir)
+    log.info("exapp", "extracting", zip_path, "->", dest_dir)
     local success = miniz.unzip(zip_path, dest_dir)
     return success
 end
 
 -- 向服务器报告下载安装结果
 local function report_result(aid, error_msg)
-    log.info("ea", "reporting download result", aid, error_msg or "success")
+    log.info("exapp", "reporting download result", aid, error_msg or "success")
     local data = { app_id = tostring(aid) }
     -- 只有传入非空的 error_msg 时才添加该字段
     if error_msg and error_msg ~= "" then
@@ -3170,9 +3264,9 @@ local function report_result(aid, error_msg)
             ["Content-Type"] = "application/json"
         }, body, { timeout = 10000 }).wait()
         if code == 200 then
-            log.info("ea", "download report success for", aid)
+            log.info("exapp", "download report success for", aid)
         else
-            log.warn("ea", "download report failed", code, resp_body)
+            log.warn("exapp", "download report failed", code, resp_body)
         end
     end)
 end
@@ -3534,13 +3628,13 @@ local function download_icon(aid, url)
     end
 
     sys.taskInit(function()
-        log.info("ea", "downloading icon", url, "->", local_path)
+        log.info("exapp", "downloading icon", url, "->", local_path)
         local code = http.request("GET", url, nil, nil, { dst = local_path, timeout = 10000 }).wait()
         if code == 200 then
             icon_cache[aid] = { path = local_path, timestamp = os.time(), size = io.fileSize(local_path) }
             sys.publish("APP_STORE_ICON_READY", aid, local_path)
         else
-            log.error("ea", "icon download failed", code)
+            log.error("exapp", "icon download failed", code)
         end
     end)
     return nil
@@ -3586,7 +3680,7 @@ function exapp.clear_icon_cache(max_age)
             cleaned = cleaned + 1
         end
     end
-    log.info("ea", "cleared", cleaned, "expired icons")
+    log.info("exapp", "cleared", cleaned, "expired icons")
     return cleaned
 end
 
@@ -3830,7 +3924,7 @@ exapp.init()
 sys.taskInit(function()
     sys.waitUntil("IP_READY", 30000)
     network_ready = true
-    log.info("ea", "network ready")
+    log.info("exapp", "network ready")
 end)
 
 sys.subscribe("APP_STORE_GET_LIST", function(category, sort, page_param, size_param, query_param)
@@ -3876,27 +3970,5 @@ sys.subscribe("STORAGE_PRIORITY_CHANGED", function(priority_list)
     end
 end)
 
--- 响应外部存储挂载事件，增量扫描新挂载的存储
--- 驱动层挂载完成后发布: sys.publish("STORAGE_MOUNTED", "/sd/")
-sys.subscribe("STORAGE_MOUNTED", function(mount_point)
-    log.info("exapp", "storage mounted:", mount_point)
-    local storage_type = nil
-    if mount_point == "/sd/" then
-        storage_available.sd_tf = probe_storage("/sd/")
-        storage_type = "sd_tf"
-    elseif mount_point == "/little_flash/" then
-        storage_available.little_flash = probe_storage("/little_flash/")
-        storage_type = "little_flash"
-    end
-    if storage_type and storage_available[storage_type] then
-        local added = scan(mount_point .. "app_store/", storage_type)
-        if added > 0 then
-            installed_total_count = installed_cnt
-            log.info("exapp", "mounted scan found", added, "apps, total:", installed_cnt)
-            sys.publish("APP_STORE_INSTALLED_UPDATED", installed_info)
-        end
-    end
-end)
-
-log.info("ea", "loaded")
+log.info("exapp", "loaded")
 return exapp

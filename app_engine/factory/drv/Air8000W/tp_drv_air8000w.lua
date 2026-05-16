@@ -1,4 +1,3 @@
--- nconv: var2-4 fn2-5 tag-short
 --[[
 @module  tp_drv
 @summary 触摸面板驱动模块，基于tp核心库
@@ -44,7 +43,7 @@ function tp_drv.init()
     -- pin_int: 中断引脚编号
     -- w: 触摸面板宽度
     -- h: 触摸面板高度
-    local r = tp.init("gt911", { port = 0, pin_rst = 26, pin_int = gpio.WAKEUP0})
+    local r = tp.init("gt911", { port = 0, pin_rst = 26, pin_int = gpio.WAKEUP0 })
     log.info("tp", r)
     if not r then
         log.error("ui", "触摸初始化失败")

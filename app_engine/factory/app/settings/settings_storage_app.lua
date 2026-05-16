@@ -119,32 +119,34 @@ local function get_all_storage_info()
     local mount_points = { "/", "/sd/", "/little_flash/" }
 
     for _, mp in ipairs(mount_points) do
+        local entry = {
+            mount_point = mp,
+            label = STORAGE_LABELS[mp] or mp,
+            available = false,
+        }
         if io.dexist(mp) then
-            local ok, stat = pcall(io.fsstat, mp)
-            local entry = {
-                mount_point = mp,
-                label = STORAGE_LABELS[mp] or mp,
-                available = false,
-            }
-            if ok and type(stat) == "table" then
-                if type(stat.free_kb) == "number" and type(stat.total_kb) == "number" then
-                    entry.total_kb = stat.total_kb
-                    entry.free_kb = stat.free_kb
-                    entry.used_kb = stat.total_kb - stat.free_kb
-                    entry.used_percent = math.floor((stat.total_kb - stat.free_kb) * 100 / stat.total_kb)
-                    entry.available = true
-                elseif stat.free_blocks and stat.block_size and stat.total_blocks then
-                    local total_kb = math.floor(stat.total_blocks * stat.block_size / 1024)
-                    local free_kb = math.floor(stat.free_blocks * stat.block_size / 1024)
-                    entry.total_kb = total_kb
-                    entry.free_kb = free_kb
-                    entry.used_kb = total_kb - free_kb
-                    entry.used_percent = math.floor((total_kb - free_kb) * 100 / total_kb)
-                    entry.available = true
+            -- io.fsstat 返回值格式: success, total_blocks, used_blocks, block_size, fs_type
+            local r, success, total_blocks, used_blocks, block_size = pcall(io.fsstat, mp)
+            if not r then
+                -- little_flash(LFS) 用 fs.fsstat
+                if fs and fs.fsstat then
+                    r, success, total_blocks, used_blocks, block_size = pcall(fs.fsstat, mp)
                 end
             end
-            table.insert(result, entry)
+            log.info("settings_storage", mp, "io.fsstat raw:",
+                "success", success, "total_blk", total_blocks, "used_blk", used_blocks, "blk_sz", block_size)
+            if r and success and total_blocks and used_blocks and block_size then
+                -- 先除再乘，避免 total_blocks * block_size 溢出 32 位整数
+                local total_kb = total_blocks * (block_size / 1024)
+                local used_kb = used_blocks * (block_size / 1024)
+                entry.total_kb = total_kb
+                entry.free_kb = total_kb - used_kb
+                entry.used_kb = used_kb
+                entry.used_percent = math.floor(used_kb * 100 / total_kb)
+                entry.available = true
+            end
         end
+        table.insert(result, entry)
     end
     return result
 end
