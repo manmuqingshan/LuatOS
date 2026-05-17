@@ -718,10 +718,24 @@ target("luatos-lua")
     -- mp4player（MP4/H.264/AAC 解码器）
     -- 源码目录由 luatos_ext_root 指向 luatos-ext-components/vedio_player
     -- 示例（PowerShell）：
-    --   $env:LUAT_USE_MP4PLAYER = "y"
+    --   $env:LUAT_USE_MP4PLAYER = "y"  # 显式启用
+    --   $env:LUAT_USE_MP4PLAYER = "n"  # 显式禁用
     --   cmd /c build_windows_32bit_msvc.bat
     -- =========================================================
-    local use_mp4player = true
+    -- 自动检测：如果 luatos_ext_root/vedio_player 不存在，自动禁用 MP4
+    local use_mp4player = false
+    local mp4player_src = luatos_ext_root .. "/vedio_player"
+    if os.isdir(mp4player_src) then
+        -- 检查环境变量 LUAT_USE_MP4PLAYER 的显式控制
+        local env_mp4 = os.getenv("LUAT_USE_MP4PLAYER")
+        if env_mp4 ~= "n" then
+            use_mp4player = true
+        end
+    elseif os.getenv("LUAT_USE_MP4PLAYER") == "y" then
+        -- 显式要求启用但目录不存在，给出警告（保留，不强制失败）
+        print("Warning: LUAT_USE_MP4PLAYER=y but vedio_player not found at: " .. mp4player_src)
+    end
+    
     if use_mp4player then
         add_defines("LUAT_USE_MP4PLAYER=1")
 
