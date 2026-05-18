@@ -1,8 +1,8 @@
 --[[
 @module exfotawifi
 @summary 用于Air8000/8000A/8000W型号模组自动升级WIFI
-@version 1.0.3
-@date    2025.9.23
+@version 1.0.4
+@date    2026.5.18
 @author  拓毅恒
 @usage
 注：使用时在创建的一个task处理函数中直接调用exfotawifi.request()即可开始执行WiFi升级任务
@@ -157,7 +157,13 @@ local function fota_start(file_path)
 end
 
 
-function exfotawifi.request()
+--[[
+配置参数说明:
+- config_url: 可选，自定义升级配置JSON文件的URL
+  默认为nil，使用自动判断的接口(update.json或update2.json)
+  可设置为 "http://wififota.openluat.com:8300/air8000/update_temp.json" 使用临时升级接口
+]]
+function exfotawifi.request(config_url)
     -- 先检查网络状态，如果已就绪直接执行，否则等待IP_READY
     local result = false
     if socket.adapter() then
@@ -182,19 +188,27 @@ function exfotawifi.request()
         fota_result = false
 
         -- 构建请求URL
-        local url = "http://wififota.openluat.com:8300/air8000/update.json"
-        local imei = is_nil(mobile.imei()) and "未知imei" or mobile.imei()
-        local version = is_nil(airlink.sver()) and "未知版本" or airlink.sver()
-        local muid = is_nil(mobile.muid()) and "未知muid" or mobile.muid()
-        local hw = is_nil(hmeta.hwver()) and "未知硬件版本" or hmeta.hwver()
-        local coreversion = is_nil(rtos.version()) and "未知4G固件版本" or rtos.version()
-        local model = is_nil(hmeta.model()) and "未知4G设备型号" or hmeta.model()
-        -- 如果model以Air8000开头, 然后版本号大于等于V2020, 则使用update2.json接口
-        if string.sub(model, 1, 7) == "Air8000" and (tonumber(string.sub(coreversion, 2, 5)) or 0) >= 2020 then
-            url = "http://wififota.openluat.com:8300/air8000/update2.json"
-        end
+        local request_url
+        
+        -- 如果指定了自定义配置URL，则直接使用
+        if not is_nil(config_url) then
+            request_url = config_url
+            log.info("exfotawifi", "使用自定义升级配置URL:", request_url)
+        else
+            local url = "http://wififota.openluat.com:8300/air8000/update.json"
+            local imei = is_nil(mobile.imei()) and "未知imei" or mobile.imei()
+            local version = is_nil(airlink.sver()) and "未知版本" or airlink.sver()
+            local muid = is_nil(mobile.muid()) and "未知muid" or mobile.muid()
+            local hw = is_nil(hmeta.hwver()) and "未知硬件版本" or hmeta.hwver()
+            local coreversion = is_nil(rtos.version()) and "未知4G固件版本" or rtos.version()
+            local model = is_nil(hmeta.model()) and "未知4G设备型号" or hmeta.model()
+            -- 如果model以Air8000开头, 然后版本号大于等于V2020, 则使用update2.json接口
+            if string.sub(model, 1, 7) == "Air8000" and (tonumber(string.sub(coreversion, 2, 5)) or 0) >= 2020 then
+                url = "http://wififota.openluat.com:8300/air8000/update2.json"
+            end
 
-        local request_url = string.format("%s?imei=%s&version=%s&muid=%s&hw=%s&coreversion=%s&model=%s", url, imei, version, muid, hw, coreversion, model)
+            request_url = string.format("%s?imei=%s&version=%s&muid=%s&hw=%s&coreversion=%s&model=%s", url, imei, version, muid, hw, coreversion, model)
+        end
 
         log.info("exfotawifi", "正在请求升级信息, URL:", request_url)
 
