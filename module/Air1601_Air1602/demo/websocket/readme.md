@@ -102,21 +102,24 @@
 <td>gnd<br/></td><td>gnd<br/></td></tr>
 <tr>
 </table>
+3、使用4g airlink网络方式请参考如下文档4g章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
 
-3、使用4g airlink网络接线方式请参考如下文档4g章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
+4、使用以太网网络方式请参考如下文档以太网章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
 
-4、使用以太网网络接线方式请参考如下文档以太网章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
+5、使用wifi airlink网络方式请参考如下文档wifi章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
 
 
 ## 演示软件环境
 
 1、Luatools下载调试工具
 
-2、[Air1601 V1010版本固件）](https://docs.openluat.com/air1601/luatos/firmware/)（理论上，2026年4月16日之后发布的固件都可以）
+2、[Air1601 V1010版本固件](https://docs.openluat.com/air1601/luatos/firmware/)（理论上，2026年4月16日之后发布的固件都可以）
 
-3、PC端的串口工具，例如SSCOM、LLCOM等都可以
+3、[Air780EPM V2034版本 8号固件](https://docs.openluat.com/air780epm/luatos/firmware/780epm_version/)（理论上，2026年5月14日之后发布的固件都可以）
 
+4、[Air6205 V1022版本固件](https://docs.openluat.com/air6205/product/firmware/)（理论上，2026年4月23日之后发布的固件都可以）
 
+5、PC端的串口工具，例如SSCOM、LLCOM等都可以
 
 ## 演示核心步骤
 

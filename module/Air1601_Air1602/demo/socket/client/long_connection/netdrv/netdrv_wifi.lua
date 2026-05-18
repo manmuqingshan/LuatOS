@@ -76,7 +76,7 @@ local function netdrv_wifi_task_func()
                 airlink_uart_id = 3,
                 airlink_uart_baud = 2000000,
                 ssid = "116",
-                password = "wangshuai123"
+                password = "hezhou666"
             }
         }
     })
