@@ -68,6 +68,8 @@ extern const airui_platform_ops_t *airui_platform_ops_sdl2_get(void);
 extern const airui_platform_ops_t *airui_platform_ops_luatos_get(void);
 // 注册 LuatOS 平台 JPG 解码器
 extern int airui_platform_luatos_register_jpg_decoder(void);
+// 注册 LuatOS 平台 PNG 解码器
+extern int airui_platform_luatos_register_png_decoder(void);
 #endif
 
 /**
@@ -546,6 +548,10 @@ int airui_init(airui_ctx_t *ctx, uint16_t width, uint16_t height, lv_color_forma
     ret = airui_platform_luatos_register_jpg_decoder();
     if (ret != AIRUI_OK) {
         LLOGW("airui_init: register luatos jpg decoder failed, ret=%d", ret);
+    }
+    ret = airui_platform_luatos_register_png_decoder();
+    if (ret != AIRUI_OK) {
+        LLOGW("airui_init: register luatos png decoder failed, ret=%d", ret);
     }
     #endif
 

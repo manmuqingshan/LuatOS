@@ -228,7 +228,12 @@ LUAT_WEAK int luat_jpeg_decode_hw(uint8_t *in_buf, size_t in_len, luat_img_info_
     return LUAT_IMG_ERR;
 }
 static int jpeg_hw_decode_fn(uint8_t *in_buf, size_t in_len, luat_img_info_t* img_info) {
-    return luat_jpeg_decode_hw(in_buf, in_len, img_info);
+    LLOGI("jpeg hw decode: in_len=%u", (unsigned)in_len);
+    int ret = luat_jpeg_decode_hw(in_buf, in_len, img_info);
+    if (ret == LUAT_IMG_OK) {
+        LLOGI("jpeg hw decoded: %dx%d, size=%u", img_info->width, img_info->height, (unsigned)img_info->size);
+    }
+    return ret;
 }
 static const luat_img_decoder_opts_t jpeg_hw_decoder_opts = {
     .decode = jpeg_hw_decode_fn,
@@ -241,7 +246,12 @@ LUAT_WEAK int luat_png_decode_hw(uint8_t *in_buf, size_t in_len, luat_img_info_t
     return LUAT_IMG_ERR;
 }
 static int png_hw_decode_fn(uint8_t *in_buf, size_t in_len, luat_img_info_t* img_info) {
-    return luat_png_decode_hw(in_buf, in_len, img_info);
+    LLOGI("png hw decode: in_len=%u", (unsigned)in_len);
+    int ret = luat_png_decode_hw(in_buf, in_len, img_info);
+    if (ret == LUAT_IMG_OK) {
+        LLOGI("png hw decoded: %dx%d, size=%u", img_info->width, img_info->height, (unsigned)img_info->size);
+    }
+    return ret;
 }
 static const luat_img_decoder_opts_t png_hw_decoder_opts = {
     .decode = png_hw_decode_fn,
