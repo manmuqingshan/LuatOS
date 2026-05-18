@@ -1,8 +1,8 @@
 --[[
 @module  ble_client_main
 @summary ble client 主应用功能模块
-@version 1.0
-@date    2025.08.20
+@version 1.1
+@date    2026.05.18
 @author  王世豪
 @usage
 本文件为ble client 主应用功能模块，核心业务逻辑为：
@@ -56,7 +56,11 @@ local function wifi_state_change(state)
     log.info("ble_client_main", "收到WiFi状态变化:", state)
     
     if state == 0 then
-        scan_count = 0
+        -- WiFi关闭时，重置蓝牙设备对象（硬件已关闭，Lua变量需要重置）
+        log.info("ble_client_main", "WiFi关闭，重置蓝牙设备状态")
+        bluetooth_device = nil
+        ble_device = nil
+        scan_create = nil
         -- WiFi状态关闭时发布"WIFI_STATE_CLOSE"消息
         sys.sendMsg(TASK_NAME, "BLE_EVENT", "WIFI_STATE_CLOSE")
     else

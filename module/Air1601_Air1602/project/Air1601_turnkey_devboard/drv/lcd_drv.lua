@@ -35,7 +35,7 @@ else
 end
 ]]
 
-local port, pin_reset, bl = lcd.RGB, 0, 2
+local port, pin_reset, bl = lcd.RGB, 15, 2
 
 local function lcd_drv_init()
     -- 开启屏幕供电

@@ -38,15 +38,21 @@ HTTPDNS的主要功能特性：
 
 拨码开关位置请参考如下文档串口烧录章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
 
-3、使用4g airlink网络接线方式请参考如下文档4g章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
+3、使用4g airlink网络方式请参考如下文档4g章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
 
-4、使用以太网网络接线方式请参考如下文档以太网章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
+4、使用以太网网络方式请参考如下文档以太网章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
+
+5、使用wifi airlink网络方式请参考如下文档wifi章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
 
 ## 演示软件环境
 
 1、Luatools下载调试工具
 
 2、[Air1601 V1012版本固件](https://docs.openluat.com/air1601/luatos/firmware/)（理论上，2026年4月17日之后发布的固件都可以）
+
+3、[Air780EPM V2034版本 8号固件](https://docs.openluat.com/air780epm/luatos/firmware/780epm_version/)（理论上，2026年5月14日之后发布的固件都可以）
+
+4、[Air6205 V1022版本固件](https://docs.openluat.com/air6205/product/firmware/)（理论上，2026年4月23日之后发布的固件都可以）
 
 ## 演示核心步骤
 
@@ -56,11 +62,11 @@ HTTPDNS的主要功能特性：
 
 - 如果需要单4G网卡，打开require "netdrv_4g"，其余注释掉
 
-- 如果需要单WIFI STA网卡，打开require "netdrv_wifi"，其余注释掉；同时netdrv_wifi.lua中的exnetif.set_priority_order函数里面的ssid和password，修改为自己测试时wifi热点的名称和密码；注意：仅支持2.4G的wifi，不支持5G的wifi(注意：当前netdrv_wifi还不能使用)
+- 如果需要单WIFI STA网卡，打开require "netdrv_wifi"，其余注释掉；同时netdrv_wifi.lua中的exnetif.set_priority_order函数里面的ssid和password，修改为自己测试时wifi热点的名称和密码；注意：仅支持2.4G的wifi，不支持5G的wifi
 
 - 如果需要以太网卡，打开require "netdrv_eth_spi"，其余注释掉
 
-- 如果需要多网卡，打开require "netdrv_multiple"，其余注释掉；同时netdrv_multiple.lua中的ssid = "茶室-降功耗,找合宙!", password = "Air123456", 修改为自己测试时wifi热点的名称和密码；注意：仅支持2.4G的wifi，不支持5G的wifi(注意：当前netdrv_wifi还不能使用)
+- 如果需要多网卡，打开require "netdrv_multiple"，其余注释掉；同时netdrv_multiple.lua中的ssid = "茶室-降功耗,找合宙!", password = "Air123456", 修改为自己测试时wifi热点的名称和密码；注意：仅支持2.4G的wifi，不支持5G的wifi
 
 3、使用Luatools烧录内核固件和demo脚本代码
 

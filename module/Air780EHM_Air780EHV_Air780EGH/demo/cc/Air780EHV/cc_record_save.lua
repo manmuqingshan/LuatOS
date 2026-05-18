@@ -63,6 +63,15 @@ local record_duration = 0              -- 录音时长（秒）
 local record_sample_rate = 8000        -- 录音采样率（从cc.quality获取，用于后续AMR转码）
 
 -- 注意：缓冲区大小必须是640的倍数
+-- 原因：VoLTE通话音频数据以20ms为帧单位，8KHz采样率每帧320字节，16KHz采样率每帧640字节
+-- 640是两者的最小公倍数，确保缓冲区能整除存放整数个音频帧
+-- 
+-- 当前配置计算：
+-- BUFFER_SIZE = 48000 字节
+-- 16KHz模式：48000 / 640 = 75 帧 = 75 * 20ms = 1500ms = 1.5 秒
+-- 8KHz模式：48000 / 320 = 150 帧 = 150 * 20ms = 3000ms = 3 秒
+-- 
+-- 双缓冲机制：满时触发回调，处理完用:del()清空
 local BUFFER_SIZE = 48000  -- 缓冲区大小不能太小，否则保存过程中有可能会溢出造成死机
 
 -- ====================== sd卡挂载函数 ======================
@@ -153,6 +162,23 @@ local function open_record_file()
     end
 end
 
+-- 计算时间差（毫秒）
+local function calc_time_diff_ms(start_tick, end_tick)
+    -- 检查溢出：Lua中超过0x7fffffff会变成负数
+    if (start_tick > 0 and end_tick < 0) or (start_tick < 0 and end_tick > 0) then
+        log.warn("时间计算", "mcu.ticks()溢出，无法准确计算时长")
+        return nil
+    end
+    
+    local diff_ticks = end_tick - start_tick
+    local hz = mcu.hz()
+    if hz == 0 then
+        hz = 1000  -- 默认1ms一个tick
+    end
+    
+    return (diff_ticks * 1000) / hz
+end
+
 -- 关闭录音文件
 local function close_record_file()
     if record_file then
@@ -160,9 +186,14 @@ local function close_record_file()
         record_file = nil
         
         local file_size = io.fileSize(RECORD_FILE_PATH)
-        record_duration = (mcu.ticks() - record_start_time) / 1000  -- 转换为秒
+        local duration_ms = calc_time_diff_ms(record_start_time, mcu.ticks())
         
-        log.info("录音文件", "录音完成", "文件大小:", file_size, "字节", "录音时长:", string.format("%.1f", record_duration), "秒", "路径:", RECORD_FILE_PATH)
+        if duration_ms then
+            record_duration = duration_ms / 1000  -- 转换为秒
+            log.info("录音文件", "录音完成", "文件大小:", file_size, "字节", "录音时长:", string.format("%.1f", record_duration), "秒", "路径:", RECORD_FILE_PATH)
+        else
+            log.info("录音文件", "录音完成", "文件大小:", file_size, "字节", "录音时长: 溢出无法计算", "路径:", RECORD_FILE_PATH)
+        end
         
         is_recording_to_file = false
         record_start_time = 0
@@ -186,13 +217,19 @@ local function write_record_data(buff, is_downlink)
             record_file:write(buff:query())
             
             local end_time = mcu.ticks()
-            local write_time = end_time - start_time
-            local write_speed = data_size / (write_time / 1000)  -- 字节/秒
+            local write_time_ms = calc_time_diff_ms(start_time, end_time)
             
-            log.info("录音写入", 
-                    "数据大小:", data_size, "字节,", 
-                    "写入耗时:", string.format("%.2f", write_time), "ms,",
-                    "写入速度:", string.format("%.2f", write_speed / 1024), "KB/s")
+            if write_time_ms and write_time_ms > 0 then
+                local write_speed = data_size / (write_time_ms / 1000)  -- 字节/秒
+                log.info("录音写入", 
+                        "数据大小:", data_size, "字节,", 
+                        "写入耗时:", string.format("%.2f", write_time_ms), "ms,",
+                        "写入速度:", string.format("%.2f", write_speed / 1024), "KB/s")
+            else
+                log.info("录音写入", 
+                        "数据大小:", data_size, "字节,", 
+                        "写入耗时: 溢出无法计算")
+            end
             
             return true
         end
@@ -345,13 +382,22 @@ local function convert_pcm_to_amr()
     amr_file:close()
     
     local end_time = mcu.ticks()
-    local cost_time = (end_time - start_time) / 1000
+    local cost_time_ms = calc_time_diff_ms(start_time, end_time)
     
-    log.info("AMR转码", "转码完成",
-             "AMR大小:", total_encoded, "字节,",
-             "压缩比:", string.format("%.1f%%", total_encoded / pcm_size * 100), ",",
-             "耗时:", string.format("%.1f", cost_time), "秒,",
-             "路径:", RECORD_AMR_FILE_PATH)
+    if cost_time_ms then
+        local cost_time_sec = cost_time_ms / 1000
+        log.info("AMR转码", "转码完成",
+                 "AMR大小:", total_encoded, "字节,",
+                 "压缩比:", string.format("%.1f%%", total_encoded / pcm_size * 100), ",",
+                 "耗时:", string.format("%.1f", cost_time_sec), "秒,",
+                 "路径:", RECORD_AMR_FILE_PATH)
+    else
+        log.info("AMR转码", "转码完成",
+                 "AMR大小:", total_encoded, "字节,",
+                 "压缩比:", string.format("%.1f%%", total_encoded / pcm_size * 100), ",",
+                 "耗时: 溢出无法计算",
+                 "路径:", RECORD_AMR_FILE_PATH)
+    end
     
     return true
 end

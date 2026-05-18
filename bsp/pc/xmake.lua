@@ -6,7 +6,29 @@ add_rules("mode.debug", "mode.release")
 
 local unpack = table.unpack or unpack
 local luatos = "../../"
-local luatos_ext_root = path.join(os.scriptdir(), "../../../luatos-ext-components")
+-- Resolve path to luatos-ext-components with this priority:
+--   1. LUATOS_EXT_ROOT env var — explicit override; recommended for git worktrees and CI.
+--      e.g.  $env:LUATOS_EXT_ROOT = "D:/github/luatos-ext-components"
+--   2. Relative ../../../luatos-ext-components — standard side-by-side checkout layout.
+--   3. Worktree safety net: if <repo_root>/.git is a file (worktree indicator), walk up
+--      one extra level relative to the main repo root.  This is a best-effort heuristic
+--      and is NOT the primary resolution path.
+local function find_ext_root()
+    local env_val = os.getenv("LUATOS_EXT_ROOT")
+    if env_val and env_val ~= "" then
+        return path.absolute(env_val)
+    end
+    local candidate = path.absolute(path.join(os.scriptdir(), "../../../luatos-ext-components"))
+    if os.isdir(candidate) then return candidate end
+    -- Worktree safety net: .git is a file (not a directory) inside a worktree.
+    local repo_root = path.absolute(path.join(os.scriptdir(), "../.."))
+    if os.isfile(path.join(repo_root, ".git")) then
+        local alt = path.absolute(path.join(repo_root, "../../../luatos-ext-components"))
+        if os.isdir(alt) then return alt end
+    end
+    return candidate  -- xmake will emit a clear missing-file error if path is still wrong
+end
+local luatos_ext_root = find_ext_root()
 -- 2表示mbedtls 2.18.x，3表示mbedtls 3.x
 local mbedtls_version = 3
 
@@ -556,7 +578,18 @@ target("luatos-lua")
 
     end
 
-    -- mGBA GBA模拟器组件
+    -- 非 GUI 构建补齐最小单色显示栈：u8g2 + eink/epaper + qrcode。
+    -- GUI 构建沿用原有范围，避免意外扩大 EINK 支持面。
+    if os.getenv("LUAT_USE_GUI") ~= "y" then
+        add_includedirs(luatos.."components/qrcode")
+        add_files(luatos.."components/qrcode/*.c")
+        add_files(luatos.."components/u8g2/*.c")
+        add_files("ui/luat_u8g2_pc.c")  -- provides luat_u8g2_setup (no SDL2 deps)
+        add_includedirs(luatos.."components/eink")
+        add_files(luatos.."components/eink/*.c")
+        add_includedirs(luatos.."components/epaper")
+        add_files(luatos.."components/epaper/*.c")
+    end
     if os.getenv("LUAT_USE_MGBA") == "y" then
         add_defines("LUAT_USE_MGBA=1")
         add_defines("MGBA_CONFIG_FILE=\"mgba_config_luatos.h\"")
@@ -685,10 +718,24 @@ target("luatos-lua")
     -- mp4player（MP4/H.264/AAC 解码器）
     -- 源码目录由 luatos_ext_root 指向 luatos-ext-components/vedio_player
     -- 示例（PowerShell）：
-    --   $env:LUAT_USE_MP4PLAYER = "y"
+    --   $env:LUAT_USE_MP4PLAYER = "y"  # 显式启用
+    --   $env:LUAT_USE_MP4PLAYER = "n"  # 显式禁用
     --   cmd /c build_windows_32bit_msvc.bat
     -- =========================================================
-    local use_mp4player = true
+    -- 自动检测：如果 luatos_ext_root/vedio_player 不存在，自动禁用 MP4
+    local use_mp4player = false
+    local mp4player_src = luatos_ext_root .. "/vedio_player"
+    if os.isdir(mp4player_src) then
+        -- 检查环境变量 LUAT_USE_MP4PLAYER 的显式控制
+        local env_mp4 = os.getenv("LUAT_USE_MP4PLAYER")
+        if env_mp4 ~= "n" then
+            use_mp4player = true
+        end
+    elseif os.getenv("LUAT_USE_MP4PLAYER") == "y" then
+        -- 显式要求启用但目录不存在，给出警告（保留，不强制失败）
+        print("Warning: LUAT_USE_MP4PLAYER=y but vedio_player not found at: " .. mp4player_src)
+    end
+    
     if use_mp4player then
         add_defines("LUAT_USE_MP4PLAYER=1")
 
