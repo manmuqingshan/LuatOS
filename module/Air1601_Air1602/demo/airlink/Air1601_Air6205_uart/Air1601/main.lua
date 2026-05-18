@@ -2,31 +2,14 @@
 @module  main
 @summary LuatOS用户应用脚本文件入口，总体调度应用逻辑 
 @version 1.0
-@date    2025.07.01
-@author  朱天华
+@date    2025.10.15
+@author  王城钧
 @usage
 本demo演示的核心功能为：
-1、创建四路socket连接，详情如下
-- 创建一个tcp client，连接tcp server；
-- 创建一个udp client，连接udp server；
-- 创建一个tcp ssl client，连接tcp ssl server，不做证书校验；
-- 创建一个tcp ssl client，连接tcp ssl server，client仅单向校验server的证书，server不校验client的证书和密钥文件；
-2、每一路socket连接出现异常后，自动重连；
-3、每一路socket连接，client按照以下几种逻辑发送数据给server
-- 串口应用功能模块uart_app.lua，通过uart1接收到串口数据，将串口数据增加send from uart: 前缀后发送给server；
-- 定时器应用功能模块timer_app.lua，定时产生数据，将数据增加send from timer：前缀后发送给server；
-4、每一路socket连接，client收到server数据后，将数据增加recv from tcp/udp/tcp ssl/tcp ssl ca（四选一）server: 前缀后，通过uart1发送出去；
-5、启动一个网络业务逻辑看门狗task，用来监控网络环境，如果连续长时间工作不正常，重启整个软件系统；
-6、netdrv_device：配置连接外网使用的网卡，目前支持以下四种选择（四选一）
-    (1) netdrv_4g：4G网卡
-    (2) netdrv_wifi：WIFI STA网卡
-    (3) netdrv_eth_spi：通过SPI外挂CH390H芯片的以太网卡
-    (4) netdrv_multiple：支持以上三种网卡，可以配置三种网卡的优先级
-    (5) netdrv_pc: pc模拟器网卡
-更多说明参考本目录下的readme.md文件
+1. 初始化Air6205外挂WiFi网络连接。
+2. Air1601与对端设备进行数据交互。
+3. 通过HTTP GET请求测试网络连接情况。
 ]]
-
-
 --[[
 必须定义PROJECT和VERSION变量，Luatools工具会用到这两个变量，远程升级功能也会用到这两个变量
 PROJECT：项目名，ascii string类型
@@ -37,7 +20,7 @@ VERSION：项目版本号，ascii string类型
             因为历史原因，YYY这三位数字必须存在，但是没有任何用处，可以一直写为999
         如果不使用合宙iot.openluat.com进行远程升级，根据自己项目的需求，自定义格式即可
 ]]
-PROJECT = "SOCKET_LONG_CONNECTION"
+PROJECT = "Air1601_Air6205_airlink_wifi"
 VERSION = "001.999.000"
 
 
@@ -53,6 +36,7 @@ if wdt then
     --启动一个循环定时器，每隔3秒钟喂一次狗
     sys.timerLoopStart(wdt.feed, 3000)
 end
+
 
 -- 如果内核固件支持errDump功能，此处进行配置，【强烈建议打开此处的注释】
 -- 因为此功能模块可以记录并且上传脚本在运行过程中出现的语法错误或者其他自定义的错误信息，可以初步分析一些设备运行异常的问题
@@ -77,36 +61,8 @@ end
 --     log.info("mem.sys", rtos.meminfo("sys"))
 -- end, 3000)
 
--- 加载网络环境检测看门狗功能模块
-require "network_watchdog"
-
--- 加载网络驱动设备功能模块
-require "netdrv_device"
-
--- 加载串口应用功能模块
-require "uart_app"
-
--- 加载定时器应用功能模块
-require "timer_app"
-
--- 加载aircloud数据处理模块
-require "aircloud_data"
-
--- 加载tcp client socket主应用功能模块
-require "tcp_client_main"
-
--- 加载udp client socket主应用功能模块
--- require "udp_client_main"
-
--- 打开内核固件中ssl的调试日志（需要分析问题时再打开）
--- socket.sslLog(3)
-
--- 加载tcp ssl client socket主应用功能模块
--- require "tcp_ssl_main"
-
--- 加载tcp ssl ca client socket主应用功能模块
--- require "tcp_ssl_ca_main"
-
+-- 加载功能模块
+require "network_airlink"
 
 -- 用户代码已结束---------------------------------------------
 -- 结尾总是这一句
