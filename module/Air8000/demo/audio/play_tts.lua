@@ -7,7 +7,8 @@
 @usage
 
 注意：
-如果搭配AirAUDIO_1010 音频板测试，需将AirAUDIO_1010 音频板中PA开关拨到OFF，让软件控制PA，避免pop音
+1. 如果搭配AirAUDIO_1010 音频板测试，需将AirAUDIO_1010 音频板中PA开关拨到OFF，让软件控制PA，避免pop音
+2. 使用 AirAUDIO_1020 时，仅需在`audio_setup_param`修改 `model="tm8211"` 并移除 `i2c_id` 配置即可支持播放功能
 
 本文件为流式播放应用功能模块，核心业务逻辑为：
 1、播放一个TTS
@@ -40,16 +41,16 @@ end
 
 -- 音频初始化设置参数,exaudio.setup 传入参数
 local audio_setup_param ={
-    model= "es8311",          -- 音频编解码类型,可填入"es8311","es8211"
+    model= "es8311",          -- 音频编解码类型,可填入"es8311","tm8211"
     i2c_id = 0,          -- i2c_id,可填入0，1 并使用pins 工具配置对应的管脚
     
     -- 【注意：固件版本＜V2026，这里单位为1ms，这里填600，否则可能第一个字播不出来】
     dac_delay = set_dac_delay,            -- DAC启动前冗余时间
     
-    --Air8000开发板配置pa_ctrl 和dac_ctrl 
+    -- Air8000开发板配置pa_ctrl 和dac_ctrl 
     pa_ctrl = 162,            -- 音频放大器电源控制管脚
     dac_ctrl = 164,           -- 音频编解码芯片电源控制管脚
-    --Air8000核心板配置pa_ctrl 和dac_ctrl 
+    -- Air8000核心板配置pa_ctrl 和dac_ctrl 
     -- pa_ctrl = 17,            -- 音频放大器电源控制管脚
     -- dac_ctrl = 16,           -- 音频编解码芯片电源控制管脚     
 }

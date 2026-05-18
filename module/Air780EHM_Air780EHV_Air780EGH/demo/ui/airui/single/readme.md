@@ -6,16 +6,21 @@
 
 ## 二、项目结构
 
-### 2.1 核心驱动模块
+### 2.1 核心驱动模块（其中lcd_inner_drv.lua和lcd_custom_drv.lua二选一即可，详细注释参考main.lua）
 1.  **`main.lua`** - 主程序入口
     *   项目初始化和版本定义
     *   系统任务调度和看门狗配置
     *   演示模块的选择和加载
-2.  **`lcd_drv.lua`** - LCD 显示驱动
+2.  **`lcd_inner_drv.lua`** - LCD 显示内置驱动方式
     *   初始化 LCD 屏幕及背光
     *   配置显示参数和缓冲区
     *   初始化 AirUI 框架
-3.  **`tp_drv.lua`** - 触摸面板驱动
+3.  **`lcd_custom_drv.lua`** - LCD 显示自定义驱动方式
+    *   初始化 LCD 屏幕及背光
+    *   配置显示参数和缓冲区
+    *   配置自定义初始化命令
+    *   初始化 AirUI 框架
+4.  **`tp_drv.lua`** - 触摸面板驱动
     *   初始化 GT911 触摸控制器
     *   配置 I2C 通信和触摸回调
     *   绑定触摸设备到 AirUI 输入系统
@@ -39,8 +44,16 @@
 3.  **`airui_win.lua`** - 窗口组件演示
 4.  **`airui_switch_page.lua`** - 多页面切换功能演示
 5.  **`airui_all_component.lua`** - 所有组件综合演示
+6.  **`airui_chart.lua`** - 图表组件演示
+7.  **`airui_qrcode.lua`** - 二维码组件演示
 
-### 2.5 字体渲染演示
+### 2.5 多媒体与图形演示
+1.  **`airui_animimg.lua`** - 动画图像组件演示（多帧PNG序列播放）
+2.  **`airui_shape.lua`** - 形状组件演示（直线、圆形、椭圆、矩形）
+3.  **`airui_spinner.lua`** - 加载指示器组件演示（旋转动画）
+4.  **`airui_video.lua`** - 视频组件演示（MJPG播放）
+
+### 2.6 字体渲染演示
 1.  **`airui_hzfont.lua`** - HzFont 矢量字体特性演示
 
 ## 三、演示效果
@@ -176,8 +189,15 @@
 在 `main.lua` 中选择要运行的演示模块：
 
 ```lua
--- 加载显示驱动
-require("lcd_drv")
+-- 加载显示驱动，有内置驱动和自定义驱动两种方式
+-- 内置驱动方式（lcd_inner_drv.lua）：使用LuatOS内核固件已经支持的显示驱动，无需在脚本中进行初始化命令配置
+-- 自定义驱动方式（lcd_custom_drv.lua）：用户根据自己使用的lcd型号，在脚本中自己配置初始化命令，来驱动lcd显示
+-- 如果是LuatOS内核固件已经支持的lcd型号，可以选择内置驱动方式，也可以选择自定义驱动方式
+-- 如果LuatOS内核固件不支持的lcd型号，只能选择自定义驱动方式
+-- 根据自己的实际情况，二选一开启以下两行代码中的其中一行
+require("lcd_inner_drv")
+-- require("lcd_custom_drv")
+
 -- 加载触摸驱动
 require("tp_drv")
 
@@ -197,14 +217,22 @@ require("tp_drv")
 require("airui_all_component") --所有组件综合演示
 -- require("airui_switch_page")  --页面切换演示
 -- require("airui_hzfont")  --内置软件矢量字体演示
+-- require("airui_chart")  --图表组件演示
+-- require("airui_qrcode") --二维码组件演示
+-- require("airui_animimg")  -- 动画图像组件演示
+-- require("airui_shape")  -- 形状组件演示
+-- require("airui_spinner")  -- 加载指示器组件演示
+-- require("airui_video")  -- 视频组件演示
 ```
 
 ### 7.3 软件烧录步骤
 
 1. 使用 Luatools 烧录对应型号的最新内核固件
 2. 下载本项目所有脚本文件
-3. 将演示图片文件（如 `logo.jpg` ）同.lua脚本文件一起烧录到脚本分区
-4. 设备自动重启后开始运行选定的演示模块
+3. 将演示图片文件（如 `logo.jpg`、`dingwei_50x50.png` 等）同.lua脚本文件一起烧录到脚本分区
+4. 动画图像(animimg)演示需要 `fly_man_01.png` ~ `fly_man_04.png` 多帧图片资源
+5. 视频(video)演示需要 `fly_man.mjpg` MJPG视频资源
+6. 设备自动重启后开始运行选定的演示模块
 
 
 ## 八、故障排除

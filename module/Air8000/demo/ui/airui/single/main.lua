@@ -1,12 +1,12 @@
 --[[
 @module  main
-@summary exEasyUI组件演示主程序入口
+@summary AirUI组件演示主程序入口
 @version 1.0.0
 @date    2026.03.09
 @author  江访
 @usage
-本文件是exEasyUI演示程序的主入口，用于选择加载不同的UI组件演示模块。
-通过注释/取消注释require语句来运行不同的演示。
+本文件是AirUI演示程序的主入口，用于选择加载不同的UI组件演示模块。
+
 ]]
 
 --[[
@@ -16,7 +16,7 @@ PROJECT：项目名，ascii string类型
 VERSION：项目版本号，ascii string类型
         如果使用合宙iot.openluat.com进行远程升级，必须按照"XXX.YYY.ZZZ"三段格式定义：
             X、Y、Z各表示1位数字，三个X表示的数字可以相同，也可以不同，同理三个Y和三个Z表示的数字也是可以相同，可以不同
-            因为历史原因，YYY这三位数字必须存在，但是没有任何用处，可以一直写为000
+            因为历史原因，YYY这三位数字必须存在，但是没有任何用处，可以一直写为999
         如果不使用合宙iot.openluat.com进行远程升级，根据自己项目的需求，自定义格式即可
 ]]
 
@@ -56,8 +56,15 @@ log.info("ui_demo", PROJECT, VERSION)
 --     log.info("mem.sys", rtos.meminfo("sys"))
 -- end, 3000)
 
--- 加载显示驱动
-require("lcd_drv")
+-- 加载显示驱动，有内置驱动和自定义驱动两种方式
+-- 内置驱动方式（lcd_inner_drv.lua）：使用LuatOS内核固件已经支持的显示驱动，无需在脚本中进行初始化命令配置
+-- 自定义驱动方式（lcd_custom_drv.lua）：用户根据自己使用的lcd型号，在脚本中自己配置初始化命令，来驱动lcd显示
+-- 如果是LuatOS内核固件已经支持的lcd型号，可以选择内置驱动方式，也可以选择自定义驱动方式
+-- 如果LuatOS内核固件不支持的lcd型号，只能选择自定义驱动方式
+-- 根据自己的实际情况，二选一开启以下两行代码中的其中一行
+require("lcd_inner_drv")
+-- require("lcd_custom_drv")
+
 -- 加载触摸驱动
 require("tp_drv")
 
@@ -79,6 +86,10 @@ require("airui_all_component") --所有组件综合演示
 -- require("airui_hzfont")  --内置软件矢量字体演示
 -- require("airui_chart")  --图表组件演示
 -- require("airui_qrcode") --二维码组件演示
+-- require("airui_animimg")  -- 动画图像组件演示
+-- require("airui_shape")  -- 形状组件演示
+-- require("airui_spinner")  -- 加载指示器组件演示
+-- require("airui_video")  -- 视频组件演示
 
 -- 用户代码已结束
 -- 结尾总是这一句

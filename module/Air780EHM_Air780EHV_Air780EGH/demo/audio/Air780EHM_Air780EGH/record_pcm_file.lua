@@ -85,7 +85,7 @@ local RECORD_DURATION = 5      -- 录音时长
 
 -- 硬件配置参数
 local audio_setup_param = {
-    model = "es8311",          -- 音频编解码芯片类型
+    model = "es8311",          -- dac类型,可填入"es8311","tm8211"
     i2c_id = 1,                -- I2C接口编号
     pa_ctrl = 26,             -- 音频放大器控制引脚
     dac_ctrl = 2,            -- 音频编解码芯片控制引脚
@@ -235,6 +235,23 @@ local function record_end_callback(event)
     end
 end
 
+-- 计算时间差（毫秒）
+local function calc_time_diff_ms(start_tick, end_tick)
+    -- 检查溢出：Lua中超过0x7fffffff会变成负数
+    if (start_tick > 0 and end_tick < 0) or (start_tick < 0 and end_tick > 0) then
+        log.warn("时间计算", "mcu.ticks()溢出，无法准确计算时长")
+        return nil
+    end
+    
+    local diff_ticks = end_tick - start_tick
+    local hz = mcu.hz()
+    if hz == 0 then
+        hz = 1000  -- 默认1ms一个tick
+    end
+    
+    return (diff_ticks * 1000) / hz
+end
+
 -- 录音设置
 local audio_record_param = {
     format = exaudio.PCM_16000,  -- 使用16kHz PCM格式
@@ -251,14 +268,19 @@ local audio_record_param = {
 
                 -- 计算写入速度
                 local end_time = mcu.ticks()  -- 记录结束时间
-                local write_time = end_time - start_time  -- 毫秒
-                local write_speed = size / (write_time / 1000)  -- 字节/秒
+                local write_time_ms = calc_time_diff_ms(start_time, end_time)
                 
-                log.info("SD卡写入统计", 
-                    "数据大小:", size, "字节,", 
-                    "写入耗时:", string.format("%.2f", write_time), "ms,",
-                    "写入速度:", string.format("%.2f", write_speed / 1024), "KB/s")
-                
+                if write_time_ms and write_time_ms > 0 then
+                    local write_speed = size / (write_time_ms / 1000)  -- 字节/秒
+                    log.info("SD卡写入统计", 
+                        "数据大小:", size, "字节,", 
+                        "写入耗时:", string.format("%.2f", write_time_ms), "ms,",
+                        "写入速度:", string.format("%.2f", write_speed / 1024), "KB/s")
+                else
+                    log.info("SD卡写入统计", 
+                        "数据大小:", size, "字节,", 
+                        "写入耗时: 溢出无法计算")
+                end
             else
                 log.error("无法打开录音文件")
             end

@@ -3,6 +3,7 @@
 #include "FreeRTOS.h"
 #endif
 
+#include <stdlib.h> 
 #include "luat_base.h"
 #include "luat_crypto.h"
 #include "luat_mem.h"
@@ -484,15 +485,10 @@ int luat_crypto_cipher_suites(const char** list, size_t* len) {
 #if defined(MBEDTLS_PK_C) && defined(MBEDTLS_PK_PARSE_C)
 #include "mbedtls/pk.h"
 
-/* 简单 RNG 回调：优先使用平台 TRNG，回退到 rand() */
+/* RNG 回调：使用平台 TRNG */
 static int luat_pk_rng_cb(void *ctx, unsigned char *output, size_t len) {
     (void)ctx;
-    if (luat_crypto_trng((char *)output, len) == 0)
-        return 0;
-    /* fallback */
-    for (size_t i = 0; i < len; i++)
-        output[i] = (unsigned char)rand();
-    return 0;
+    return luat_crypto_trng((char *)output, len);
 }
 
 /* 判断是否为 PEM 格式（以 "-----" 开头且末尾含 '\0'） */
@@ -618,6 +614,7 @@ int luat_crypto_pk_verify(int md_type,
     ret = mbedtls_pk_verify(&pk, (mbedtls_md_type_t)md_type, hash, hash_len, sig, sig_len);
     if (ret != 0) {
         LLOGD("pk_verify: verify failed -0x%04x", -ret);
+        ret = 1;
     }
 
 cleanup:

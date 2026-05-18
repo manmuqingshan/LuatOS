@@ -19,7 +19,7 @@
 5、启动一个网络业务逻辑看门狗task，用来监控网络环境，如果连续长时间工作不正常，重启整个软件系统；
 6、netdrv_device：配置连接外网使用的网卡，目前支持以下四种选择（四选一）
     (1) netdrv_4g：4G网卡
-    (2) netdrv_wifi：WIFI STA网卡(注意：当前netdrv_wifi还不能使用)
+    (2) netdrv_wifi：WIFI STA网卡
     (3) netdrv_eth_spi：通过SPI外挂CH390H芯片的以太网卡
     (4) netdrv_multiple：支持以上三种网卡，可以配置三种网卡的优先级
     (5) netdrv_pc: pc模拟器网卡
@@ -93,7 +93,7 @@ require "timer_app"
 require "aircloud_data"
 
 -- 加载tcp client socket主应用功能模块
--- require "tcp_client_main"
+require "tcp_client_main"
 
 -- 加载udp client socket主应用功能模块
 -- require "udp_client_main"
@@ -102,10 +102,10 @@ require "aircloud_data"
 -- socket.sslLog(3)
 
 -- 加载tcp ssl client socket主应用功能模块
-require "tcp_ssl_main"
+-- require "tcp_ssl_main"
 
 -- 加载tcp ssl ca client socket主应用功能模块
-require "tcp_ssl_ca_main"
+-- require "tcp_ssl_ca_main"
 
 
 -- 用户代码已结束---------------------------------------------

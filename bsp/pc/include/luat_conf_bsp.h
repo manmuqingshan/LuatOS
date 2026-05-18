@@ -7,7 +7,9 @@
 
 #include "stdint.h"
 
-#define LUAT_BSP_VERSION "V2029"
+#define LUAT_BSP_PC 1 // 定义平台标识符，供代码中使用
+
+#define LUAT_BSP_VERSION "V2031"
 // #define LUAT_CONF_USE_LIBSYS_SOURCE 1
 #define LUAT_USE_CMDLINE_ARGS 1
 // 启用64位虚拟机
@@ -44,7 +46,21 @@
 #define LUAT_USE_AIRLINK_UART 1
 #define LUAT_USE_AIRLINK_RPC 1
 #define LUAT_USE_AIRLINK_MULTI_TRANSPORT 1
+#define LUAT_USE_AIRLINK_LOOPBACK 1
+
 #define LUAT_USE_AIRLINK_EXEC_SDATA 1
+#define LUAT_USE_AIRLINK_EXEC_GPIO  1
+#define LUAT_USE_AIRLINK_EXEC_UART  1
+#define LUAT_USE_AIRLINK_EXEC_WLAN  1
+#define LUAT_USE_AIRLINK_EXEC_PM    1
+#define LUAT_USE_AIRLINK_EXEC_SDATA 1
+// #define LUAT_USE_AIRLINK_DRV_BLUETOOTH 1
+#define LUAT_USE_AIRLINK_DRV_GPIO  1
+#define LUAT_USE_AIRLINK_DRV_UART  1
+#define LUAT_USE_AIRLINK_DRV_WLAN  1
+#define LUAT_USE_AIRLINK_DRV_PM    1
+#define LUAT_USE_AIRLINK_DRV_SDATA 1
+#define LUAT_USE_AIRLINK_DRV_BLUETOOTH 1
 
 // #define LV_HOR_RES_MAX          (2000)
 // #define LV_VER_RES_MAX          (2000)
@@ -137,7 +153,7 @@
 #define LUAT_USE_ICONV 1
 #define LUAT_USE_BIT64 1
 #define LUAT_USE_FASTLZ 1
-// #define LUAT_USE_SQLITE3 1
+#define LUAT_USE_SQLITE3 1
 // #define LUAT_USE_ONEWIRE 1
 // #define LUAT_USE_WS2812 1
 #define LUAT_USE_XXTEA 1
@@ -151,13 +167,28 @@
 
 #define LUAT_USE_MEMPROF 1
 
-#define LUAT_USE_H264_DECODER 1
-
+// 视频播放器(默认mjpeg播放)
 #define LUAT_USE_VIDEOPLAYER 1
+// 视频播放器支持mp4播放
+// 注意: LUAT_USE_MP4PLAYER 由 xmake 动态控制（基于 luatos-ext-components/vedio_player 的存在性）
+// 请勿在此处硬编码，否则会导致编译配置与实际编译状态不一致
+// #define LUAT_USE_MP4PLAYER 1
 // videoplayer软解依赖TJPGD, 需在GUI块外启用
 #define LUAT_USE_TJPGD
 
+// U8G2 在 GUI/非 GUI PC 构建中都需要保留。
+#define LUAT_USE_U8G2 1
+#ifndef LUAT_USE_GUI
+// EINK 仅在非 GUI PC 构建中启用，对齐 xmake 的非 GUI 源码范围。
+#define LUAT_USE_EINK 1
+#endif
+
 #define LUAT_USE_WEBP 1
+
+#define LUAT_USE_NES        1
+#define NES_FRAME_SKIP      0
+#define NES_COLOR_DEPTH     16
+#define NES_COLOR_SWAP      0
 
 //--------------------------------------------------
 // mGBA GBA模拟器
@@ -189,14 +220,10 @@
 #define LUAT_CONF_USE_HZFONT_BUILTIN_TTF 1
 // pinyin 拼音库支持
 #define LUAT_USE_PINYIN 1
-// EINK 是墨水屏
-// #define LUAT_USE_EINK
-
 //---------------------
 // U8G2
 // 单色屏, 支持i2c/spi
 // #define LUAT_USE_DISP
-#define LUAT_USE_U8G2
 
 /**************FONT*****************/
 // #define LUAT_USE_FONTS
@@ -214,7 +241,7 @@
 
 
 // 注意这里是 LUAT_USE_WINDOWS
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
 #define LUAT_USE_LWIP 1
 // #define LUAT_USE_ULWIP 1
 #define LUAT_USE_DNS 1

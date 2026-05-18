@@ -26,9 +26,21 @@
 
 #include "luat_base.h"
 #include "luat_mem.h"
-#include "luat_timer.h"
+#include "luat_rtos.h"
 #include "luat_fs.h"
+
+#ifdef LUAT_USE_GUI
 #include "luat_lcd.h"
+#endif
+
+#ifdef LUAT_USE_AIRUI
+#include "nes_airui_video.h"
+static int g_nes_airui_mode = 0;
+
+void nes_set_airui_mode(int enabled) {
+    g_nes_airui_mode = enabled;
+}
+#endif
 
 /* memory */
 void *nes_malloc(int num){
@@ -72,13 +84,17 @@ int nes_fclose( FILE *fp ){
 
 /* wait */
 void nes_wait(uint32_t ms){
-    luat_timer_mdelay(ms);
+    luat_rtos_task_sleep(ms);
 }
 
+#ifdef LUAT_USE_GUI
 static luat_lcd_conf_t* nes_lcd_conf;
+#endif
 
 int nes_initex(nes_t *nes){
+#ifdef LUAT_USE_GUI
     nes_lcd_conf = luat_lcd_get_default();
+#endif
     return 0;
 }
 
@@ -86,11 +102,38 @@ int nes_deinitex(nes_t *nes){
     return 0;
 }
 
-int nes_draw(size_t x1, size_t y1, size_t x2, size_t y2, nes_color_t* color_data){
+int nes_draw(int x1, int y1, int x2, int y2, nes_color_t* color_data){
+#ifdef LUAT_USE_AIRUI
+    if (g_nes_airui_mode) {
+        return nes_airui_video_draw(NULL, x1, y1, x2, y2, color_data);
+    }
+#endif
+#ifdef LUAT_USE_GUI
     return luat_lcd_draw(nes_lcd_conf, x1, y1, x2, y2, color_data);
+#else
+    return 0;
+#endif
 }
 
-void nes_frame(void){
-    luat_timer_us_delay(10);
+void nes_frame(nes_t* nes){
+#ifdef LUAT_USE_AIRUI
+    if (g_nes_airui_mode) {
+        nes_airui_video_frame(NULL);
+    }
+#endif
+#ifdef LUAT_BSP_PC
+    /* PC 上限速到约 60fps（NES 实际约 60.1Hz），否则模拟器以全速运行 */
+    luat_rtos_task_sleep(15);
+#else
+    luat_rtos_task_sleep(1);
+#endif
+}
+
+/* log */
+void nes_log_printf(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
 }
 

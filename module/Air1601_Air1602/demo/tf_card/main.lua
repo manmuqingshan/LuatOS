@@ -74,7 +74,7 @@ log.info("main", PROJECT, VERSION)
 -- 如果只测试TF卡操作，不需要联网，请注释掉下面的网络相关模块
 -- 如果需要 HTTP 下载或者上传功能时，需先完成联网配置，请取消注释网络相关模块
 -- 加载网络驱动设备功能模块，在netdrv_device.lua文件中修改自己使用的联网方式
--- require"netdrv_device"
+ require"netdrv_device"
 
 
 --[[在加载以下三个功能时，建议分别打开进行测试，因为文件操作，http下载功能和http大文件上传功能是异步操作。
@@ -89,5 +89,7 @@ log.info("main", PROJECT, VERSION)
 -- 加载HTTP上传文件到服务器的功能演示模块（需要先启用网络功能）
 -- require "http_upload_file"
 
--- 启动系统调度（必须放在最后）
+-- 用户代码已结束---------------------------------------------
+-- 结尾总是这一句
 sys.run()
+-- sys.run()之后后面不要加任何语句!!!!!

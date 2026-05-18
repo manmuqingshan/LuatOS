@@ -573,8 +573,10 @@ int luat_sms_pdu_packet(luat_sms_pdu_packet_t *packet)
     uint8_t pos = 0;
     size_t phone_len = packet->phone_len;
     char phone_buff[32] = {0};
-    if ((packet->phone_len >= 15) && !memcmp(packet->phone, "10", 2)) {
-    	memcpy(phone_buff, packet->phone, phone_len);
+    if (phone_len >= 2 && !memcmp(packet->phone, "10", 2)) {
+        /* 10xx 开头的服务/业务号码（如 106xxxxxxxx等），
+         * 不属于手机号，不加国家码，toa=0x81（未知/本地格式） */
+        memcpy(phone_buff, packet->phone, phone_len);
         toa = 0x81;
     }
     else if(packet->auto_phone)

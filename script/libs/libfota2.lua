@@ -44,9 +44,6 @@ sys.timerLoopStart(libfota2.request, 4*3600*1000, libfota_cb)
 sys.timerLoopStart(libfota2.request, 4*3600*1000, libfota_cb, opts)
 ]]
 
-local sys = require "sys"
-require "sysplus"
-
 local libfota2 = {}
 
 -- 单独判断下服务器下发的数据是不是"{"开头"}"结尾的字符串
@@ -190,7 +187,7 @@ function libfota2.request(cbFnc, opts)
         if not opts.imei then
             if mobile then
                 query = "imei=" .. mobile.imei()
-            elseif wlan and wlan.getMac then
+            elseif wlan and wlan.getMac() then
                 query = "mac=" .. wlan.getMac()
             else
                 query = "uid=" .. mcu.unique_id():toHex()

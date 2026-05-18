@@ -2,6 +2,7 @@
  * luat_videoplayer.c - Video player core implementation
  *
  * Handles MJPG stream parsing and decoder dispatching.
+ * MP4+H264 playback is supported when LUAT_USE_MP4PLAYER is defined.
  */
 
 #include "luat_videoplayer.h"
@@ -10,6 +11,7 @@
 #include "luat_base.h"
 #include "luat_malloc.h"
 #include "luat_fs.h"
+#include "luat_mcu.h"
 #define VP_MALLOC  luat_heap_malloc
 #define VP_FREE    luat_heap_free
 #define VP_FOPEN   luat_fs_fopen
@@ -31,6 +33,10 @@
 
 #include <string.h>
 
+#ifdef LUAT_USE_MP4PLAYER
+#include "luat_mp4_videoplayer.h"
+#endif
+
 /* Read buffer size for scanning MJPG stream */
 #define VP_READ_BUF_SIZE  (32 * 1024)
 
@@ -45,6 +51,14 @@
 /* Debug flag */
 static int g_vp_debug = 0;
 
+typedef struct {
+    uint64_t window_start_ms;
+    uint64_t stage_ms[LUAT_VP_PROF_T_COUNT];
+    uint32_t frame_count;
+} luat_vp_profiler_t;
+
+static luat_vp_profiler_t g_vp_profiler;
+
 #ifdef __LUATOS__
 #define LUAT_LOG_TAG "videoplayer"
 #include "luat_log.h"
@@ -56,9 +70,80 @@ static int g_vp_debug = 0;
 #define VP_LOGW(...) do { printf("[VP WARN] "); printf(__VA_ARGS__); printf("\n"); } while(0)
 #endif
 
+static void luat_videoplayer_prof_maybe_log(uint64_t now_ms) {
+#ifdef __LUATOS__
+    uint64_t window_ms;
+
+    if (g_vp_profiler.window_start_ms == 0) {
+        g_vp_profiler.window_start_ms = now_ms;
+        return;
+    }
+
+    window_ms = now_ms - g_vp_profiler.window_start_ms;
+    if (window_ms < 1000) {
+        return;
+    }
+
+    if (g_vp_debug) {
+        uint64_t total_ms = 0;
+        size_t i;
+        for (i = 0; i < LUAT_VP_PROF_T_COUNT; i++) {
+            total_ms += g_vp_profiler.stage_ms[i];
+        }
+        LLOGI("perf 1s frames=%u window=%llu total=%llu demux=%llu read=%llu annexb=%llu decode=%llu yuv2rgb=%llu copy=%llu draw=%llu flush=%llu idle=%lld",
+              g_vp_profiler.frame_count,
+              (unsigned long long)window_ms,
+              (unsigned long long)total_ms,
+              (unsigned long long)g_vp_profiler.stage_ms[LUAT_VP_PROF_T_DEMUX],
+              (unsigned long long)g_vp_profiler.stage_ms[LUAT_VP_PROF_T_READ],
+              (unsigned long long)g_vp_profiler.stage_ms[LUAT_VP_PROF_T_ANNEXB],
+              (unsigned long long)g_vp_profiler.stage_ms[LUAT_VP_PROF_T_DECODE],
+              (unsigned long long)g_vp_profiler.stage_ms[LUAT_VP_PROF_T_YUV2RGB],
+              (unsigned long long)g_vp_profiler.stage_ms[LUAT_VP_PROF_T_COPY],
+              (unsigned long long)g_vp_profiler.stage_ms[LUAT_VP_PROF_T_DRAW],
+              (unsigned long long)g_vp_profiler.stage_ms[LUAT_VP_PROF_T_FLUSH],
+              (long long)window_ms - (long long)total_ms);
+    }
+
+    memset(&g_vp_profiler, 0, sizeof(g_vp_profiler));
+    g_vp_profiler.window_start_ms = now_ms;
+#else
+    (void)now_ms;
+#endif
+}
+
+uint64_t luat_videoplayer_prof_now_ms(void) {
+#ifdef __LUATOS__
+    return luat_mcu_tick64_ms();
+#else
+    return 0;
+#endif
+}
+
+void luat_videoplayer_prof_add_time(luat_vp_prof_stage_t stage, uint32_t elapsed_ms) {
+    uint64_t now_ms = luat_videoplayer_prof_now_ms();
+    if ((unsigned)stage >= LUAT_VP_PROF_T_COUNT) {
+        return;
+    }
+    if (g_vp_profiler.window_start_ms == 0) {
+        g_vp_profiler.window_start_ms = now_ms;
+    }
+    g_vp_profiler.stage_ms[stage] += elapsed_ms;
+    luat_videoplayer_prof_maybe_log(now_ms);
+}
+
+void luat_videoplayer_prof_mark_frame(void) {
+    uint64_t now_ms = luat_videoplayer_prof_now_ms();
+    if (g_vp_profiler.window_start_ms == 0) {
+        g_vp_profiler.window_start_ms = now_ms;
+    }
+    g_vp_profiler.frame_count++;
+    luat_videoplayer_prof_maybe_log(now_ms);
+}
+
 /* ---- Player context ---- */
 struct luat_vp_ctx {
-    void *fp;                           /* File pointer */
+    void *fp;                           /* File pointer (MJPG only) */
     luat_vp_format_t format;
     luat_vp_decode_mode_t decode_mode;
     const luat_vp_decoder_ops_t *decoder_ops;
@@ -68,6 +153,9 @@ struct luat_vp_ctx {
     uint8_t *read_buf;                  /* Buffer for reading JPEG frames */
     size_t read_buf_cap;                /* Capacity of read_buf */
     int eof;
+#ifdef LUAT_USE_MP4PLAYER
+    void *mp4_vctx;                     /* luat_mp4_vctx_t* for MP4 playback */
+#endif
 };
 
 /* ---- Internal: detect format from file extension ---- */
@@ -242,7 +330,28 @@ luat_vp_ctx_t* luat_videoplayer_open(const char *path) {
 
     luat_vp_format_t fmt = detect_format(path);
 
-    /* Currently only MJPG is supported */
+#ifdef LUAT_USE_MP4PLAYER
+    if (fmt == LUAT_VP_FMT_MP4_H264) {
+        luat_mp4_vctx_t *mp4ctx = luat_mp4_vctx_open(path);
+        if (!mp4ctx) {
+            VP_LOGW("failed to open mp4: %s", path);
+            return NULL;
+        }
+        luat_vp_ctx_t *ctx = (luat_vp_ctx_t *)VP_MALLOC(sizeof(luat_vp_ctx_t));
+        if (!ctx) {
+            luat_mp4_vctx_close(mp4ctx);
+            return NULL;
+        }
+        memset(ctx, 0, sizeof(luat_vp_ctx_t));
+        ctx->format = LUAT_VP_FMT_MP4_H264;
+        ctx->decode_mode = LUAT_VP_DECODE_SW;
+        ctx->mp4_vctx = mp4ctx;
+        VP_LOGD("opened %s as MP4+H264", path);
+        return ctx;
+    }
+#endif
+
+    /* Currently only MJPG is supported for non-MP4 formats */
     if (fmt != LUAT_VP_FMT_MJPG) {
         VP_LOGW("unsupported format for: %s", path);
         return NULL;
@@ -290,6 +399,13 @@ luat_vp_ctx_t* luat_videoplayer_open(const char *path) {
 void luat_videoplayer_close(luat_vp_ctx_t *ctx) {
     if (!ctx) return;
 
+#ifdef LUAT_USE_MP4PLAYER
+    if (ctx->mp4_vctx) {
+        luat_mp4_vctx_close((luat_mp4_vctx_t *)ctx->mp4_vctx);
+        ctx->mp4_vctx = NULL;
+    }
+#endif
+
     if (ctx->decoder_ops && ctx->decoder_ctx) {
         ctx->decoder_ops->deinit(ctx->decoder_ctx);
         ctx->decoder_ctx = NULL;
@@ -312,6 +428,44 @@ int luat_videoplayer_read_frame(luat_vp_ctx_t *ctx, luat_vp_frame_t *frame) {
     if (!ctx || !frame) return LUAT_VP_ERR_PARAM;
 
     memset(frame, 0, sizeof(luat_vp_frame_t));
+
+#ifdef LUAT_USE_MP4PLAYER
+    if (ctx->format == LUAT_VP_FMT_MP4_H264) {
+        uint64_t copy_start_ms;
+        uint64_t copy_end_ms;
+        if (!ctx->mp4_vctx) return LUAT_VP_ERR_PARAM;
+        if (ctx->eof) return LUAT_VP_ERR_EOF;
+
+        uint16_t *raw_rgb = NULL;
+        int fw = 0, fh = 0;
+        int ret = luat_mp4_vctx_read_frame(
+                      (luat_mp4_vctx_t *)ctx->mp4_vctx,
+                      &raw_rgb, &fw, &fh);
+        if (ret == LUAT_MP4VP_EOF) { ctx->eof = 1; return LUAT_VP_ERR_EOF; }
+        if (ret != LUAT_MP4VP_OK || !raw_rgb) return LUAT_VP_ERR_DECODE;
+
+        /* Copy RGB565 data to a heap buffer owned by the caller (freed via frame_free) */
+        copy_start_ms = luat_videoplayer_prof_now_ms();
+        uint16_t *out = (uint16_t *)VP_MALLOC((size_t)fw * fh * 2);
+        if (!out) return LUAT_VP_ERR_NOMEM;
+        memcpy(out, raw_rgb, (size_t)fw * fh * 2);
+        copy_end_ms = luat_videoplayer_prof_now_ms();
+        luat_videoplayer_prof_add_time(LUAT_VP_PROF_T_COPY, (uint32_t)(copy_end_ms - copy_start_ms));
+
+        frame->data   = (uint8_t *)out;
+        frame->width  = (uint16_t)fw;
+        frame->height = (uint16_t)fh;
+
+        if (ctx->width == 0 && fw > 0) {
+            ctx->width  = (uint16_t)fw;
+            ctx->height = (uint16_t)fh;
+            VP_LOGD("mp4 video size: %dx%d", fw, fh);
+        }
+
+        luat_videoplayer_prof_mark_frame();
+        return LUAT_VP_OK;
+    }
+#endif
 
     if (ctx->format == LUAT_VP_FMT_MJPG) {
         uint8_t *jpeg_data = NULL;
@@ -344,6 +498,91 @@ int luat_videoplayer_read_frame(luat_vp_ctx_t *ctx, luat_vp_frame_t *frame) {
     return LUAT_VP_ERR_FORMAT;
 }
 
+int luat_videoplayer_read_frame_ref(luat_vp_ctx_t *ctx, luat_vp_frame_t *frame, uint8_t *borrowed) {
+    if (!ctx || !frame) return LUAT_VP_ERR_PARAM;
+    if (borrowed) {
+        *borrowed = 0;
+    }
+
+    memset(frame, 0, sizeof(luat_vp_frame_t));
+
+#ifdef LUAT_USE_MP4PLAYER
+    if (ctx->format == LUAT_VP_FMT_MP4_H264) {
+        uint16_t *raw_rgb = NULL;
+        int fw = 0;
+        int fh = 0;
+        int ret;
+
+        if (!ctx->mp4_vctx) return LUAT_VP_ERR_PARAM;
+        if (ctx->eof) return LUAT_VP_ERR_EOF;
+
+        ret = luat_mp4_vctx_read_frame(
+                  (luat_mp4_vctx_t *)ctx->mp4_vctx,
+                  &raw_rgb, &fw, &fh);
+        if (ret == LUAT_MP4VP_EOF) { ctx->eof = 1; return LUAT_VP_ERR_EOF; }
+        if (ret != LUAT_MP4VP_OK || !raw_rgb) return LUAT_VP_ERR_DECODE;
+
+        frame->data = (uint8_t *)raw_rgb;
+        frame->width = (uint16_t)fw;
+        frame->height = (uint16_t)fh;
+
+        if (ctx->width == 0 && fw > 0) {
+            ctx->width  = (uint16_t)fw;
+            ctx->height = (uint16_t)fh;
+            VP_LOGD("mp4 video size: %dx%d", fw, fh);
+        }
+
+        if (borrowed) {
+            *borrowed = 1;
+        }
+        luat_videoplayer_prof_mark_frame();
+        return LUAT_VP_OK;
+    }
+#endif
+
+    return luat_videoplayer_read_frame(ctx, frame);
+}
+
+int luat_videoplayer_read_frame_to(luat_vp_ctx_t *ctx, luat_vp_frame_t *frame, uint8_t *out_buf, size_t out_buf_size) {
+    if (!ctx || !frame || !out_buf) return LUAT_VP_ERR_PARAM;
+
+    memset(frame, 0, sizeof(luat_vp_frame_t));
+
+#ifdef LUAT_USE_MP4PLAYER
+    if (ctx->format == LUAT_VP_FMT_MP4_H264) {
+        int fw = 0;
+        int fh = 0;
+        int ret;
+
+        if (!ctx->mp4_vctx) return LUAT_VP_ERR_PARAM;
+        if (ctx->eof) return LUAT_VP_ERR_EOF;
+
+        ret = luat_mp4_vctx_read_frame_to(
+                  (luat_mp4_vctx_t *)ctx->mp4_vctx,
+                  (uint16_t *)out_buf,
+                  (int)(out_buf_size / 2u),
+                  &fw, &fh);
+        if (ret == LUAT_MP4VP_EOF) { ctx->eof = 1; return LUAT_VP_ERR_EOF; }
+        if (ret != LUAT_MP4VP_OK) return LUAT_VP_ERR_DECODE;
+
+        frame->data = out_buf;
+        frame->width = (uint16_t)fw;
+        frame->height = (uint16_t)fh;
+
+        if (ctx->width == 0 && fw > 0) {
+            ctx->width  = (uint16_t)fw;
+            ctx->height = (uint16_t)fh;
+            VP_LOGD("mp4 video size: %dx%d", fw, fh);
+        }
+
+        luat_videoplayer_prof_mark_frame();
+        return LUAT_VP_OK;
+    }
+#endif
+
+    return luat_videoplayer_read_frame(ctx, frame);
+}
+
 void luat_videoplayer_frame_free(luat_vp_frame_t *frame) {
     if (frame && frame->data) {
         VP_FREE(frame->data);
@@ -354,7 +593,7 @@ void luat_videoplayer_frame_free(luat_vp_frame_t *frame) {
 int luat_videoplayer_get_info(luat_vp_ctx_t *ctx, luat_vp_info_t *info) {
     if (!ctx || !info) return LUAT_VP_ERR_PARAM;
 
-    /* If dimensions are unknown, try to decode first frame to get them */
+    /* For MJPG: peek at first frame to learn dimensions if not yet known. */
     if (ctx->width == 0 && ctx->format == LUAT_VP_FMT_MJPG) {
         /* Save current file position */
         long file_pos = VP_FTELL(ctx->fp);
@@ -386,6 +625,14 @@ int luat_videoplayer_set_decode_mode(luat_vp_ctx_t *ctx,
     if (!ctx) return LUAT_VP_ERR_PARAM;
     if (mode != LUAT_VP_DECODE_SW && mode != LUAT_VP_DECODE_HW)
         return LUAT_VP_ERR_PARAM;
+
+#ifdef LUAT_USE_MP4PLAYER
+    /* MP4+H264 decoding is always software; silently accept mode changes. */
+    if (ctx->format == LUAT_VP_FMT_MP4_H264) {
+        ctx->decode_mode = mode;
+        return LUAT_VP_OK;
+    }
+#endif
 
     if (ctx->decode_mode == mode) return LUAT_VP_OK;
 

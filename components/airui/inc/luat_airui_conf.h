@@ -17,13 +17,19 @@
 // 通用设置
 
 /** AIRUI 库版本号 */
-#define AIRUI_VERSION "1.2.0"
+#define AIRUI_VERSION "1.2.1"
 
 /** AIRUI 自动刷新周期，单位：毫秒 */
 #define AIRUI_REFRESH_PERIOD_MS 33
 
 /** 刷新消息重试超时时间, 当前设计下刷新消息有时会发生丢失，需要支持画面刷新重试 */
 #define AIRUI_REFRESH_RETRY_TIMEOUT_MS 200U
+
+/** 多触点：Lua 回调tp订阅中最多支持的触点数（touch_active[] 数组大小） */
+#define AIRUI_TOUCH_MAX_POINTS 10
+
+/** 多触点：最多 LVGL 指针输入设备数，当前手动指定tp支持触控为2（indev_ptrs[] 数组大小） */
+#define AIRUI_POINTER_INDEV_MAX 5
 
 /* -------------------------------------- 通用可选配置 -------------------------------------- */
 

@@ -38,6 +38,9 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
         sta_connected = (luat_wifi_event_sta_connected_t *)event_data;
         LLOGD("STA connected %s", sta_connected->ssid);
 
+#ifdef LUAT_USE_AIRLINK_RPC
+        luat_airlink_drv_wlan_sta_connected_cb((const char*)sta_connected->ssid, sta_connected->bssid);
+#else
         ret = luat_airlink_syspub_addstring("WLAN_STA_INC", strlen("WLAN_STA_INC"), ptr, remain);
         ptr += ret;
         remain -= ret;
@@ -55,6 +58,7 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
         remain -= ret;
 
         luat_airlink_syspub_send(buff, ptr - buff);
+#endif
         luat_airlink_self_dev_info_notify();
         break;
 
@@ -65,8 +69,11 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
             luat_airlink_self_dev_info_notify();
             return 0; // reason == 0 的时候不需要发消息
         }
-        LLOGD("STA disconnected, reason(%d) is_local %d", sta_disconnected->disconnect_reason, sta_disconnected->local_generated); 
-    
+        LLOGD("STA disconnected, reason(%d) is_local %d", sta_disconnected->disconnect_reason, sta_disconnected->local_generated);
+
+#ifdef LUAT_USE_AIRLINK_RPC
+        luat_airlink_drv_wlan_sta_disconnected_cb(sta_disconnected->disconnect_reason);
+#else
         ret = luat_airlink_syspub_addstring("WLAN_STA_INC", strlen("WLAN_STA_INC"), ptr, remain);
         ptr += ret;
         remain -= ret;
@@ -77,16 +84,20 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
         ptr += ret;
         remain -= ret;
         luat_airlink_syspub_send(buff, ptr - buff);
+#endif
         luat_airlink_self_dev_info_notify();
         break;
     case LUAT_WLAN_EVENT_WIFI_AP_CONNECTED:
         ap_connected = (luat_wifi_event_ap_connected_t *)event_data;
         // LLOGD(BK_MAC_FORMAT" connected to AP", BK_MAC_STR(ap_connected->mac));
 
+#ifdef LUAT_USE_AIRLINK_RPC
+        luat_airlink_drv_wlan_ap_connected_cb(ap_connected->mac);
+#else
         ret = luat_airlink_syspub_addstring("WLAN_AP_INC", strlen("WLAN_AP_INC"), ptr, remain);
         ptr += ret;
         remain -= ret;
-        
+
         ret = luat_airlink_syspub_addstring("CONNECTED", strlen("CONNECTED"), ptr, remain);
         ptr += ret;
         remain -= ret;
@@ -94,18 +105,22 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
         ret = luat_airlink_syspub_addstring((const char*)ap_connected->mac, 6, ptr, remain);
         ptr += ret;
         remain -= ret;
-        
+
         luat_airlink_syspub_send(buff, ptr - buff);
+#endif
         luat_airlink_self_dev_info_notify();
         break;
     case LUAT_WLAN_EVENT_WIFI_AP_DISCONNECTED:
         ap_disconnected = (luat_wifi_event_ap_disconnected_t *)event_data;
         // LLOGD(BK_MAC_FORMAT" disconnected from AP", BK_MAC_STR(ap_disconnected->mac));
-        
+
+#ifdef LUAT_USE_AIRLINK_RPC
+        luat_airlink_drv_wlan_ap_disconnected_cb(ap_disconnected->mac);
+#else
         ret = luat_airlink_syspub_addstring("WLAN_AP_INC", strlen("WLAN_AP_INC"), ptr, remain);
         ptr += ret;
         remain -= ret;
-        
+
         ret = luat_airlink_syspub_addstring("DISCONNECTED", strlen("DISCONNECTED"), ptr, remain);
         ptr += ret;
         remain -= ret;
@@ -115,6 +130,7 @@ int wifi_evt_handler(void *arg, luat_event_module_t event_module, int event_id, 
         remain -= ret;
 
         luat_airlink_syspub_send(buff, ptr - buff);
+#endif
         luat_airlink_self_dev_info_notify();
         break;
     case LUAT_WLAN_EVENT_WIFI_NETWORK_FOUND:

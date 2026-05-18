@@ -6,17 +6,44 @@ add_rules("mode.debug", "mode.release")
 
 local unpack = table.unpack or unpack
 local luatos = "../../"
+-- Resolve path to luatos-ext-components with this priority:
+--   1. LUATOS_EXT_ROOT env var — explicit override; recommended for git worktrees and CI.
+--      e.g.  $env:LUATOS_EXT_ROOT = "D:/github/luatos-ext-components"
+--   2. Relative ../../../luatos-ext-components — standard side-by-side checkout layout.
+--   3. Worktree safety net: if <repo_root>/.git is a file (worktree indicator), walk up
+--      one extra level relative to the main repo root.  This is a best-effort heuristic
+--      and is NOT the primary resolution path.
+local function find_ext_root()
+    local env_val = os.getenv("LUATOS_EXT_ROOT")
+    if env_val and env_val ~= "" then
+        return path.absolute(env_val)
+    end
+    local candidate = path.absolute(path.join(os.scriptdir(), "../../../luatos-ext-components"))
+    if os.isdir(candidate) then return candidate end
+    -- Worktree safety net: .git is a file (not a directory) inside a worktree.
+    local repo_root = path.absolute(path.join(os.scriptdir(), "../.."))
+    if os.isfile(path.join(repo_root, ".git")) then
+        local alt = path.absolute(path.join(repo_root, "../../../luatos-ext-components"))
+        if os.isdir(alt) then return alt end
+    end
+    return candidate  -- xmake will emit a clear missing-file error if path is still wrong
+end
+local luatos_ext_root = find_ext_root()
 -- 2表示mbedtls 2.18.x，3表示mbedtls 3.x
 local mbedtls_version = 3
-
-add_requires("libuv v1.49.2")
-add_packages("libuv")
 
 add_requires("gmssl")
 add_packages("gmssl")
 
-add_requires("libsdl2")
-add_packages("libsdl2")
+-- POSIX pthreads（Windows 通过 pthreads4w 提供）
+if is_host("windows") then
+    add_requires("pthreads4w")
+end
+
+-- SDL2 仅在 GUI 模式下需要
+if os.getenv("LUAT_USE_GUI") == "y" then
+    add_requires("libsdl2")
+end
 
 local function thirdparty_file_options()
     if is_host("windows") then
@@ -75,10 +102,19 @@ end
 add_includedirs("include",{public = true})
 add_includedirs(luatos.."lua/include",{public = true})
 add_includedirs(luatos.."luat/include",{public = true})
--- add_includedirs("libuv/include",{public = true})
+add_includedirs("port/posix",{public = true})
 
 
 target("luatos-lua")
+
+    -- 用于获取windows模拟器调试信息，打开debug模式
+    -- if is_host("windows") then
+    --     set_symbols("debug")
+    --     add_cflags("/Zi")
+    --     add_cxflags("/Zi")
+    --     add_ldflags("/DEBUG")
+    -- end
+
     -- set kind
     set_kind("binary")
     set_targetdir("$(builddir)/out")
@@ -96,6 +132,11 @@ target("luatos-lua")
     if is_plat("linux", "macosx") then
         add_linkdirs("/opt/homebrew/lib", "/usr/local/lib")
         add_links("pthread", "m", "dl")
+    end
+
+    if is_host("windows") then
+        add_packages("pthreads4w")
+        add_links("ws2_32", "iphlpapi")
     end
 
     -- i2c-tools
@@ -179,9 +220,11 @@ target("luatos-lua")
     -- rsa
     add_files(luatos.."components/rsa/**.c")
 
-    -- gmssl
-    -- add_includedirs(luatos.."components/gmssl/include")
-    -- add_files(luatos.."components/gmssl/src/**.c")
+    -- gmssl: use local include (new uint32_t ciphertext_size) + local sm2_lib.c (new 16KB limit).
+    -- The package lib provides all other gmssl symbols (aes, sha, x509, format_*, etc.).
+    -- MSVC linker prefers .obj files over .lib for duplicate symbols, so our local sm2_lib.c wins.
+    add_includedirs(luatos.."components/gmssl/include")
+    add_files(luatos.."components/gmssl/src/sm2_lib.c")
     add_files(luatos.."components/gmssl/bind/*.c")
 
     -- iconv
@@ -222,9 +265,9 @@ target("luatos-lua")
     add_files(luatos.."components/memprof/binding/*.c")
 
     -- sqlite3
-    -- add_includedirs(luatos.."components/sqlite3/include",{public = true})
-    -- add_files(luatos.."components/sqlite3/src/*.c")
-    -- add_files(luatos.."components/sqlite3/binding/*.c")
+    add_includedirs(luatos.."components/sqlite3/include",{public = true})
+    add_files(luatos.."components/sqlite3/src/*.c")
+    add_files(luatos.."components/sqlite3/binding/*.c")
     
     --mobile
     add_includedirs(luatos.."components/mobile")
@@ -364,11 +407,6 @@ target("luatos-lua")
     -- add_includedirs(luatos.."components/mreport/include",{public = true})
     add_files(luatos.."components/mreport/src/*.c")
 
-    -- 添加h264
-    add_includedirs(luatos.."components/h264/include")
-    add_files(luatos.."components/h264/src/*.c")
-    add_files(luatos.."components/h264/binding/*.c")
-
     -- 添加videoplayer
     add_includedirs(luatos.."components/videoplayer/include")
     add_includedirs(luatos.."components/tjpgd")
@@ -418,10 +456,10 @@ target("luatos-lua")
         add_includedirs(luatos .. "components/network/iperf/include")
         add_files(luatos .. "components/network/iperf/**.c")
 
-        remove_files(luatos .. "components/airlink/src/driver/*.c")
-        remove_files(luatos .. "components/airlink/src/exec/luat_airlink_cmd_exec_wlan.c")
-        remove_files(luatos .. "components/airlink/src/exec/luat_airlink_cmd_exec_gpio.c")
-        remove_files(luatos .. "components/airlink/src/exec/luat_airlink_cmd_exec_uart.c")
+        -- remove_files(luatos .. "components/airlink/src/driver/*.c")
+        -- remove_files(luatos .. "components/airlink/src/exec/luat_airlink_cmd_exec_wlan.c")
+        -- remove_files(luatos .. "components/airlink/src/exec/luat_airlink_cmd_exec_gpio.c")
+        -- remove_files(luatos .. "components/airlink/src/exec/luat_airlink_cmd_exec_uart.c")
         remove_files(luatos .. "components/airlink/src/exec/luat_airlink_cmd_exec_bluetooth.c")
         
         remove_files(luatos .. "components/airlink/src/task/luat_airlink_spi_slave_task.c")
@@ -439,12 +477,19 @@ target("luatos-lua")
 
         -- 添加蓝牙
         add_includedirs(luatos .. "components/bluetooth/include")
+        add_files(luatos .. "components/bluetooth/drv/luat_drv_ble_gatt.c")
     else
         add_includedirs(luatos .. "components/network/lwip/include")
         add_includedirs("lwip/include")    
     end
 
+    -- nes
+    add_includedirs(luatos.."components/nes/inc")
+    add_includedirs(luatos.."components/nes/port")
+    add_files(luatos.."components/nes/**.c")
+
     if os.getenv("LUAT_USE_GUI") == "y" then
+        add_packages("libsdl2")
         add_files("ui/*.c")
         add_defines("U8G2_USE_LARGE_FONTS=1")
 
@@ -456,8 +501,10 @@ target("luatos-lua")
         add_files(luatos.."components/u8g2/*.c")
         -- lcd
         add_includedirs(luatos.."components/lcd")
+        add_includedirs(luatos.."components/luat_image/include")
         add_files(luatos.."components/lcd/*.c")
-        
+        add_files(luatos.."components/luat_image/src/*.c")
+
         -- LVGL 9.4 + AIRUI - 最基础组件编译
         -- 头文件添加：lvgl9 
         add_includedirs(luatos.."components/airui")
@@ -531,7 +578,18 @@ target("luatos-lua")
 
     end
 
-    -- mGBA GBA模拟器组件
+    -- 非 GUI 构建补齐最小单色显示栈：u8g2 + eink/epaper + qrcode。
+    -- GUI 构建沿用原有范围，避免意外扩大 EINK 支持面。
+    if os.getenv("LUAT_USE_GUI") ~= "y" then
+        add_includedirs(luatos.."components/qrcode")
+        add_files(luatos.."components/qrcode/*.c")
+        add_files(luatos.."components/u8g2/*.c")
+        add_files("ui/luat_u8g2_pc.c")  -- provides luat_u8g2_setup (no SDL2 deps)
+        add_includedirs(luatos.."components/eink")
+        add_files(luatos.."components/eink/*.c")
+        add_includedirs(luatos.."components/epaper")
+        add_files(luatos.."components/epaper/*.c")
+    end
     if os.getenv("LUAT_USE_MGBA") == "y" then
         add_defines("LUAT_USE_MGBA=1")
         add_defines("MGBA_CONFIG_FILE=\"mgba_config_luatos.h\"")
@@ -654,5 +712,92 @@ target("luatos-lua")
         
         -- 添加 Windows 库
         add_links("shlwapi")
+    end
+
+    -- =========================================================
+    -- mp4player（MP4/H.264/AAC 解码器）
+    -- 源码目录由 luatos_ext_root 指向 luatos-ext-components/vedio_player
+    -- 示例（PowerShell）：
+    --   $env:LUAT_USE_MP4PLAYER = "y"  # 显式启用
+    --   $env:LUAT_USE_MP4PLAYER = "n"  # 显式禁用
+    --   cmd /c build_windows_32bit_msvc.bat
+    -- =========================================================
+    -- 自动检测：如果 luatos_ext_root/vedio_player 不存在，自动禁用 MP4
+    local use_mp4player = false
+    local mp4player_src = luatos_ext_root .. "/vedio_player"
+    if os.isdir(mp4player_src) then
+        -- 检查环境变量 LUAT_USE_MP4PLAYER 的显式控制
+        local env_mp4 = os.getenv("LUAT_USE_MP4PLAYER")
+        if env_mp4 ~= "n" then
+            use_mp4player = true
+        end
+    elseif os.getenv("LUAT_USE_MP4PLAYER") == "y" then
+        -- 显式要求启用但目录不存在，给出警告（保留，不强制失败）
+        print("Warning: LUAT_USE_MP4PLAYER=y but vedio_player not found at: " .. mp4player_src)
+    end
+    
+    if use_mp4player then
+        add_defines("LUAT_USE_MP4PLAYER=1")
+
+        local mp4player_src = luatos_ext_root .. "/vedio_player"
+        -- 统一为正斜杠，xmake 在 Windows 下两者均支持
+        mp4player_src = mp4player_src:gsub("\\", "/")
+        -- 确保末尾无斜杠
+        mp4player_src = mp4player_src:gsub("/$", "")
+
+        -- ---- 头文件搜索路径 ----
+        -- port/ 最先，其 plat_support.h 优先覆盖 platform/ 原始版本
+        add_includedirs(mp4player_src .. "/port")
+        add_includedirs(mp4player_src .. "/audio_decode")
+        add_includedirs(mp4player_src .. "/audio_decode/platform")
+        add_includedirs(mp4player_src .. "/audio_decode/aac")
+        add_includedirs(mp4player_src .. "/audio_decode/aac/include")
+        add_includedirs(mp4player_src .. "/audio_decode/aac/libfaad")
+        add_includedirs(mp4player_src .. "/video_decode")
+        add_includedirs(mp4player_src .. "/video_decode/avcodec")
+        add_includedirs(mp4player_src .. "/video_decode/avcodec/h264")
+
+        -- ---- 音频公共模块 ----
+        add_files(mp4player_src .. "/audio_decode/audio_rb.c")
+        add_files(mp4player_src .. "/audio_decode/sound.c")
+
+        -- ---- AAC 解码（libfaad，第三方代码，关闭所有警告）----
+        add_thirdparty_files(mp4player_src .. "/audio_decode/aac/libfaad/*.c")
+
+        -- ---- H.264 解码器（avcodec，FFmpeg 派生，关闭所有警告）----
+        -- atomic_gcc.h 已在 MSVC 下添加 #ifdef _MSC_VER 兼容处理，无需额外 defines。
+        add_thirdparty_files(mp4player_src .. "/video_decode/avcodec/h264/*.c")
+        add_thirdparty_files(mp4player_src .. "/video_decode/avcodec/*.c")
+        -- libavutil 是 avcodec 的底层库（av_frame_*, av_samples_*, av_image_*, av_opt_* 等）
+        add_thirdparty_files(mp4player_src .. "/video_decode/avcodec/h264/libavutil/*.c")
+        -- file_open.c 依赖 <fcntl.h> O_CREAT 等宏（config.h 未启用 HAVE_FCNTL），改用 PC stub
+        remove_files(mp4player_src .. "/video_decode/avcodec/h264/libavutil/file_open.c")
+        -- *_template.c 是通过 #include 引入的模板文件，不直接参与编译
+        remove_files(mp4player_src .. "/video_decode/avcodec/*_template.c")
+        remove_files(mp4player_src .. "/video_decode/avcodec/h264/*_template.c")
+        -- yuv2rgb_neon.c 使用 ARM NEON intrinsics，PC 不可编译
+        remove_files(mp4player_src .. "/video_decode/avcodec/yuv2rgb_neon.c")
+        -- h264/yuv.c 与 SDL2 的 yuv_rgb_std.c 重复定义 yuv420_rgb24_std 等函数，排除之
+        remove_files(mp4player_src .. "/video_decode/avcodec/h264/yuv.c")
+        -- h264_decode.c 是独立的 H264 解码桥接层，供 luat_mp4_videoplayer.c 调用
+        -- （以前因为与 components/h264/src/h264_decoder.c 符号冲突而被排除；
+        --   现已移除 components/h264，因此可以正常编译）
+
+        -- ---- MP4 解复用 + 解码协调层 ----
+        add_files(mp4player_src .. "/video_decode/mp4_decode.c")
+        add_files(mp4player_src .. "/video_decode/video_rb.c")
+
+        -- ---- platform port（已适配 LuatOS VFS，仅含 luat_mp4player_port.c）----
+        add_files(mp4player_src .. "/port/luat_mp4player_port.c")
+
+        -- ---- PC audio stubs（替代 CCM42xx DAC/DMA 硬件驱动）----
+        -- platform/ 中的 dac_sound.c / sys_dac.c 依赖 CCM42xx 外设寄存器，不编译；
+        -- 改用 port/mp4player/ 中的 no-op stub。
+        add_files("stubs/mp4player/dac_sound_pc.c")
+        add_files("stubs/mp4player/sys_dac_pc.c")
+
+        -- mp3
+        add_includedirs(mp4player_src .. "/audio_decode/mp3")
+        add_files(mp4player_src .. "/audio_decode/mp3/*.c")
     end
 target_end()

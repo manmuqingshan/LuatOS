@@ -58,6 +58,7 @@ local SIP_EVENT = {
 
 -- 统一事件回调分发。
 local function emit_event(event, action, payload)
+    log.info("JQsip", "emit_event", event, action, type(g_callback))
     if type(g_callback) ~= "function" then
         return
     end
@@ -96,6 +97,8 @@ end
 local LOCAL_PORT = 5062
 -- 注册有效期（秒）
 local REGISTER_EXPIRES = 600
+-- 默认外呼超时时间（秒），超过该时间未接通则自动取消
+local CALL_TIMEOUT = 30
 
 -- ==================== 实现区 ====================
 
@@ -510,6 +513,8 @@ local function sip_task(opts)
         sip_server_addr = opts.sip_server_addr,
         sip_server_port = opts.sip_server_port,
         adapter = opts.adapter,
+        -- 锁定的适配器：第一次启动时的网卡，重连时始终使用这个
+        locked_adapter = opts.adapter,
         local_port = opts.local_port or LOCAL_PORT,
         expires = opts.expires or REGISTER_EXPIRES,
 
@@ -547,6 +552,7 @@ local function sip_task(opts)
         options_fail_count = 0,
         options_interval = tonumber(opts.options_interval) or 25000,
         options_max_fail = tonumber(opts.options_max_fail) or 3,
+        call_timeout = tonumber(opts.call_timeout) or CALL_TIMEOUT,
 
         -- 媒体协商结果缓存。
         -- SIP 层不会直接收发 RTP，但会把最终协商好的参数保存于此，
@@ -559,6 +565,11 @@ local function sip_task(opts)
             session = nil
         }
     }
+    log.info("sip", "SIP task uses locked adapter:", state.locked_adapter, "transport:", state.sip_transport)
+    if not state.locked_adapter then
+        state.locked_adapter = socket.dft()
+        log.info("sip", "locked_adapter initialized to default:", state.locked_adapter)
+    end
 
     local function copy_headers(headers)
         local out = {}
@@ -610,6 +621,8 @@ local function sip_task(opts)
             log.warn("sip", "no common media codec")
             return
         end
+        -- 添加 SIP 层锁定的网卡适配器，确保媒体和 SIP 使用同一个网卡
+        session.adapter = state.locked_adapter
         -- 某些设备会在通话建立后发 re-INVITE/重复 ACK；媒体未变化时不再重复通知上层。
         if state.media.active and same_media_session(state.media.session, session) then
             state.media.session = session
@@ -635,8 +648,10 @@ local function sip_task(opts)
         state.media.session = nil
     end
 
+    local net_send_on
+
     -- 统一发送接口：写 socket 后调用 `socket.wait()`，尽量把发送与状态切换串起来。
-    local function net_send_on(netc, data)
+    net_send_on = function(netc, data)
         if not netc or not data then
             return
         end
@@ -646,6 +661,48 @@ local function sip_task(opts)
 
     local function net_send(data)
         net_send_on(state.netc, data)
+    end
+
+    -- 强制停止所有与通话相关的定时器，包括超时定时器
+    -- 在SIP连接断开、网络切换、stop()等场景下调用，防止定时器泄漏
+    local function stop_all_call_timers()
+        if state.dialog and state.dialog.timeout_timer then
+            log.info("sip", "stopping all call timers, clearing timeout_timer")
+            sys.timerStop(state.dialog.timeout_timer)
+            state.dialog.timeout_timer = nil
+        end
+    end
+
+    local function stop_call_timeout()
+        stop_all_call_timers()
+    end
+
+    local function on_call_timeout()
+        -- 额外检查：如果已停止，直接忽略
+        if g_stop then
+            log.warn("sip", "call timeout ignored - stopped")
+            return
+        end
+        if not state.dialog or state.dialog.direction ~= "out" or state.dialog.established then
+            log.warn("sip", "call timeout ignored - no active outgoing call or already established")
+            return
+        end
+        log.warn("sip", "outgoing call timeout, canceling")
+        -- 超时前清空定时器引用，避免重复触发
+        state.dialog.timeout_timer = nil
+        local cancel = build_cancel(state, state.dialog)
+        net_send(cancel)
+        local failed_dialog = state.dialog
+        state.dialog = nil
+        emit_call("failed", {
+            code = 408,
+            reason = "timeout",
+            dialog = failed_dialog
+        })
+        emit_call("ended", {
+            reason = "timeout",
+            dialog = failed_dialog
+        })
     end
 
     -- 停止注册续租定时器，同时停止 UDP OPTIONS 保活定时器。
@@ -779,6 +836,8 @@ local function sip_task(opts)
             local_sdp = build_sdp(state, "sendrecv")
         }
         state.dialog = dialog
+        log.info("sip", "setting call timeout", state.call_timeout, "seconds")
+        dialog.timeout_timer = sys.timerStart(on_call_timeout, state.call_timeout * 1000)
 
         local req = build_invite(state, dialog, nil)
         log.info("sip", "send INVITE", to_uri)
@@ -859,11 +918,21 @@ local function sip_task(opts)
             local resp = build_response(state, req_headers, 486, "Busy Here", nil, "")
             log.info("sip", "reject incoming")
             net_send(resp)
+            stop_media("local_reject")
             state.incoming_invite = nil
+            emit_call("ended", {
+                reason = "local_reject",
+                call_id = inv.headers["call-id"],
+                from = inv.headers["from"],
+                to = inv.headers["to"]
+            })
             return
         end
 
         local dialog = state.dialog
+        if dialog and dialog.direction == "out" and not dialog.established then
+            stop_call_timeout()
+        end
         if not dialog then
             log.warn("sip", "no dialog")
             return
@@ -938,6 +1007,7 @@ local function sip_task(opts)
         if param ~= 0 then
             log.warn("sip", "net error", event, param)
             stop_reg_timer()
+            stop_all_call_timers()
             emit_event(SIP_EVENT.ERROR, "net", {
                 event = event,
                 param = param
@@ -954,7 +1024,7 @@ local function sip_task(opts)
         if event == socket.ON_LINE then
             -- ON_LINE: TCP/UDP connect 完成（或 DNS 完成），可以发 REGISTER
             -- 尝试获取本地IP填Contact
-            local ip = socket.localIP()
+            local ip = socket.localIP(state.current_adapter)
             if type(ip) == "string" and #ip > 0 then
                 state.local_ip = ip
             end
@@ -963,6 +1033,7 @@ local function sip_task(opts)
             state.branch = gen_token("br")
             state.cseq = 1
             state.auth_tried = 0
+            state.last_www = nil
 
             local req = build_register(state, nil)
             log.info("sip", "send REGISTER", state.sip_server_addr, state.sip_server_port)
@@ -1072,6 +1143,12 @@ local function sip_task(opts)
                     headers = req_headers,
                     body = body,
                     remote_sdp = state.incoming_invite.remote_sdp
+                })
+                emit_call("ringing", {
+                    call_id = req_headers["call-id"],
+                    from = req_headers["from"],
+                    to = req_headers["to"],
+                    headers = req_headers
                 })
                 emit_media("offer", {
                     call_id = req_headers["call-id"],
@@ -1283,6 +1360,7 @@ local function sip_task(opts)
                     state.dialog.remote_sdp_raw = body
                     state.dialog.remote_sdp = parse_sdp(body)
                     state.dialog.established = true
+                    stop_call_timeout()
                     net_send_on(netc, build_ack(state, state.dialog))
                     maybe_start_media(state.dialog, "outgoing_200")
                     log.info("sip", "call established (outgoing)")
@@ -1296,6 +1374,7 @@ local function sip_task(opts)
                     if to_hdr then
                         state.dialog.to = to_hdr
                     end
+                    stop_call_timeout()
                     net_send_on(netc, build_ack_non2xx(state, state.dialog))
                     log.warn("sip", "call failed", code)
                     stop_media("call_failed")
@@ -1315,6 +1394,18 @@ local function sip_task(opts)
 
                 if code == 200 then
                     handle_invite_success()
+                    return
+                end
+
+                if code == 180 or code == 181 or code == 182 or code == 183 then
+                    -- 处理 180 Ringing、181 Call Is Being Forwarded、182 Queued、183 Session Progress
+                    log.info("sip", "invite provisional response", code, reason)
+                    emit_call("ringing", {
+                        dialog = state.dialog,
+                        code = code,
+                        reason = reason,
+                        headers = headers
+                    })
                     return
                 end
 
@@ -1477,8 +1568,15 @@ local function sip_task(opts)
             -- - 停止媒体
             -- - 清理通话与消息事务状态
             stop_reg_timer()
+            stop_call_timeout()
             state.online = false
             stop_media("socket_closed")
+            -- 清理dialog前先停止超时定时器，防止定时器在dialog清空后仍触发
+            if state.dialog and state.dialog.timeout_timer then
+                log.info("sip", "socket closed, clearing call timeout timer")
+                sys.timerStop(state.dialog.timeout_timer)
+                state.dialog.timeout_timer = nil
+            end
             state.dialog = nil
             state.incoming_invite = nil
             state.msg_tx = nil
@@ -1490,30 +1588,101 @@ local function sip_task(opts)
         end
     end
 
+    -- 维护可用网卡表
+    local ready_adapters = {}
+
+    local function ip_ready_handler(ip, adapter)
+        log.info("sip", "IP_READY", adapter)
+        ready_adapters[adapter] = true
+    end
+
+    local function ip_lose_handler(adapter)
+        log.info("sip", "IP_LOSE", adapter)
+        ready_adapters[adapter] = nil
+        local current_adapter = (state.dialog or state.incoming_invite) and state.locked_adapter or socket.dft()
+        if adapter == current_adapter then
+            emit_event(SIP_EVENT.ERROR, "network_changed", {
+                reason = "current_adapter_lost",
+                adapter = adapter
+            })
+            if state.netc then
+                sys.publish(TOPIC_DISCONNECT)
+            end
+        end
+    end
+
+    -- 初始化已就绪网卡表（补偿订阅前已发出的 IP_READY）
+    for _, adapter_id in ipairs({socket.LWIP_GP, socket.LWIP_STA, socket.LWIP_ETH, socket.LWIP_USER1, socket.LWIP_GP_GW}) do
+        if socket.adapter(adapter_id) then
+            ready_adapters[adapter_id] = true
+        end
+    end
+
+    sys.subscribe("IP_READY", ip_ready_handler)
+    sys.subscribe("IP_LOSE", ip_lose_handler)
+
+    -- 订阅网络状态变化，非通话时若默认网卡变化则主动触发重连
+    local function network_status_handler(net_type, adapter)
+        if state.dialog or state.incoming_invite then
+            return
+        end
+        if adapter ~= state.current_adapter and state.netc then
+            log.info("sip", "default network changed from", state.current_adapter, "to", adapter, ", trigger reconnect")
+            sys.publish(TOPIC_DISCONNECT)
+        end
+    end
+    sys.subscribe("EXLIB_NETDRV_NETWORK_STATUS", network_status_handler)
+
     -- 外层重连循环：只要未显式 stop，断线后就会等待 3 秒重连。
     while true do
-        local netc = socket.create(opts.adapter, netCB)
-        state.netc = netc
-        socket.config(netc, state.local_port, (state.sip_transport == "udp"))
-
-        local succ = socket.connect(netc, state.sip_server_addr, state.sip_server_port)
-        if not succ then
-            log.warn("sip", "connect start failed, retry")
-            socket.close(netc)
-            socket.release(netc)
-            sys.wait(3000)
+        local adapter_to_use
+        if state.dialog or state.incoming_invite then
+            -- 来电/拨号/通话中：锁定为建立 SIP 时的网卡
+            adapter_to_use = state.locked_adapter
         else
-            sys.waitUntil(TOPIC_DISCONNECT)
-            stop_reg_timer()
-            socket.close(netc)
-            socket.release(netc)
-            state.netc = nil
+            -- 空闲/注册中：跟随当前默认网卡
+            adapter_to_use = socket.dft()
+        end
+
+        state.current_adapter = adapter_to_use
+
+        if not ready_adapters[adapter_to_use] then
+            log.info("sip", "adapter not ready, waiting for IP_READY:", adapter_to_use)
+            sys.wait(1000)
             if g_stop then
                 break
             end
-            sys.wait(3000)
+        else
+            log.info("sip", "creating socket with adapter:", adapter_to_use, "locked_adapter:", state.locked_adapter)
+            local netc = socket.create(adapter_to_use, netCB)
+            state.netc = netc
+            socket.config(netc, state.local_port, (state.sip_transport == "udp"))
+
+            local succ = socket.connect(netc, state.sip_server_addr, state.sip_server_port)
+            if not succ then
+                log.warn("sip", "connect start failed, retry")
+                socket.close(netc)
+                socket.release(netc)
+                sys.wait(3000)
+            else
+                sys.waitUntil(TOPIC_DISCONNECT)
+                stop_reg_timer()
+                -- 断开连接时强制停止所有通话定时器，防止旧task的定时器泄漏到新实例
+                stop_all_call_timers()
+                socket.close(netc)
+                socket.release(netc)
+                state.netc = nil
+                if g_stop then
+                    break
+                end
+                sys.wait(3000)
+            end
         end
     end
+
+    sys.unsubscribe("IP_READY", ip_ready_handler)
+    sys.unsubscribe("IP_LOSE", ip_lose_handler)
+    sys.unsubscribe("EXLIB_NETDRV_NETWORK_STATUS", network_status_handler)
 
     emit_lifecycle("stopped", {})
 end
@@ -1538,6 +1707,7 @@ exsipclient.start({
     rtp_port = 40000,
     codecs = {"PCMU", "PCMA"},
     ptime = 20,
+    call_timeout = 30,
     event_callback = function(event, action, payload)
         -- event 可取 lifecycle、register、call、media、message、error
         -- lifecycle: online、offline、stopped

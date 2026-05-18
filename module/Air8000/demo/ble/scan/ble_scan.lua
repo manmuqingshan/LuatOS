@@ -1,8 +1,8 @@
 --[[
 @module  ble_ibeacon
 @summary Air8000演示scan功能模块
-@version 1.1
-@date    2026.01.11
+@version 1.2
+@date    2026.05.18
 @author  王世豪
 @usage
 本文件为Air8000核心板演示scan功能的代码示例，核心业务逻辑为：
@@ -24,13 +24,22 @@ local scan_state = false
 -- WiFi和蓝牙状态 (1=开启, 0=关闭)
 local wifi_state = 1
 
+local bluetooth_device = nil
+local ble_device = nil
+
 local function wifi_state_change(state)
     wifi_state = state
     log.info("ble_scan", "收到WiFi状态变化:", state)
     
-    -- 如果是关闭状态，将扫描状态设置为false
-    if state == 0 and scan_state then
-        scan_state = false
+    -- 如果是关闭状态，将扫描状态设置为false，并重置蓝牙设备对象
+    if state == 0 then
+        if scan_state then
+            scan_state = false
+        end
+        -- WiFi关闭时，重置蓝牙设备对象（硬件已关闭，Lua变量需要重置）
+        log.info("ble_scan", "WiFi关闭，重置蓝牙设备状态")
+        bluetooth_device = nil
+        ble_device = nil
     else
         -- WiFi状态打开时发布消息
         sys.publish("WIFI_STATE_OPEN")

@@ -7,7 +7,8 @@
 @usage
 
 注意：
-如果搭配AirAUDIO_1000 音频板测试，需将AirAUDIO_1000 音频板中PA开关拨到OFF，让软件控制PA，避免pop音
+1. 如果搭配AirAUDIO_1000 音频板测试，需将AirAUDIO_1000 音频板中PA开关拨到OFF，让软件控制PA，避免pop音
+2. 使用 AirAUDIO_1020 时，仅需在`audio_setup_param`修改 `model="tm8211"` 并移除 `i2c_id` 配置即可支持播放功能
 
 HTTP下载音频文件播放演示程序，按键功能：
 1. Power键：开始HTTP下载并播放，停止播放
@@ -75,7 +76,7 @@ local sd_mount_path = "/sd"    -- SD卡挂载路径
 
 -- 硬件配置参数
 local audio_setup_param = {
-    model = "es8311",          -- 音频编解码芯片类型
+    model = "es8311",          -- dac类型,可填入"es8311","tm8211"
     i2c_id = 0,                -- I2C接口编号
     pa_ctrl = 162,             -- 音频放大器控制引脚
     dac_ctrl = 164,            -- 音频编解码芯片控制引脚

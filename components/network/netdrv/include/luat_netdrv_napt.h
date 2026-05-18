@@ -173,7 +173,8 @@ static inline int napt_output_to_lan(napt_ctx_t* ctx,
 // NAPT公共输出路由函数: LAN→WAN 方向
 static inline int napt_output_to_wan(napt_ctx_t* ctx,
                                      luat_netdrv_t* gw,
-                                     struct ip_hdr* ip_hdr)
+                                     struct ip_hdr* ip_hdr,
+                                     uint8_t* buff)
 {
     if (!gw || !gw->dataout || !gw->netif) {
         return 1;
@@ -185,7 +186,11 @@ static inline int napt_output_to_wan(napt_ctx_t* ctx,
             gw->dataout(gw, gw->userdata, ctx->eth, ctx->len);
         }
         else {
-            return 0; // 网关netdrv是ETH,源网卡不是ETH, 当前不支持
+            memcpy(buff, gw->gw_mac, 6);
+            memcpy(buff + 6, gw->netif->hwaddr, 6);
+            memcpy(buff + 12, "\x08\x00", 2);
+            memcpy(buff + 14, ip_hdr, ctx->len);
+            gw->dataout(gw, gw->userdata, buff, ctx->len + 14);
         }
     }
     else {
@@ -205,6 +210,7 @@ int luat_napt_udp_handle(napt_ctx_t* ctx);
 
 void luat_netdrv_napt_tcp_cleanup(void);
 void luat_netdrv_napt_udp_cleanup(void);
+void luat_netdrv_napt_icmp_cleanup(void);
 
 int luat_netdrv_napt_pkg_input(int id, uint8_t* buff, size_t len);
 
@@ -219,5 +225,8 @@ int luat_netdrv_napt_init_contexts(void);
 
 void luat_netdrv_napt_enable(int adapter_id);
 void luat_netdrv_napt_disable(void);
+
+extern luat_netdrv_napt_ctx_t *g_napt_tcp_ctx;
+extern luat_netdrv_napt_ctx_t *g_napt_udp_ctx;
 
 #endif
