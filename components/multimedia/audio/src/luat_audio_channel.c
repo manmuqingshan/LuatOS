@@ -10,20 +10,20 @@
 #include LUAT_CSDK_CONFIG_FILE
 #endif
 
-int luat_audio_channel_create_fifo(luat_audio_channel_t *channel, uint32_t fifo_size_power)
+int luat_audio_channel_create_fifo(luat_audio_channel_t *channel, uint32_t play_fifo_size_power, uint32_t low_level, uint32_t high_level)
 {
     if (!channel) {
         return -LUAT_ERROR_PARAM_INVALID;
     }
-    if (!fifo_size_power) {
-        fifo_size_power = LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER;
+    if (!play_fifo_size_power) {
+        play_fifo_size_power = LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER;
     }
+
     luat_mutex_lock(channel->play_lock_mutex);
     if (channel->play_fifo) luat_fifo_destroy(channel->play_fifo);
-    if (channel->record_fifo) luat_fifo_destroy(channel->record_fifo);
-    channel->play_fifo = luat_fifo_create(fifo_size_power);
-    channel->record_fifo = luat_fifo_create(fifo_size_power);  
-    channel->play_fifo_need_data_level = channel->play_fifo->size >> 1;
+    channel->play_fifo = luat_fifo_create(play_fifo_size_power);
+    channel->play_fifo_low_level = low_level;
+    channel->play_fifo_high_level = high_level;
     luat_mutex_unlock(channel->play_lock_mutex);
     return LUAT_ERROR_NONE;
 }
@@ -35,9 +35,7 @@ int luat_audio_channel_destroy_fifo(luat_audio_channel_t *channel)
     }
     luat_mutex_lock(channel->play_lock_mutex);
     luat_fifo_destroy(channel->play_fifo);
-    luat_fifo_destroy(channel->record_fifo);
     channel->play_fifo = NULL;
-    channel->record_fifo = NULL;
     luat_mutex_unlock(channel->play_lock_mutex);
     return LUAT_ERROR_NONE;
 }
@@ -109,10 +107,9 @@ static void _audio_channel_play_vol_32bit(int32_t *data, uint32_t len_bytes, uin
 int luat_audio_channel_write_data(luat_audio_channel_t *channel, void *data, uint32_t len_bytes, uint32_t *written_bytes, uint8_t is_signed,uint8_t data_align, uint8_t channel_nums)
 {
     *written_bytes = 0;
-    if (!channel || !data || !written_bytes) {
-        return -LUAT_ERROR_PARAM_INVALID;
-    }
-
+    // if (!channel || !data || !written_bytes) {
+    //     return -LUAT_ERROR_PARAM_INVALID;
+    // }
     luat_data_union_t data_union;
     data_union.p = data;
 

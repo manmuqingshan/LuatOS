@@ -65,6 +65,7 @@ enum {
     LUAT_AUDIO_REQUEST_EVENT_GET_NEW_DATA,            /**< 录音获取到新数据 */
     LUAT_AUDIO_REQUEST_EVENT_DECODE_DONE,             /**< 解码完成 */
     LUAT_AUDIO_REQUEST_EVENT_END,                     /**< 请求结束 */
+    LUAT_AUDIO_REQUEST_ALL_PLAY_DATA_DONE,                /**< 所有播放数据完成 */
 };
 
 /**
@@ -79,12 +80,23 @@ enum {
 /**
  * @brief 默认音频通道FIFO大小
  * 
- * 定义音频通道的默认FIFO大小，用于存储音频数据。默认是2^16字节。
+ * 定义音频通道的默认FIFO大小，用于存储音频数据。默认是2^17字节，最小是2^16字节。
  * 
  * @note 这个值是2的幂次方，用于计算FIFO的大小。
  */
 #ifndef LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER
-#define LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER (16)
+#define LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER (17)
+#endif
+
+/**
+ * @brief 默认音频数据编解码器输入FIFO大小
+ * 
+ * 定义音频数据编解码器的默认输入FIFO大小，用于存储音频数据。默认是2^14字节，最小是2^14字节。
+ * 
+ * @note 这个值是2的幂次方，用于计算FIFO的大小。
+ */
+#ifndef LUAT_AUDIO_DATA_CODEC_INPUT_FIFO_DEFAULT_SIZE_POWER
+#define LUAT_AUDIO_DATA_CODEC_INPUT_FIFO_DEFAULT_SIZE_POWER (14)
 #endif
 
 #ifndef LUAT_AUDIO_TASK_STACK

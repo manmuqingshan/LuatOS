@@ -30,9 +30,8 @@
  */
 struct luat_audio_channel {
     luat_fifo_t *play_fifo;                    /**< 播放数据FIFO缓冲区，只能在驱动回调的中断里读出，只有1个消费者 */
-    luat_fifo_t *record_fifo;                  /**< 录音数据FIFO缓冲区，只能在驱动回调的中断里写入，只有1个生产者 */
-    uint32_t play_fifo_need_data_level;        /**< 播放缓存需要更多数据的临界点, 默认为播放缓冲区大小的一半时, 触发数据请求 */
-    uint32_t record_fifo_enough_data_level;      /**< 录放缓存有足够数据可以处理的临界点 */
+    uint32_t play_fifo_low_level;        /**< 播放缓存低水位, 默认为播放缓冲区大小的25%时, 触发数据请求 */
+    uint32_t play_fifo_high_level;        /**< 播放缓存高水位, 不再解码数据 */
     void *play_lock_mutex;                          /**< 播放数据写入保护 */
     struct luat_audio_driver_ctrl *driver_ctrl; /**< 关联的音频驱动控制器指针 */
     struct luat_audio_request_block *play_request_block;   /**< 当前播放请求块指针 */
@@ -43,17 +42,20 @@ struct luat_audio_channel {
     uint8_t error_record_overflow;             /**< 录音溢出错误标志位 */
     uint8_t data_align;                        /**< 数据对齐方式（2=16位, 3=24位, 4=32位, 其他8位） */
     uint8_t blank_data_cnt;                    /**< 空数据计数，用于记录播放时的空数据数量 */
+    uint8_t record_jump_cnt;
 };
 typedef struct luat_audio_channel luat_audio_channel_t;
 
 /**
  * @brief 创建音频通道的FIFO缓冲区
  * @param channel 音频通道指针，必须指向有效的 luat_audio_channel_t 结构
- * @param fifo_size_power FIFO缓冲区大小，必须是2的幂次方
+ * @param play_fifo_size_power 播放FIFO缓冲区大小，必须是2的幂次方
+ * @param low_level 播放缓存低水位, 默认为播放缓冲区大小的25%时, 触发数据请求
+ * @param high_level 播放缓存高水位, 不再解码数据
  * @return int 成功返回 LUAT_ERROR_NONE，失败返回其他错误码
  * 
  */
-int luat_audio_channel_create_fifo(luat_audio_channel_t *channel, uint32_t fifo_size_power);
+int luat_audio_channel_create_fifo(luat_audio_channel_t *channel, uint32_t play_fifo_size_power, uint32_t low_level, uint32_t high_level);
 
 /**
  * @brief 销毁音频通道的FIFO缓冲区

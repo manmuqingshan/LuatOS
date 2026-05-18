@@ -163,7 +163,6 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, luat_audio_comm
             ctrl->opts->stop(ctrl);
             ctrl->state = LUAT_AUDIO_DRIVER_STATE_ACTIVE;
             	//先关闭录音中断，并且清楚录音fifo中的数据
-	        luat_fifo_clear(ctrl->data_channel->record_fifo);
         }
     }
     ret = ctrl->opts->modify_audio_common_param(ctrl, common_param->sample_rate, common_param->data_align, common_param->channel_nums);
