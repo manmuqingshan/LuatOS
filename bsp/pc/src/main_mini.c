@@ -37,9 +37,17 @@ extern const uint8_t luadb_mod[];
 // 这串数据实际上是"FFFFEEEEDDDDCCCCBBBBAAAA999988887777666655554444333322221111"的sha256值
 const uint8_t luatdb_secret[] = {0xa8, 0xe4, 0x9c, 0x1a, 0x57, 0x4b, 0x00, 0x2f, 0x4c, 0xc4, 0x74, 0xb8, 0x69, 0x1d, 0x90, 0xc1, 0x84, 0x24, 0x16, 0x11, 0x79, 0xa2, 0xd0, 0x4b, 0xfc, 0xf5, 0x14, 0x5d, 0xdd, 0x54, 0xdd, 0x55};
 
+#if defined(_MSC_VER)
+#define LUAT_PC_HEAP_ALIGN8 __declspec(align(8))
+#elif defined(__GNUC__) || defined(__clang__)
+#define LUAT_PC_HEAP_ALIGN8 __attribute__((aligned(8)))
+#else
+#define LUAT_PC_HEAP_ALIGN8
+#endif
+
 
 #define LUAT_HEAP_SIZE (4*1024*1024)
-uint8_t luavm_heap[LUAT_HEAP_SIZE] = {0};
+LUAT_PC_HEAP_ALIGN8 uint8_t luavm_heap[LUAT_HEAP_SIZE] = {0};
 
 int cmdline_argc;
 char** cmdline_argv;
