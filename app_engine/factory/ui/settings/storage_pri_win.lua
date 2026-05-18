@@ -228,14 +228,18 @@ function rebuild_priority_list()
     end
 end
 
-local function on_priority_enriched(enriched_list)
-    -- 初始化 priority_items（纯数据）
+local STORAGE_LABELS = {
+    sd_tf = "外挂TF卡", little_flash = "外挂Flash", internal = "内置文件系统",
+}
+
+local function on_priority_value(priority_list)
     priority_items = {}
-    for _, item in ipairs(enriched_list) do
+    for i, type_key in ipairs(priority_list) do
         table.insert(priority_items, {
-            type_key    = item.type_key,
-            label       = item.label,
-            description = item.description,
+            type_key    = type_key,
+            label       = STORAGE_LABELS[type_key] or type_key,
+            description = "",
+            rank        = i,
         })
     end
     rebuild_priority_list()
@@ -261,13 +265,13 @@ end
 
 local function on_create()
     build_ui()
-    sys.subscribe("STORAGE_PRIORITY_ENRICHED", on_priority_enriched)
+    sys.subscribe("STORAGE_PRIORITY_VALUE", on_priority_value)
     -- 请求当前配置
     sys.publish("STORAGE_PRIORITY_GET")
 end
 
 local function on_destroy()
-    sys.unsubscribe("STORAGE_PRIORITY_ENRICHED", on_priority_enriched)
+    sys.unsubscribe("STORAGE_PRIORITY_VALUE", on_priority_value)
     if main_container then
         main_container:destroy()
         main_container = nil

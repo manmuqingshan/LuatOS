@@ -920,9 +920,11 @@ local function on_list_updated(apps, page_info)
             return
         end
         apps = filtered
-        if tl > 0 then
-            total_pages = math.max(1, math.ceil(tl / page_limit))
-        end
+        -- 以实际已安装数量计算分页，而非服务端返回的 total
+        local ia = exapp.list_installed()
+        local installed_cnt = 0
+        for _ in pairs(ia) do installed_cnt = installed_cnt + 1 end
+        total_pages = math.max(1, math.ceil(installed_cnt / page_limit))
         has_more = (current_page < total_pages)
     end
     render_apps(apps, has_more)

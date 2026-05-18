@@ -115,3 +115,5 @@ testcase/ctx.json
 bsp/pc/pclogs/
 bsp/pc/fskv.bin
 bsp/pc/otp.bin
+
+.worktree

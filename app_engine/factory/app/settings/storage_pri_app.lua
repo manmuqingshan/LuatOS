@@ -1,38 +1,25 @@
 --[[
-@module  settings_storage_priority_app
-@summary 存储优先级配置业务逻辑层
+@module  storage_pri_app
+@summary 外部存储初始化（SD卡 / NOR Flash / NAND Flash 挂载，PC 模拟）
 @version 1.0
-@date    2026.05.13
-@author  Claude (Cowork)
-@usage
-本模块管理 app 安装的存储优先级配置，支持读取和保存。
+@date    2026.05.15
 ]]
 
--- 存储位置的中文标签映射
-local STORAGE_LABELS = {
-    sd_tf        = "外挂TF卡",
-    little_flash = "外挂Flash",
-    internal     = "内置文件系统",
-}
+local model = rtos.bsp()
 
--- 存储位置的描述映射
-local STORAGE_DESC = {
-    sd_tf        = "TF卡插入后自动挂载，速度快，容量大",
-    little_flash = "板载外挂Flash芯片，固定挂载",
-    internal     = "设备内置文件系统，始终可用",
-}
+if model == "PC" then
+    -- PC: 创建全部挂载点目录模拟存储
+    exapp.init("custom", { storage_type = "sd_tf" })
+    exapp.init("custom", { storage_type = "little_flash" })
+    exapp.init("custom", { storage_type = "nand_flash" })
 
--- 处理 config_app 返回的原始优先级数据，附上标签和描述方便 UI 展示
-sys.subscribe("STORAGE_PRIORITY_VALUE", function(priority_list)
-    local enriched = {}
-    for i, type_key in ipairs(priority_list) do
-        table.insert(enriched, {
-            type_key    = type_key,
-            label       = STORAGE_LABELS[type_key] or type_key,
-            description = STORAGE_DESC[type_key] or "",
-            rank        = i,
-        })
-    end
-    sys.publish("STORAGE_PRIORITY_ENRICHED", enriched)
-    log.info("storage_priority_app", "enriched priority list, count:", #enriched)
-end)
+elseif model and model:find("Air8000") then
+    -- Air8000 核心板: SPI1 CS=GPIO12, 20MHz
+    -- exapp.init("custom", { storage_type = "sd_tf",        spi_id = 1, pin_cs = 12, speed = 20000000 })
+    -- exapp.init("custom", { storage_type = "little_flash",  spi_id = 1, pin_cs = 12, speed = 20000000 })
+    -- exapp.init("custom", { storage_type = "nand_flash",    spi_id = 1, pin_cs = 12, speed = 20000000 })
+
+else
+    -- 自定义型号
+    -- exapp.init("custom", { storage_type = "sd_tf", spi_id = 1, pin_cs = 12, speed = 20000000 })
+end

@@ -1,6 +1,7 @@
 #ifndef __LUAT_AUDIO_DEFINE_H__
 #define __LUAT_AUDIO_DEFINE_H__
 
+#include "stdint.h"
 /**
  * @file luat_audio_define.h
  * @brief LuatOS 音频框架通用定义头文件
@@ -18,53 +19,52 @@
  * 定义音频播放/录音时的声道配置模式。
  */
 enum {
-    LUAT_AUDIO_CHANNEL_MONO = 0,    /**< 单声道模式 */
+    LUAT_AUDIO_CHANNEL_MONO = 0,           /**< 单声道模式 */
     LUAT_AUDIO_CHANNEL_LEFT = LUAT_AUDIO_CHANNEL_MONO,  /**< 左声道模式 (等同于单声道) */
-    LUAT_AUDIO_CHANNEL_RIGHT,     /**< 右声道模式 */
-    LUAT_AUDIO_CHANNEL_STEREO,    /**< 立体声模式 (双声道) */
+    LUAT_AUDIO_CHANNEL_RIGHT,              /**< 右声道模式 */
+    LUAT_AUDIO_CHANNEL_STEREO,             /**< 立体声模式 (双声道) */
 
-    /**
-     * @brief 音频驱动类型枚举
-     * 
-     * 定义音频驱动的硬件接口类型。
-     */
-    LUAT_AUDIO_DRIVER_TYPE_I2S = 0,   /**< I2S 接口驱动 */
-    LUAT_AUDIO_DRIVER_TYPE_DAC,       /**< DAC 接口驱动（仅播放） */
-    LUAT_AUDIO_DRIVER_TYPE_ADC,       /**< ADC 接口驱动（仅录音） */
-    LUAT_AUDIO_DRIVER_TYPE_DAC_ADC,   /**< DAC+ADC 组合驱动 */
-    LUAT_AUDIO_DRIVER_TYPE_USB,       /**< USB 音频驱动 */
+    LUAT_AUDIO_DRIVER_TYPE_I2S = 0,        /**< I2S 接口驱动 */
+    LUAT_AUDIO_DRIVER_TYPE_DAC,            /**< DAC 接口驱动（仅播放） */
+    LUAT_AUDIO_DRIVER_TYPE_ADC,            /**< ADC 接口驱动（仅录音） */
+    LUAT_AUDIO_DRIVER_TYPE_DAC_ADC,        /**< DAC+ADC 组合驱动 */
+    LUAT_AUDIO_DRIVER_TYPE_DAC_I2S,        /**< DAC+I2S 组合驱动 */
+    LUAT_AUDIO_DRIVER_TYPE_ADC_I2S,        /**< ADC+I2S 组合驱动 */
+    LUAT_AUDIO_DRIVER_TYPE_USB,            /**< USB 音频驱动 */
 
-    LUAT_AUDIO_DRIVER_CONFIG_PARAM_I2S_MODE = 0, /**< I2S 模式参数 */
-    LUAT_AUDIO_DRIVER_CONFIG_PARAM_I2S_FRAME_TYPE, /**< I2S 帧大小参数 */
-    LUAT_AUDIO_DRIVER_CONFIG_PARAM_DAC_BIT_WIDTH, /**< DAC 位宽参数 */
+    LUAT_AUDIO_DRIVER_CONFIG_PARAM_I2S_MODE = 0,       /**< I2S 模式参数 */
+    LUAT_AUDIO_DRIVER_CONFIG_PARAM_I2S_FRAME_TYPE,     /**< I2S 帧大小参数 */
+    LUAT_AUDIO_DRIVER_CONFIG_PARAM_DAC_BIT_WIDTH,      /**< DAC 位宽参数 */
 
-    LUAT_AUDIO_DRIVER_EVENT_TX_ONE_BLOCK_DONE = 0, /**< 播放1个block完成事件 */
-    LUAT_AUDIO_DRIVER_EVENT_RX_ONE_BLOCK_DONE, /**< 录音1个block完成事件 */
-    /**
-     * @brief 音频驱动状态枚举
-     * 
-     * 定义音频驱动的运行状态，包括空闲和运行。
-     */
-    LUAT_AUDIO_DRIVER_STATE_IDLE = 0, /**< 空闲状态 */
-    LUAT_AUDIO_DRIVER_STATE_INITED, /**< 初始化状态 */
-    LUAT_AUDIO_DRIVER_STATE_ACTIVE, /**< 激活状态 */
-    LUAT_AUDIO_DRIVER_STATE_RUNNING, /**< 运行状态 */
+    LUAT_AUDIO_DRIVER_EVENT_TX_ONE_BLOCK_DONE = 0,     /**< 播放1个block完成事件 */
+    LUAT_AUDIO_DRIVER_EVENT_RX_ONE_BLOCK_DONE,         /**< 录音1个block完成事件 */
 
-    LUAT_AUDIO_DRIVER_MODE_PLAY = 0, /**< 播放模式 */
-    LUAT_AUDIO_DRIVER_MODE_RECORD, /**< 录音模式 */
-    LUAT_AUDIO_DRIVER_MODE_CALL, /**< 通话模式 */
-    LUAT_AUDIO_DRIVER_MODE_CALL_WITH_BUFFER, /**< 通话带缓冲区模式 */
+    LUAT_AUDIO_DRIVER_STATE_IDLE = 0,      /**< 空闲状态 */
+    LUAT_AUDIO_DRIVER_STATE_INITED,        /**< 初始化状态 */
+    LUAT_AUDIO_DRIVER_STATE_ACTIVE,        /**< 激活状态 */
+    LUAT_AUDIO_DRIVER_STATE_RUNNING,       /**< 运行状态 */
 
-    LUAT_AUDIO_DATA_CODEC_TYPE_WAV = 0, /**< WAV 编解码器 */
-    LUAT_AUDIO_DATA_CODEC_TYPE_AMR,     /**< AMR 编解码器 */
-    LUAT_AUDIO_DATA_CODEC_TYPE_TTS,     /**< TTS 编解码器 */
-    LUAT_AUDIO_DATA_CODEC_TYPE_MP3,     /**< MP3 编解码器 */
-    LUAT_AUDIO_DATA_CODEC_TYPE_OPUS,    /**< OPUS 编解码器 */
-    LUAT_AUDIO_DATA_CODEC_TYPE_G711,    /**< G711 编解码器 */
-    LUAT_AUDIO_DATA_CODEC_TYPE_MAX,     /**< 最大编解码器类型 */
+    LUAT_AUDIO_DRIVER_MODE_PLAY = 0,       /**< 播放模式 */
+    LUAT_AUDIO_DRIVER_MODE_RECORD,         /**< 录音模式 */
+    LUAT_AUDIO_DRIVER_MODE_CALL,           /**< 通话模式 */
+    LUAT_AUDIO_DRIVER_MODE_CALL_WITH_BUFFER,/**< 通话带缓冲区模式 */
 
-    LUAT_AUDIO_TTS_EVENT_START = 0, /**< TTS 开始事件 */
-    LUAT_AUDIO_TTS_EVENT_NEW_DATA, /**< TTS 新数据可用事件 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_WAV = 0,    /**< WAV 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_AMR,        /**< AMR 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_TTS,        /**< TTS 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_MP3,        /**< MP3 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_OPUS,       /**< OPUS 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_G711,       /**< G711 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_MAX,        /**< 最大编解码器类型 */
+
+    LUAT_AUDIO_TTS_EVENT_START = 0,        /**< TTS 开始事件 */
+    LUAT_AUDIO_TTS_EVENT_NEW_DATA,         /**< TTS 新数据可用事件 */
+
+    LUAT_AUDIO_REQUEST_EVENT_START = 0,                /**< 请求开始 */
+    LUAT_AUDIO_REQUEST_EVENT_NEED_NEW_DATA,           /**< 播放需要新数据 */
+    LUAT_AUDIO_REQUEST_EVENT_GET_NEW_DATA,            /**< 录音获取到新数据 */
+    LUAT_AUDIO_REQUEST_EVENT_DECODE_DONE,             /**< 解码完成 */
+    LUAT_AUDIO_REQUEST_EVENT_END,                     /**< 请求结束 */
 };
 
 /**

@@ -1,4 +1,5 @@
 #include "luat_audio_data_codec.h"
+#include "luat_audio_request.h"
 #include "luat_audio_define.h"
 #include "luat_common_api.h"
 #include "luat_fs.h"
@@ -109,7 +110,7 @@ int luat_audio_data_codec_decode_once(luat_audio_data_codec_t *codec, luat_fifo_
             input_data_len = luat_fifo_query(input_data_fifo, codec->input_buffer, codec->opts->decode_min_input_len);
         }
         // 使用codec解码数据
-        ret = codec->opts->decode(codec, &codec->play_info, codec->input_buffer, input_data_len,
+        ret = codec->opts->decode(codec, &codec->common_param, codec->input_buffer, input_data_len,
                                                         output_data_buffer->data + output_data_buffer->pos, 
                                 &out_len, &used_len);
         luat_fifo_delete(input_data_fifo, used_len);
@@ -135,7 +136,7 @@ int luat_audio_data_codec_encode_once(luat_audio_data_codec_t *codec, luat_fifo_
             return LUAT_ERROR_NONE;
         }
         // 使用codec编码数据
-        ret = codec->opts->encode(codec, &codec->play_info, codec->input_buffer, input_data_len,
+        ret = codec->opts->encode(codec, &codec->common_param, codec->input_buffer, input_data_len,
                                                         output_data_buffer->data + output_data_buffer->pos, 
                                 &out_len);
         luat_fifo_delete(input_data_fifo, input_data_len);
@@ -153,10 +154,10 @@ const luat_audio_data_codec_opts_t* luat_audio_data_codec_find(uint8_t type)
     if (type >= LUAT_AUDIO_DATA_CODEC_TYPE_MAX) {
         return -LUAT_ERROR_PARAM_INVALID;
     }
-    if (_audio_data_codec_hardware_items[type].opts) {
+    if (_audio_data_codec_hardware_items[type].opts && !_audio_data_codec_hardware_items[type].is_busy) {
         return _audio_data_codec_hardware_items[type].opts;
     }
-    if (_audio_data_codec_software_items[type].opts) {
+    if (_audio_data_codec_software_items[type].opts && !_audio_data_codec_software_items[type].is_busy) {
         return _audio_data_codec_software_items[type].opts;
     }
     return NULL;
@@ -180,52 +181,3 @@ int luat_audio_data_codec_register(const luat_audio_data_codec_opts_t *opts)
     return LUAT_ERROR_NONE;
 }
 
-int luat_audio_data_codec_get_play_info_from_file(luat_audio_data_codec_t *codec, FILE* fd)
-{
-    if (!codec || !fd) {
-        return -LUAT_ERROR_PARAM_INVALID;
-    }
-    int read_len;
-    luat_buffer_t input_buffer;
-    uint8_t temp[12];
-    uint32_t jump_offset_bytes = 0;
-    uint32_t need_bytes = 0;
-    luat_fs_fseek(fd, 0, SEEK_SET);
-    input_buffer.data = temp;
-    input_buffer.pos = 0;
-    input_buffer.max_len = sizeof(temp);
-    codec->play_info.sample_rate = 0;
-    read_len = luat_fs_fread(input_buffer.data, input_buffer.max_len, 1, fd);
-    if (read_len != sizeof(temp)) {
-        return -LUAT_ERROR_OPERATION_FAILED;
-    }
-    input_buffer.pos = read_len;
-    int ret =codec->opts->get_play_info(codec, &input_buffer, &jump_offset_bytes, &need_bytes, &codec->play_info);
-    if (ret) {
-        return ret;
-    }
-    memset(&input_buffer, 0, sizeof(input_buffer));
-    uint8_t retry_count = 0;
-    while (!codec->play_info.sample_rate && retry_count < 5) {
-        luat_fs_fseek(fd, jump_offset_bytes, SEEK_SET);
-        luat_buffer_reinit(&input_buffer, need_bytes);
-        read_len = luat_fs_fread(input_buffer.data, input_buffer.max_len, 1, fd);
-        if (read_len != need_bytes) {
-            return -LUAT_ERROR_OPERATION_FAILED;
-        }
-        input_buffer.pos = read_len;
-        jump_offset_bytes = 0;
-        need_bytes = 0;
-        ret =codec->opts->get_play_info(codec, &input_buffer, &jump_offset_bytes, &need_bytes, &codec->play_info);
-        if (ret) {
-            return ret;
-        }
-        retry_count++;
-    }
-    if (!codec->play_info.sample_rate) {
-        LLOGE("get play info failed, retry %d times", retry_count);
-        return -LUAT_ERROR_OPERATION_FAILED;
-    }
-    luat_fs_fseek(fd, jump_offset_bytes, SEEK_SET);
-    return LUAT_ERROR_NONE;
-}

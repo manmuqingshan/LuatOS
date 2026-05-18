@@ -67,6 +67,8 @@ local function http_upload_task()
     -- 测试接口的响应说明：
         -- 成功：HTTP 200 OK：{"code":0,"value":"上传成功"}；
         -- 失败：HTTP 状态码非 200 OK 或是 200 OK 但 code 不为 0
+    -- 如何在网页端查看上传的文件：
+        -- 在浏览器中打开https://iot.luatos.com/#/p8000/netlab_file_server，即可查看上传的文件；
     -- 如果你自己的http服务支持更多类型的文本/文件混合上传，可以自行添加代码进行测试
     local code, response = httpplus.request({
         url = "https://airtest.luatos.com/iot/luat_test_file/add",
