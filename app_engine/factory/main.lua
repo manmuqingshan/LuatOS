@@ -70,13 +70,30 @@ if _G.model_str:find("Air8000") then
     lcd_drv = require "lcd_drv_air8000w_4in"
     tp_drv = require "tp_drv_air8000w"
 elseif _G.model_str:find("Air8101") then
-    -- 配置引脚功能
-    pins.setup(11, "I2C1_SDA")
-    pins.setup(12, "I2C1_SCL")
-    pins.setup(14, "PWM1")
-    -- Air8101 显示/触摸驱动
-    lcd_drv = require "lcd_drv_air8101_5in"
-    tp_drv = require "tp_drv_air8101"
+    -- Air8101 5\10寸屏显示驱动，默认5寸
+    local Air8101_lcd = 10
+    if Air8101_lcd == 5 then
+        -- 配置引脚功能
+        pins.setup(11, "I2C1_SDA")
+        pins.setup(12, "I2C1_SCL")
+        pins.setup(14, "PWM1")
+        -- Air8101 显示/触摸驱动
+        lcd_drv = require "lcd_drv_air8101_5in"
+        tp_drv = require "tp_drv_air8101_5in"
+    elseif Air8101_lcd == 10 then
+        -- 配置引脚功能
+        pins.setup(11, "I2C1_SDA")
+        pins.setup(12, "I2C1_SCL")
+        pins.setup(14, "PWM1")
+        -- SD卡 SPI配置
+        -- pins.setup(4, "SPI0_CS1")
+        pins.setup(72, "SPI0_CLK")
+        pins.setup(71, "SPI0_MOSI")
+        pins.setup(6, "SPI0_MISO")
+        -- Air8101 显示/触摸驱动
+        lcd_drv = require "lcd_drv_air8101_10in"
+        tp_drv = require "tp_drv_air8101_10in"
+    end
 elseif _G.model_str:find("Air1601") or _G.model_str:find("Air1602") then
     -- Air1602 5\7\9\10寸屏显示驱动，默认5寸
     -- 取值可以是5、7、9、10，分别对应5寸屏、7寸屏、9寸屏、10寸屏
@@ -103,10 +120,10 @@ else
 
     if pc_lcd == "Air8000W_4in" then
         lcd_drv = require "lcd_drv_air8101_5in"
-        tp_drv = require "tp_drv_air8101"
+        tp_drv = require "tp_drv_air8101_5in"
     elseif pc_lcd == "Air8101_5in" then
         lcd_drv = require "lcd_drv_air8101_5in"
-        tp_drv = require "tp_drv_air8101"
+        tp_drv = require "tp_drv_air8101_5in"
     elseif pc_lcd == "Air1601_5in" then
         -- 5寸屏显示/触摸驱动
         lcd_drv = require "lcd_drv_air1601_5in"

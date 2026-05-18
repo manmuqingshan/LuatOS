@@ -24,6 +24,9 @@ local DEFAULT_VOLUME = 50
 local PWM_CHANNEL = 4
 local PWM_FREQ = 2700
 
+-- Air8101 无蜂鸣器硬件，跳过触摸反馈
+local NO_BUZZER = _G.model_str and _G.model_str:find("Air8101")
+
 -- ==================== 局部变量 ====================
 local buzz_enabled  = DEFAULT_ENABLED
 local buzz_duration  = DEFAULT_DURATION
@@ -112,6 +115,10 @@ end
 -- ==================== 初始化 ====================
 
 local function init()
+    if NO_BUZZER then
+        log.info("settings_buzz", "Air8101 无蜂鸣器，跳过 PWM 初始化")
+        return
+    end
     pcall(pwm.setup, PWM_CHANNEL, PWM_FREQ, 0)
 
     buzz_enabled  = fskv.get(CONFIG_KEYS.ENABLED)
