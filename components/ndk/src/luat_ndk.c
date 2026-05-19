@@ -4,23 +4,20 @@
 #include "luat_mem.h"
 #include "luat_fs.h"
 #include "luat_rtos.h"
-#include "luat_gpio.h"
 #include "luat_ndk.h"
+#include "luat_ndk_host.h"
 
 #define LUAT_LOG_TAG "ndk"
 #include "luat_log.h"
 
 static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t trap);
-static void ndk_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value);
-static void ndk_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *value);
-static uint32_t ndk_control_store(luat_ndk_t *ctx, uint32_t addy, uint32_t value);
 
 // mini-rv32ima configuration
 #define MINI_RV32_RAM_SIZE (ctx->ram_size)
 #define MINIRV32_POSTEXEC(pc, ir, trap) ndk_postexec(ctx, pc, ir, trap)
-#define MINIRV32_OTHERCSR_WRITE(csrno, value) ndk_othercsr_write(ctx, csrno, value)
-#define MINIRV32_OTHERCSR_READ(csrno, value) ndk_othercsr_read(ctx, csrno, &value)
-#define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( ndk_control_store(ctx, addy, val ) ) return val;
+#define MINIRV32_OTHERCSR_WRITE(csrno, value) luat_ndk_host_othercsr_write(ctx, csrno, value)
+#define MINIRV32_OTHERCSR_READ(csrno, value) luat_ndk_host_othercsr_read(ctx, csrno, &value)
+#define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( luat_ndk_host_control_store(ctx, addy, val ) ) return val;
 #define MINIRV32_STEPPROTO static int32_t MiniRV32IMAStep(luat_ndk_t *ctx, struct MiniRV32IMAState *state, uint8_t *image, uint32_t vProcAddress, uint32_t elapsedUs, int count)
 #define MINIRV32_IMPLEMENTATION
 #include "mini-rv32ima.h"
@@ -28,7 +25,6 @@ static uint32_t ndk_control_store(luat_ndk_t *ctx, uint32_t addy, uint32_t value
 #define NDK_DEFAULT_STEP_BUDGET 32768
 #define NDK_STEP_CHUNK 256
 #define NDK_DEFAULT_ELAPSED_US 100
-#define NDK_MAX_LOG_STR 120
 #define NDK_STOP_POLL_MS 10
 #define NDK_DEINIT_WAIT_MS 1000
 
@@ -56,80 +52,12 @@ static bool ndk_should_stop(luat_ndk_t *ndk) {
     return stop;
 }
 
-static inline bool ndk_addr_valid(luat_ndk_t *ctx, uint32_t addr, size_t len) {
-    if (!ctx) return false;
-    if (addr < MINIRV32_RAM_IMAGE_OFFSET) return false;
-    uint64_t start = (uint64_t)(addr - MINIRV32_RAM_IMAGE_OFFSET);
-    uint64_t end = start + len;
-    return end <= ctx->ram_size;
-}
-
-static void ndk_log_string(luat_ndk_t *ctx, uint32_t guest_addr) {
-    if (!ctx) return;
-    if (!ndk_addr_valid(ctx, guest_addr, 1)) return;
-    uint32_t off = guest_addr - MINIRV32_RAM_IMAGE_OFFSET;
-    char tmp[NDK_MAX_LOG_STR + 1];
-    size_t i = 0;
-    for (; i < NDK_MAX_LOG_STR && off + i < ctx->ram_size; i++) {
-        tmp[i] = (char)ctx->ram[off + i];
-        if (tmp[i] == '\0') break;
-    }
-    tmp[i] = '\0';
-    LLOGI("vm: %s", tmp);
-}
-
 static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t trap) {
     (void)pc;
     (void)ir;
     if (!ctx || trap == 0) return;
     ctx->trap_pending = 1;
     ctx->last_trap = trap;
-}
-
-static void ndk_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value) {
-    if (!ctx) return;
-    switch (csrno) {
-    case 0x136:
-        LLOGI("vm num: %u", value);
-        break;
-    case 0x137:
-        LLOGI("vm ptr: 0x%08X", value);
-        break;
-    case 0x138:
-        ndk_log_string(ctx, value);
-        break;
-    case 0x200: {
-        uint32_t pin = value & 0xFFFF;
-        uint32_t level = (value >> 16) & 0x1;
-        luat_gpio_set(pin, level);
-        break;
-    }
-    default:
-        break;
-    }
-}
-
-static void ndk_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *value) {
-    if (!ctx || !value) return;
-    uint32_t tmp = 0;
-    switch (csrno) {
-    case 0x139:
-        *value = MINIRV32_RAM_IMAGE_OFFSET + ctx->exchange_offset;
-        break;
-    case 0x13A:
-        *value = (uint32_t)ctx->exchange_size;
-        break;
-    case 0x13B:
-        *value = (uint32_t)ctx->ram_size;
-        break;
-    case 0x201:
-        tmp = (*value) & 0xFFFF;
-        *value = (uint32_t)luat_gpio_get(tmp);
-        break;
-    default:
-        *value = 0; // 未知 CSR 返回0
-        break;
-    }
 }
 
 static void ndk_reset_core(luat_ndk_t *ndk) {
@@ -494,14 +422,4 @@ bool luat_ndk_is_busy(luat_ndk_t *ndk) {
 uint32_t luat_ndk_exchange_addr(const luat_ndk_t *ndk) {
     if (!ndk) return 0;
     return MINIRV32_RAM_IMAGE_OFFSET + ndk->exchange_offset;
-}
-
-static uint32_t ndk_control_store(luat_ndk_t *ctx, uint32_t addy, uint32_t value) {
-    if (addy == 0x11100000) {
-        LLOGD("Control Store: set val to %08X", value);
-        ctx->core->pc = ctx->core->pc + 4;
-        return value;
-    }
-    LLOGD("Control Store: unknown addy %08X val %08X", addy, value);
-    return 0;
 }
