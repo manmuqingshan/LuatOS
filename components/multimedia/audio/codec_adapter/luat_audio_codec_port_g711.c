@@ -1,14 +1,13 @@
 #include "luat_base.h"
 #include "luat_audio_core.h"
-#include "luat_fs.h"
-#include "luat_zbuff.h"
 #include "luat_mem.h"
 #include "g711_codec/g711_codec.h"
 
+#if 0
 #ifndef G711_PCM_SAMPLES
 #define G711_PCM_SAMPLES 160
 #endif
-#if 0
+
 static void* g711_codec_create(luat_audio_data_codec_t* coder) {
     if (coder->is_decoder) {
         return g711_decoder_create(coder->type);

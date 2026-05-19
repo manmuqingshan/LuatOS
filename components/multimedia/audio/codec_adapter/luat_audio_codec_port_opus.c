@@ -1,14 +1,12 @@
 #include "luat_base.h"
 #include "luat_audio_core.h"
-#include "luat_zbuff.h"
-#include "luat_fs.h"
 #include "luat_mem.h"
 #include <stdint.h>
 
 #define LUAT_LOG_TAG "codec_opus"
 #include "luat_log.h"
 
-
+#if 0
 #include "opus.h"
 #include "opus_types.h"
 #include "opus_private.h"
@@ -20,7 +18,7 @@
 #define BITRATE 64000
 
 #define MAX_PACKET_SIZE (3*1276)
-#if 0
+
 int luat_opus_decoder_create(luat_audio_data_codec_t *coder){
     int error;
     coder->ctx = opus_decoder_create(coder->sample_rate, coder->num_channels, &error);
