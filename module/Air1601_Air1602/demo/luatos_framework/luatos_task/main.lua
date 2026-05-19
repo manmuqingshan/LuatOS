@@ -93,7 +93,7 @@ require "scheduling"
 -- require "targeted_msg_sender"
 
 -- 加载“定时器”演示功能模块
- require "timer_func"
+-- require "timer_func"
 
 -- 加载“task内外部运行环境典型错误”演示功能模块
 -- require "task_inout_env_err"
