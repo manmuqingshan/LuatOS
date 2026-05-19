@@ -21,6 +21,7 @@ end
 #include "luat_log.h"
 #include "luat_ndk.h"
 #include "luat_zbuff.h"
+#include <string.h>
 
 #define LUAT_LOG_TAG "ndk"
 #include "luat_log.h"
@@ -74,14 +75,16 @@ static int l_ndk_create(lua_State *L) {
         lua_pushliteral(L, "no memory");
         return 2;
     }
-    luaL_setmetatable(L, LUAT_NDK_META);
+    memset(ndk, 0, sizeof(luat_ndk_t));
 
     int rc = luat_ndk_init(ndk, path, mem_size, exch_size);
     if (rc != LUAT_NDK_OK) {
+        lua_pop(L, 1);
         lua_pushnil(L);
         lua_pushstring(L, ndk_errstr(rc));
         return 2;
     }
+    luaL_setmetatable(L, LUAT_NDK_META);
     return 1;
 }
 
@@ -295,7 +298,7 @@ static int l_ndk_info(lua_State *L) {
     lua_setfield(L, -2, "exchange_addr");
     lua_pushinteger(L, ndk->image_size);
     lua_setfield(L, -2, "image");
-    lua_pushboolean(L, ndk->running);
+    lua_pushboolean(L, luat_ndk_is_busy(ndk));
     lua_setfield(L, -2, "running");
     lua_pushinteger(L, ndk->last_mcause);
     lua_setfield(L, -2, "mcause");
