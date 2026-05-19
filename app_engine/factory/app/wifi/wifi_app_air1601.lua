@@ -190,7 +190,8 @@ local function handle_sta_event(event, data)
         wifi_state.connectivity_verified = false  -- 新连接，重置连通性确认
 
         sys.publish("WIFI_CONNECTED", data)
-        sys.publish("STATUS_WIFI_SIGNAL_UPDATED", 3)
+        -- L2关联成功但IP未就绪，不显示已连接图标（待IP_READY后更新）
+        sys.publish("STATUS_WIFI_SIGNAL_UPDATED", 0)
         last_connect = "CONNECTED"
         user_connect = false
 
@@ -264,6 +265,8 @@ local function handle_ip_ready(ip, adapter)
         socket.setDNS(adapter, 2, "114.114.114.114")
         log.info("wifi_app", "WiFi IP就绪，DNS已设置:", ip)
         wifi_common.handle_ip_ready(ip, adapter, wifi_state, refresh_net_info)
+        -- IP就绪但尚未确认联网，显示"已连无网"图标（待RSSI轮询覆盖）
+        sys.publish("STATUS_WIFI_SIGNAL_UPDATED", 5)
 
         -- IP就绪后，启动联网连通性确认（等待NTP同步）
         sys.taskInit(function()

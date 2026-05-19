@@ -1059,7 +1059,7 @@ local function on_error(error_msg)
     close_progress_dialog()
     local msg_box = airui.msgbox({
         title = "错误",
-        text = msg,
+        text = error_msg,
         buttons = { "确定" },
         on_action = function(self, btn_label) self:hide() end
     })
@@ -1081,7 +1081,11 @@ local function on_create()
     sys.subscribe("APP_STORE_ICON_READY", on_icon_ready)
 
     sys.publish("APP_STORE_SYNC_INSTALLED")
-    publish_get_list()
+    -- 首次加载等待网络就绪后再请求列表，避免网络未就绪时失败
+    sys.taskInit(function()
+        sys.waitUntil("IP_READY", 30000)
+        sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+    end)
 end
 
 local function on_destroy()
