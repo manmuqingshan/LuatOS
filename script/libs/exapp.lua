@@ -152,6 +152,7 @@ local APP_STORE_URL = "https://api.luatos.com/iot/appstore/list"
 local APP_STORE_DOWNLOAD_REPORT_URL = "https://api.luatos.com/iot/appstore/download"
 local PAGE_LIMIT = 10
 local TEMP_DOWNLOAD_PATH = "/ram/app_%s.zip"
+local MIN_FREE_SPACE_KB = 100
 -- ==============================================
 -- 多存储配置（模块层全局变量）
 -- ==============================================
@@ -250,12 +251,25 @@ end
 -- 获取指定挂载点的剩余空间（KB）
 -- 返回 nil 表示无法获取（不阻塞安装流程，由后续校验兜底）
 local function get_storage_free_kb(mount_point)
-    local ok, stat = pcall(io.fsstat, mount_point)
-    if not ok or type(stat) ~= "table" then return nil end
-    if type(stat.free_kb) == "number" then return stat.free_kb end
-    if stat.free_blocks and stat.block_size then
-        return math.floor(stat.free_blocks * stat.block_size / 1024)
+    -- io.fsstat 返回值格式(多返回值)：success, total_blocks, used_blocks, block_size, fs_type
+    -- 注意：不是 table，是多返回值！settings_storage_app.lua 有同样用法
+    local r, success, total_blocks, used_blocks, block_size = pcall(io.fsstat, mount_point)
+    if not r then
+        -- 兜底：little_flash(LFS) 用 fs.fsstat
+        if fs and fs.fsstat then
+            r, success, total_blocks, used_blocks, block_size = pcall(fs.fsstat, mount_point)
+        end
     end
+    if r and success and total_blocks and block_size then
+        -- 先除再乘，避免 total_blocks * block_size 溢出 32 位整数
+        local total_kb = total_blocks * (block_size / 1024)
+        local used_kb = (used_blocks or 0) * (block_size / 1024)
+        local free_kb = total_kb - used_kb
+        log.info("exapp", "fsstat", mount_point, "total_kb:", string.format("%.1f", total_kb),
+            "free_kb:", string.format("%.1f", free_kb))
+        return free_kb
+    end
+    log.warn("exapp", "fsstat failed for", mount_point)
     return nil
 end
 
@@ -311,7 +325,7 @@ local function select_storage_location(app_size_kb)
         elseif app_size_kb then
             local mount_point = STORAGE_DEFS[type_key].mount_point
             local free_kb = get_storage_free_kb(mount_point)
-            if free_kb and free_kb < app_size_kb then
+            if free_kb and tonumber(app_size_kb) and free_kb < app_size_kb then
                 reasons[#reasons + 1] = string.format(
                     "%s空间不足(需%.0fKB, 剩%.0fKB)",
                     STORAGE_DEFS[type_key].label, app_size_kb, free_kb
@@ -2664,9 +2678,9 @@ local function scan(base_dir, storage_type)
                     icon_path = base_dir .. app_dir.name .. "/icon.png",
                     installed = true,
                     has_update = false,
-                    zip_size_kb = meta_data.zip_size_kb,
-                    origin_size_kb = meta_data.origin_size_kb,
-                    total_downloads = meta_data.total_downloads,
+                    zip_size_kb = tonumber(meta_data.zip_size_kb) or 0,
+                    origin_size_kb = tonumber(meta_data.origin_size_kb) or 0,
+                    total_downloads = tonumber(meta_data.total_downloads) or 0,
                     install_time = meta_data.install_time,
                     storage_type = storage_type,
                     mount_point = mount_point,
@@ -3061,9 +3075,9 @@ local function enrich(server_apps)
             app.has_update = false
         end
 
-        -- 确保大小字段存在（服务器返回的字段名）
-        app.zip_size_kb = app.zip_size_kb or app.zip_size
-        app.origin_size_kb = app.origin_size_kb or app.origin_size
+        -- 确保大小字段存在并转为数字（服务器返回的可能是字符串）
+        app.zip_size_kb = tonumber(app.zip_size_kb or app.zip_size) or 0
+        app.origin_size_kb = tonumber(app.origin_size_kb or app.origin_size) or 0
     end
     return server_apps
 end
@@ -3265,27 +3279,28 @@ local function download_file(url, dest_path, aid)
         local o = tonumber(tostring(app_entry.origin_size_kb)) or 0
         if o > 0 then origin_size_kb_val = o end
     end
-    -- 校验1：文件系统空间必须满足解压后大小（加20% buffer）
+    -- 校验1：根文件系统空间必须满足解压后大小（加20% buffer）
+    -- 注意：此处检查的是根文件系统(/)而非安装目标挂载点。
+    -- 安装目标由调用方(install_remote_app)通过 select_storage_location 决定，
+    -- 并在解压前对目标挂载点做精确空间校验。
+    local fs_free_kb = get_storage_free_kb("/") or 0
     if origin_size_kb_val > 0 then
-        local fs_free_kb = 0
-        local fs_stat = io.fsstat and io.fsstat("/") or nil
-        if type(fs_stat) == "table" and type(fs_stat.free_kb) == "number" then
-            fs_free_kb = fs_stat.free_kb
-        end
         local needed_kb = math.ceil(origin_size_kb_val * 1.2)
-        if needed_kb > fs_free_kb then
-            log.warn("exapp", "fs space maybe not enough for", aid, "need", needed_kb, "free", fs_free_kb, "尝试下载")
+        if fs_free_kb > 0 and needed_kb > fs_free_kb then
+            log.error("exapp", "not enough fs space for", aid, "need", needed_kb, "free", fs_free_kb)
+            sys.publish("APP_STORE_ERROR", "文件系统空间不足无法安装")
+            return false
+        elseif fs_free_kb == 0 then
+            -- free 为 0，可能 fsstat 失败或文件系统确实满了
+            log.warn("exapp", "cannot determine root fs free space for", aid, "need", needed_kb, "proceeding with mount-point check")
         end
     end
     -- 校验2：RAM空间满足压缩包大小（用于暂存下载）
     if zip_size_kb_val > 0 then
-        local ram_free_kb = 0
-        local ram_stat = io.fsstat and io.fsstat("/ram") or nil
-        if type(ram_stat) == "table" and type(ram_stat.free_kb) == "number" then
-            ram_free_kb = ram_stat.free_kb
-        end
+        local total, used = rtos.meminfo("sys")
+        local ram_free_kb = (total - used) / 1024
         if zip_size_kb_val > ram_free_kb then
-            log.warn("exapp", "ram may not enough for temp download", aid, zip_size_kb_val, ram_free_kb, "尝试下载")
+            log.warn("exapp", "low ram for temp download", aid, string.format("%.1f", zip_size_kb_val), string.format("%.1f", ram_free_kb))
         end
     end
     local code, headers = http.request("GET", url, nil, nil, {
@@ -3459,6 +3474,7 @@ local function check_zip_eocd(zip_path)
     return true
 end
 
+
 -- 解压ZIP
 local function unzip_file(zip_path, dest_dir)
     log.info("exapp", "extracting", zip_path, "->", dest_dir)
@@ -3583,6 +3599,36 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
             sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
             report_result(aid, err_msg)
             return
+        end
+
+        -- 最低空闲空间保护：剩余空间不足100KB时不允许安装（防止FAT簇开销导致超额消耗）
+        local min_free_check_kb = get_storage_free_kb(mount_point)
+        if min_free_check_kb and min_free_check_kb < MIN_FREE_SPACE_KB then
+            os.remove(temp_path)
+            log.error("exapp", "minimum free space check failed on", mount_point, "for", aid, "free", min_free_check_kb, "min", MIN_FREE_SPACE_KB)
+            sys.publish("APP_STORE_ERROR", "文件系统空间不足无法安装(剩余" .. math.floor(min_free_check_kb) .. "KB)")
+            sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
+            report_result(aid, "文件系统空间不足无法安装")
+            return
+        end
+
+        -- 解压前容量校验：对选中的目标挂载点做精确空间检查
+        -- download_file 中只检查了根文件系统(/)，但安装目标可能是 /sd/ 或 /little_flash/
+        if estimated_size_kb then
+            local target_free_kb = get_storage_free_kb(mount_point)
+            if target_free_kb and target_free_kb < estimated_size_kb then
+                -- 空间不足，清理已下载的压缩包
+                os.remove(temp_path)
+                log.error("exapp", "not enough space on", mount_point, "for", aid, "need", estimated_size_kb, "free", target_free_kb)
+                sys.publish("APP_STORE_ERROR", "文件系统空间不足无法安装")
+                sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
+                report_result(aid, "文件系统空间不足无法安装")
+                return
+            elseif not target_free_kb then
+                log.warn("exapp", "cannot determine free space for", mount_point, aid, "proceeding without size check")
+            else
+                log.info("exapp", "pre-extract space check passed for", aid, "on", mount_point, "need", estimated_size_kb, "free", target_free_kb)
+            end
         end
 
         sys.publish("APP_STORE_PROGRESS", aid, 0, "解压中")
@@ -3816,17 +3862,19 @@ function exapp.update_remote_app(aid, url, app_name, category, sort)
     sys.publish("APP_STORE_PROGRESS", aid, 0, "准备更新")
 
     -- 先解压前检查空间（避免空间不足时已删旧版本）
-    local origin_size = installed_info[aid].origin_size_kb
+    local origin_size = tonumber(installed_info[aid].origin_size_kb)
     if origin_size and origin_size > 0 then
-        local fs_stat = io.fsstat and io.fsstat("/") or nil
-        local fs_free = (type(fs_stat) == "table" and type(fs_stat.free_kb) == "number") and fs_stat.free_kb or 0
+        local mount_point = installed_info[aid].mount_point or "/"
         local needed = math.ceil(origin_size * 1.2)
-        if fs_free > 0 and needed > fs_free then
-            log.error("exapp", "not enough fs space for update", aid, "need", needed, "free", fs_free)
+        local target_free_kb = get_storage_free_kb(mount_point)
+        if target_free_kb and needed > target_free_kb then
+            log.error("exapp", "not enough space on", mount_point, "for update", aid, "need", needed, "free", target_free_kb)
             sys.publish("APP_STORE_ERROR", "空间不足，无法更新")
             sys.publish("APP_STORE_ACTION_DONE", aid, "update", false)
             report_result(aid, "空间不足无法更新")
             return
+        elseif not target_free_kb then
+            log.warn("exapp", "cannot determine free space on", mount_point, "for update", aid, "proceeding anyway")
         end
     end
 
