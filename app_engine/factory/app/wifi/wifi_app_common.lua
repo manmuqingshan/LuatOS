@@ -1,18 +1,29 @@
 --[[
 @module  wifi_app_common
 @summary WiFi应用模块公共逻辑，被 wifi_app_air8000w / wifi_app_air1601 共用
-@version 1.0
-@date    2026.05.07
+@version 1.1
+@date    2026.05.19
 @author  江访
 @usage
-提取两个平台 wifi_app 共享的函数：状态更新、IP事件、扫描处理、自动连接、配置管理等。
-]]--
+提取两个平台 wifi_app 共享的函数：状态更新、IP事件、扫描处理、自动连接、配置管理、
+联网连通性确认（NTP同步）。
+]]
+
+local CONNECTIVITY_TIMEOUT = 15000
+
 local M = {}
 
+--[[
+构建WiFi状态负载（用于发布WIFI_STATUS_UPDATED）
+@param table wifi_state - WiFi状态表
+@param table storage_config - 存储的WiFi配置（可选）
+@return table status_payload - 状态负载
+]]
 function M.build_status_payload(wifi_state, storage_config)
     local status_payload = {
         connected = wifi_state.connected,
         ready = wifi_state.ready,
+        connectivity_verified = wifi_state.connectivity_verified,
         current_ssid = wifi_state.current_ssid,
         rssi = wifi_state.rssi,
         ip = wifi_state.ip,
@@ -26,12 +37,22 @@ function M.build_status_payload(wifi_state, storage_config)
     return status_payload
 end
 
+--[[
+发布WiFi状态更新事件
+@param table wifi_state - WiFi状态表
+@param table storage_config - 存储的WiFi配置（可选）
+]]
 function M.update_status(wifi_state, storage_config)
     local status_payload = M.build_status_payload(wifi_state, storage_config)
     log.info("wifi_app", "WiFi状态更新:", json.encode(status_payload))
     sys.publish("WIFI_STATUS_UPDATED", status_payload)
 end
 
+--[[
+刷新网络信息（IP、RSSI、网关等）
+@param table wifi_state - WiFi状态表
+@param function on_refresh - 刷新完成后的回调（可选）
+]]
 function M.refresh_network_info(wifi_state, on_refresh)
     if not socket.adapter(socket.LWIP_STA) then
         log.warn("wifi_app", "正在获取IP地址")
@@ -56,6 +77,13 @@ function M.refresh_network_info(wifi_state, on_refresh)
     M.update_status(wifi_state)
 end
 
+--[[
+处理IP就绪事件
+@param string ip_addr - IP地址
+@param number adapter - 网卡适配器类型
+@param table wifi_state - WiFi状态表
+@param function refresh_func - 刷新回调
+]]
 function M.handle_ip_ready(ip_addr, adapter, wifi_state, refresh_func)
     if adapter == socket.LWIP_STA then
         log.info("wifi_app", "WiFi IP就绪:", ip_addr)
@@ -63,6 +91,11 @@ function M.handle_ip_ready(ip_addr, adapter, wifi_state, refresh_func)
     end
 end
 
+--[[
+处理IP丢失事件
+@param number adapter - 网卡适配器类型
+@param table wifi_state - WiFi状态表
+]]
 function M.handle_ip_lose(adapter, wifi_state)
     if adapter == socket.LWIP_STA then
         log.info("wifi_app", "WiFi IP断开")
@@ -74,6 +107,12 @@ function M.handle_ip_lose(adapter, wifi_state)
     end
 end
 
+--[[
+处理扫描完成事件
+@param table wifi_state - WiFi状态表
+@param table scan_ref - 扫描定时器引用 {timer_id}
+@param function on_done - 完成回调（可选）
+]]
 function M.handle_scan_done(wifi_state, scan_ref, on_done)
     if scan_ref[1] then
         sys.timerStop(scan_ref[1])
@@ -92,6 +131,11 @@ function M.handle_scan_done(wifi_state, scan_ref, on_done)
     if on_done then on_done() end
 end
 
+--[[
+处理扫描超时事件
+@param table scan_ref - 扫描定时器引用
+@param function on_timeout - 超时回调（可选）
+]]
 function M.handle_scan_timeout(scan_ref, on_timeout)
     scan_ref[1] = nil
     sys.publish("WIFI_SCAN_TIMEOUT")
@@ -99,6 +143,12 @@ function M.handle_scan_timeout(scan_ref, on_timeout)
     if on_timeout then on_timeout() end
 end
 
+--[[
+自动扫描并验证附近是否有已保存网络
+@param table storage_config - 存储配置
+@param number scan_timeout - 扫描超时时间（毫秒）
+@return table {verified, ssid, password, signal, config}
+]]
 function M.auto_scan_and_verify(storage_config, scan_timeout)
     scan_timeout = scan_timeout or 20000
     log.info("wifi_app", "开始自动扫描并查找最佳已保存网络")
@@ -147,6 +197,44 @@ function M.auto_scan_and_verify(storage_config, scan_timeout)
     return { verified = false }
 end
 
+--[[
+开始联网连通性确认
+等待NTP_UPDATE事件作为"有真实互联网访问"的标志。
+若超时则标记为未确认，不影响已有连接（可继续使用）。
+@param table wifi_state - WiFi状态表
+@param number timeout_ms - 超时时间（毫秒）
+]]
+function M.start_connectivity_verification(wifi_state, timeout_ms)
+    timeout_ms = timeout_ms or CONNECTIVITY_TIMEOUT
+    if wifi_state.connectivity_verified then
+        log.info("wifi_app", "联网连通性已确认，跳过")
+        return
+    end
+    log.info("wifi_app", "开始联网连通性确认（等待NTP同步）")
+    local ok = sys.waitUntil("NTP_UPDATE", timeout_ms)
+    if ok then
+        wifi_state.connectivity_verified = true
+        log.info("wifi_app", "联网连通性确认成功（NTP同步已完成）")
+        M.update_status(wifi_state)
+    else
+        log.warn("wifi_app", "联网连通性确认超时，连接可能受限")
+        -- connectivity_verified 保持 false，图标不受影响
+    end
+end
+
+--[[
+重置联网连通性状态（断连时调用）
+@param table wifi_state - WiFi状态表
+]]
+function M.reset_connectivity(wifi_state)
+    wifi_state.connectivity_verified = false
+end
+
+--[[
+处理存储开关响应
+@param table data - 响应数据
+@param table storage_config - 存储配置
+]]
 function M.on_storage_set_enabled_rsp(data, storage_config)
     log.info("wifi_app", "设置开关响应:", data.success, data.enabled)
     if storage_config then
@@ -154,6 +242,11 @@ function M.on_storage_set_enabled_rsp(data, storage_config)
     end
 end
 
+--[[
+处理获取状态请求
+@param table wifi_state - WiFi状态表
+@param table storage_config - 存储配置
+]]
 function M.on_get_status_req(wifi_state, storage_config)
     log.info("wifi_app", "收到获取状态请求")
     local status = {}
@@ -166,11 +259,20 @@ function M.on_get_status_req(wifi_state, storage_config)
     sys.publish("WIFI_STATUS_UPDATED", status)
 end
 
+--[[
+处理获取配置请求
+@param table storage_config - 存储配置
+]]
 function M.on_get_config_req(storage_config)
     log.info("wifi_app", "收到获取配置请求")
     sys.publish("WIFI_CONFIG_RSP", {config = storage_config})
 end
 
+--[[
+处理获取已保存列表请求
+@param table storage_config - 存储配置
+@param function callback - 回调查询结果
+]]
 function M.on_get_saved_list_req(storage_config, callback)
     log.info("wifi_app", "收到获取已保存网络列表请求")
     if _G.model_str:find("PC") then
@@ -187,6 +289,10 @@ function M.on_get_saved_list_req(storage_config, callback)
     end
 end
 
+--[[
+处理存储返回的已保存列表
+@param table data - 存储数据
+]]
 function M.on_storage_get_saved_list_rsp(data)
     log.info("wifi_app", "收到已保存网络列表，数量:", #data.list)
     sys.publish("WIFI_SAVED_LIST_RSP", {list = data.list})
@@ -198,6 +304,11 @@ function M.on_storage_load_rsp(data, storage_config, after_init)
     sys.taskInit(after_init)
 end
 
+--[[
+处理存储初始化响应
+@param table data - 响应数据
+@param function on_success - 初始化成功后的回调（可选）
+]]
 function M.on_storage_init_rsp(data, on_success)
     log.info("wifi_app", "storage初始化响应:", data.success)
     if not data.success then
@@ -209,12 +320,22 @@ function M.on_storage_init_rsp(data, on_success)
     if on_success then on_success() end
 end
 
+--[[
+初始化wifi_app（订阅存储事件并发送初始化请求）
+@param table storage_config - 存储配置
+@param function on_storage_init - 存储初始化回调
+]]
 function M.init(storage_config, on_storage_init)
     log.info("wifi_app", "开始初始化")
     sys.subscribe("WIFI_STORAGE_INIT_RSP", on_storage_init)
     sys.publish("WIFI_STORAGE_INIT_REQ")
 end
 
+--[[
+解析断开原因码
+@param number data - 断开原因码
+@return string - 可读的原因描述
+]]
 function M.resolve_disconnect_reason(data)
     local reason_name = "未知错误"
     if data == 260 then reason_name = "DHCP超时"

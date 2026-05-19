@@ -38,18 +38,22 @@
 
 或者Air8000核心板+AirLCD_1010 LCD配件板
 
+![alt text](https://docs.openluat.com/air8000/luatos/app/accessory/AirLCD_1010/lcd/image/image1.png )
+
 Air8000核心板和AirLCD_1010配件板的硬件接线方式为:
 
 |  Air8000核心板   | AirLCD_1010配件板 |
 | --------------- | -----------------   |
-| 22/LSPI_MISO    | MISO                |
-| 23/LSPI_MOSI    | MOSI                |
-| 24/LSPI_CLK     | CLK                 |
-| 25/LSPI_CS      | CS                  |
-| 2/GPIO2         | RST                 |
-| 1/GPIO1         | BL                  |
-| 141/GPIO141     | PWR                 |
+| LCD_CLK         | SCLK/CLK            |
+| LCD_CS          | CS                  |
+| LCD_RST         | RES/RST             |
+| LCD_SDA         | SDA/MOSI            |
+| LCD_RS          | DC/RS               |
+| GPIO1           | BLK                 |
 | VBAT            | VCC                 |
+| I2C1_SCL        | SCL                 |
+| I2C1_SDA        | SDA                 |
+| WAKEUP0         | INT                 |
 | GND             | GND                 |
 
 2、TYPE-C USB数据线一根

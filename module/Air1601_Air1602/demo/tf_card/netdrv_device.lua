@@ -22,7 +22,7 @@
 -- 根据自己的项目需求，只需要require以下四种中的一种即可；
 
 -- 加载“4G网卡”驱动模块
-require "netdrv_4g"
+ require "netdrv_4g"
 
 -- 加载“WIFI STA网卡”驱动模块
 -- require "netdrv_wifi"

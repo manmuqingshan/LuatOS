@@ -3254,20 +3254,39 @@ local function download_file(url, dest_path, aid)
             if tostring(it.aid) == tostring(aid) then app_entry = it; break end
         end
     end
-    local expected_size_kb = 0
+    -- 获取压缩包大小和解压后大小
+    local zip_size_kb_val = 0
     if app_entry and (type(app_entry.zip_size_kb) == "string" or type(app_entry.zip_size_kb) == "number") then
         local z = tonumber(tostring(app_entry.zip_size_kb)) or 0
-        if z > 0 then expected_size_kb = z end
+        if z > 0 then zip_size_kb_val = z end
     end
-    -- 读取 /ram 的可用空间（单位 KB）
-    local ram_free_kb = 0
-    local ram_stat = io.fsstat and io.fsstat("/ram") or nil
-    if type(ram_stat) ~= "table" then ram_stat = nil end
-    if ram_stat and type(ram_stat.free_kb) == "number" then ram_free_kb = ram_stat.free_kb end
-    if expected_size_kb > 0 and ram_free_kb > 0 and expected_size_kb > ram_free_kb then
-        log.error("exapp", "not enough memory to download app", aid, expected_size_kb, ram_free_kb)
-        sys.publish("APP_STORE_ERROR", "内存空间不足无法安装")
-        return false
+    local origin_size_kb_val = 0
+    if app_entry and (type(app_entry.origin_size_kb) == "string" or type(app_entry.origin_size_kb) == "number") then
+        local o = tonumber(tostring(app_entry.origin_size_kb)) or 0
+        if o > 0 then origin_size_kb_val = o end
+    end
+    -- 校验1：文件系统空间必须满足解压后大小（加20% buffer）
+    if origin_size_kb_val > 0 then
+        local fs_free_kb = 0
+        local fs_stat = io.fsstat and io.fsstat("/") or nil
+        if type(fs_stat) == "table" and type(fs_stat.free_kb) == "number" then
+            fs_free_kb = fs_stat.free_kb
+        end
+        local needed_kb = math.ceil(origin_size_kb_val * 1.2)
+        if needed_kb > fs_free_kb then
+            log.warn("exapp", "fs space maybe not enough for", aid, "need", needed_kb, "free", fs_free_kb, "尝试下载")
+        end
+    end
+    -- 校验2：RAM空间满足压缩包大小（用于暂存下载）
+    if zip_size_kb_val > 0 then
+        local ram_free_kb = 0
+        local ram_stat = io.fsstat and io.fsstat("/ram") or nil
+        if type(ram_stat) == "table" and type(ram_stat.free_kb) == "number" then
+            ram_free_kb = ram_stat.free_kb
+        end
+        if zip_size_kb_val > ram_free_kb then
+            log.warn("exapp", "ram may not enough for temp download", aid, zip_size_kb_val, ram_free_kb, "尝试下载")
+        end
     end
     local code, headers = http.request("GET", url, nil, nil, {
         dst = dest_path,
@@ -3795,6 +3814,21 @@ function exapp.update_remote_app(aid, url, app_name, category, sort)
 
     local old_path = installed_info[aid].path
     sys.publish("APP_STORE_PROGRESS", aid, 0, "准备更新")
+
+    -- 先解压前检查空间（避免空间不足时已删旧版本）
+    local origin_size = installed_info[aid].origin_size_kb
+    if origin_size and origin_size > 0 then
+        local fs_stat = io.fsstat and io.fsstat("/") or nil
+        local fs_free = (type(fs_stat) == "table" and type(fs_stat.free_kb) == "number") and fs_stat.free_kb or 0
+        local needed = math.ceil(origin_size * 1.2)
+        if fs_free > 0 and needed > fs_free then
+            log.error("exapp", "not enough fs space for update", aid, "need", needed, "free", fs_free)
+            sys.publish("APP_STORE_ERROR", "空间不足，无法更新")
+            sys.publish("APP_STORE_ACTION_DONE", aid, "update", false)
+            report_result(aid, "空间不足无法更新")
+            return
+        end
+    end
 
     -- 删除旧版本文件（保留 data/ 目录）
     local ret, list = io.lsdir(old_path, 100, 0)

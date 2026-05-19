@@ -38,6 +38,8 @@
 
 或者Air780EHM/Air780EHV/Air780EGH核心板+AirLCD_1010 LCD配件板
 
+![alt text](https://docs.openluat.com/air780ehv/luatos/app/accessory/AirLCD_1010/lcd/image/image1.png )
+
 Air780EHM/Air780EHV/Air780EGH核心板和AirLCD_1010配件板的硬件接线方式为:
 
 |  Air780EHM/Air780EHV/Air780EGH核心板   | AirLCD_1010配件板 |
@@ -45,10 +47,10 @@ Air780EHM/Air780EHV/Air780EGH核心板和AirLCD_1010配件板的硬件接线方�
 | 53/LCD_CLK      | SCLK/CLK            |
 | 52/LCD_CS       | CS                  |
 | 49/LCD_RST      | RES/RST             |
-| 50/LCD_SDA      | SDA/MOSI            |
+| 50/LCD_SDA      | SDA/MOS             |
 | 51/LCD_RS       | DC/RS               |
 | 22/GPIO1        | BLK                 |
-| 24/VDD_EXT      | VCC                 |
+| 3V3             | VCC                 |
 | 67/I2C1_SCL     | SCL                 |
 | 66/I2C1_SDA     | SDA                 |
 | 20/GPIO24       | INT                 |

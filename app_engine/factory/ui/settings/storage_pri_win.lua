@@ -257,7 +257,7 @@ local function build_ui()
         color = COLOR_BG,
     })
 
-    local _, th = titlebar.create(main_container, "存储位置", screen_w, function()
+    local _, th = titlebar.create(main_container, "存储顺序", screen_w, function()
         exwin.close(window_id)
     end)
     titlebar_height = th
