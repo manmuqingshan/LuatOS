@@ -1081,10 +1081,14 @@ local function on_create()
     sys.subscribe("APP_STORE_ICON_READY", on_icon_ready)
 
     sys.publish("APP_STORE_SYNC_INSTALLED")
-    -- 首次加载等待网络就绪后再请求列表，避免网络未就绪时失败
+    -- 立即请求列表（网络已就绪时马上加载）
+    sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+    -- 网络未就绪时等IP_READY后再重试一次（避免首次进入需手动刷新）
     sys.taskInit(function()
-        sys.waitUntil("IP_READY", 30000)
-        sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+        local ok = sys.waitUntil("IP_READY", 30000)
+        if ok then
+            sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+        end
     end)
 end
 
