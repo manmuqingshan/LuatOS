@@ -78,12 +78,14 @@ assert(ctx, err)
 local info = ndk.info(ctx)
 log.info("ndk", "mem", info.mem, "exchange", info.exchange)
 
-assert(ndk.setData(ctx, "hello ndk") > 0)
+local n, err = ndk.setData(ctx, "hello ndk")
+assert(n and n ~= false, "ndk.setData failed: " .. tostring(err))
 
 local ok, ret, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
 assert(ok, string.format("exec fail %s mcause=%s mtval=%s", tostring(ret), tostring(mcause), tostring(mtval)))
 
-local data = ndk.getData(ctx, 64, 0)
+local data, data_err = ndk.getData(ctx, 64, 0)
+assert(data and data ~= false, "ndk.getData failed: " .. tostring(data_err))
 log.info("ndk", "ret", ret, "data", data)
 
 assert(ndk.stop(ctx, 1000))
