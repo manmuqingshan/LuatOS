@@ -52,7 +52,9 @@ typedef struct luat_ndk {
     uint32_t last_mtval;
     uint32_t last_trap;
     uint8_t trap_pending;
-    volatile luat_ndk_state_t state;
+    uint8_t stop_request;
+    luat_ndk_state_t state;
+    luat_rtos_mutex_t lock;
     luat_rtos_task_handle worker;
     uint32_t thread_id;
     char *image_path;
