@@ -1,15 +1,20 @@
 --[[
 @module  status_provider_app
 @summary 状态提供器应用模块，负责收集和管理系统状态信息
-@version 1.1
-@date    2026.03.26
+@version 1.2
+@date    2026.05.19
 @author  江访
 @usage
 本模块为状态提供器应用模块，主要功能包括：
 1、管理时间信息，每秒更新当前时间、日期、星期；
-2、管理WiFi信号强度，根据连接状态和RSSI动态更新信号等级；
+2、管理WiFi信号强度，通过监听WIFI_CONNECTED/DISCONNECTED事件控制RSSI轮询；
 3、提供状态查询接口供其他模块调用；
 4、发布状态更新事件供UI系统响应；
+
+== 设计原则 ==
+WiFi 连接状态由 wifi_app 统一管理（监听 WLAN_STA_INC）。
+status_provider 只负责 RSSI 信号强度轮询，通过 WIFI_CONNECTED/DISCONNECTED
+控制轮询定时器的启停，不与 wifi_app 产生重复状态跟踪。
 
 对外接口：
 1、StatusProvider.get_time()：获取当前时间（HH:MM）
@@ -17,8 +22,6 @@
 3、StatusProvider.get_weekday()：获取当前星期几（中文）
 4、StatusProvider.get_signal_level()：获取4G信号等级（-1或1-5，仅Air8000）
 5、StatusProvider.get_wifi_signal_level()：获取WiFi信号等级（0-4）
-6、StatusProvider.get_sensor_latest()：获取最新传感器数据（保留接口）
-7、StatusProvider.get_history()：获取传感器历史数据（保留接口）
 ]]
 
 local is_air8000 = _G.model_str:find("Air8000") ~= nil
@@ -42,6 +45,9 @@ local weekday_map = {
     ["Saturday"] = "星期六",
 }
 
+--[[
+更新时间信息并发布STATUS_TIME_UPDATED事件
+]]
 local function update_time()
     local t = os.time()
     if t then
@@ -54,6 +60,11 @@ local function update_time()
     end
 end
 
+--[[
+RSSI信号强度转等级
+@param number rssi - 信号强度值
+@return number level - 信号等级（0-4）
+]]
 local function rssi_to_level(rssi)
     if not rssi then return 0 end
     if rssi > -60 then
@@ -69,8 +80,13 @@ local function rssi_to_level(rssi)
     end
 end
 
+--[[
+更新WiFi信号强度
+仅当wifi_connected为true时轮询RSSI并发布STATUS_WIFI_SIGNAL_UPDATED事件
+]]
 local function update_wifi_signal()
     if not wifi_connected then
+        -- 未连接时确保图标显示为0
         if wifi_signal_level ~= 0 then
             wifi_signal_level = 0
             sys.publish("STATUS_WIFI_SIGNAL_UPDATED", wifi_signal_level)
@@ -86,35 +102,51 @@ local function update_wifi_signal()
             sys.publish("STATUS_WIFI_SIGNAL_UPDATED", wifi_signal_level)
         end
     else
-        log.warn("status_provider", "Failed to get WiFi RSSI")
+        log.warn("status_provider", "无法获取WiFi RSSI")
     end
 end
 
-local function handle_sta_event(ev, dt)
-    log.info("status_provider", "WLAN_STA_INC", ev, dt)
-    if ev == "CONNECTED" then
-        wifi_connected = true
-        wifi_signal_level = 3
+--[[
+处理WIFI_CONNECTED事件（由wifi_app发布）
+连接成功后启动RSSI轮询定时器
+@param string ssid - 连接的SSID
+]]
+local function handle_wifi_connected(ssid)
+    log.info("status_provider", "WiFi已连接:", ssid)
+    wifi_connected = true
+    wifi_signal_level = 3
+    sys.publish("STATUS_WIFI_SIGNAL_UPDATED", wifi_signal_level)
+
+    -- 启动RSSI轮询（每秒更新一次）
+    if wifi_timer then
+        sys.timerStop(wifi_timer)
+        wifi_timer = nil
+    end
+    wifi_timer = sys.timerLoopStart(update_wifi_signal, 1000)
+end
+
+--[[
+处理WIFI_DISCONNECTED事件（由wifi_app发布）
+断开连接后停止RSSI轮询，图标归零
+]]
+local function handle_wifi_disconnected(reason, code)
+    log.info("status_provider", "WiFi已断开:", reason, code)
+    wifi_connected = false
+
+    -- 停止RSSI轮询
+    if wifi_timer then
+        sys.timerStop(wifi_timer)
+        wifi_timer = nil
+    end
+
+    -- 图标归零
+    if wifi_signal_level ~= 0 then
+        wifi_signal_level = 0
         sys.publish("STATUS_WIFI_SIGNAL_UPDATED", wifi_signal_level)
-        update_wifi_signal()
-        if wifi_timer then
-            sys.timerStop(wifi_timer)
-            wifi_timer = nil
-        end
-        wifi_timer = sys.timerLoopStart(update_wifi_signal, 1000)
-    elseif ev == "DISCONNECTED" then
-        wifi_connected = false
-        if wifi_timer then
-            sys.timerStop(wifi_timer)
-            wifi_timer = nil
-        end
-        if wifi_signal_level ~= 0 then
-            wifi_signal_level = 0
-            sys.publish("STATUS_WIFI_SIGNAL_UPDATED", wifi_signal_level)
-        end
     end
 end
 
+-- 对外接口
 local function get_time()
     return current_time
 end
@@ -131,6 +163,7 @@ local function get_wifi_signal_level()
     return wifi_signal_level
 end
 
+-- 4G移动网络信号部分（仅Air8000）
 local mobile_signal_level = -1
 local sim_present = false
 local mobile_timer = nil
@@ -140,10 +173,10 @@ if is_air8000 then
 end
 
 local function update_mobile_signal()
-     local old_level = mobile_signal_level
+    local old_level = mobile_signal_level
     if not sim_present then
         mobile_signal_level = -1
-        log.info("status_provider", "no sim, set level -1")
+        log.info("status_provider", "无SIM卡，信号等级=-1")
     else
         local csq = mobile.csq()
         if csq == 99 or csq <= 5 then
@@ -157,7 +190,6 @@ local function update_mobile_signal()
         else
             mobile_signal_level = 5
         end
-        log.info("status_provider", "mapped level =", mobile_signal_level)
     end
     if old_level ~= mobile_signal_level then
         sys.publish("STATUS_SIGNAL_UPDATED", mobile_signal_level)
@@ -186,11 +218,20 @@ local function get_history(st)
     return {}
 end
 
+--[[
+模块初始化
+]]
 local function init_module()
+    -- 时间更新（每秒）
     sys.timerLoopStart(update_time, 1000)
-    sys.subscribe("WLAN_STA_INC", handle_sta_event)
     update_time()
 
+    -- 订阅WiFi连接/断开事件（由wifi_app发布），替代直接监听WLAN_STA_INC
+    -- 这样wifi_app是WLAN_STA_INC的唯一消费者，状态管理清晰
+    sys.subscribe("WIFI_CONNECTED", handle_wifi_connected)
+    sys.subscribe("WIFI_DISCONNECTED", handle_wifi_disconnected)
+
+    -- Air8000有4G模块
     if is_air8000 then
         sys.subscribe("SIM_IND", handle_sim_ind)
         if _G.model_str:find("PC") then
@@ -206,7 +247,9 @@ local function init_module()
             sys.publish("STATUS_WIFI_SIGNAL_UPDATED", wifi_signal_level)
         end)
     else
+        -- 非Air8000（Air1601/Air8101等）：启动时检查是否已有连接
         if _G.model_str:find("PC") then
+            -- PC模拟器，不检测真实连接
         else
             local info = wlan.getInfo()
             if info and info.ssid then
@@ -224,4 +267,5 @@ local function init_module()
         end)
     end
 end
+
 init_module()

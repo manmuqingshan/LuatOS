@@ -103,9 +103,9 @@ local function build_ui()
     y = y + card_h + card_spacing
     create_card(y, "显示亮度", function() sys.publish("OPEN_DISPLAY_WIN") end)
     y = y + card_h + card_spacing
-    create_card(y, "存储空间", function() sys.publish("OPEN_STORAGE_WIN") end)
+    create_card(y, "存储和内存", function() sys.publish("OPEN_STORAGE_WIN") end)
     y = y + card_h + card_spacing
-    create_card(y, "存储位置", function() sys.publish("OPEN_STORAGE_PRI_WIN") end)
+    create_card(y, "存储顺序", function() sys.publish("OPEN_STORAGE_PRI_WIN") end)
     y = y + card_h + card_spacing
     create_card(y, "系统更新", function()
         sys.publish("OPEN_SYSTEM_WIN")

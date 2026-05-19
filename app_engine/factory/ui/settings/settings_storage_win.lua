@@ -100,23 +100,27 @@ end
 
 -- ==================== 文件系统卡 ====================
 
-local function create_info_row(p, y, lt)
+local function create_info_row(p, y, lt, row_height)
+    local rh = row_height or math.floor(26 * (_G.density_scale or 1.0))
     local r = airui.container({
-        parent = p, x = math.floor(16 * _G.density_scale), y = y,
-        w = card_w - math.floor(32 * _G.density_scale),
-        h = math.floor(26 * _G.density_scale), color = COLOR_CARD
+        parent = p, x = math.floor(16 * (_G.density_scale or 1.0)), y = y,
+        w = card_w - math.floor(32 * (_G.density_scale or 1.0)),
+        h = rh, color = COLOR_CARD
     })
+    local text_pad = math.floor(math.max(2, rh * 0.12))
+    local text_h = rh - text_pad * 2
+    local text_sz = math.max(10, math.min(18, math.floor(rh * 0.6)))
     airui.label({
-        parent = r, x = 0, y = math.floor(3 * _G.density_scale),
-        w = math.floor(90 * _G.density_scale), h = math.floor(22 * _G.density_scale),
-        text = lt, font_size = math.floor(15 * _G.density_scale),
+        parent = r, x = 0, y = text_pad,
+        w = math.floor(90 * (_G.density_scale or 1.0)), h = text_h,
+        text = lt, font_size = text_sz,
         color = COLOR_TEXT_SECONDARY, align = airui.TEXT_ALIGN_LEFT
     })
     local vl = airui.label({
         parent = r,
-        x = math.floor(100 * _G.density_scale), y = math.floor(3 * _G.density_scale),
-        w = card_w - math.floor(132 * _G.density_scale), h = math.floor(22 * _G.density_scale),
-        text = "--", font_size = math.floor(15 * _G.density_scale),
+        x = math.floor(100 * (_G.density_scale or 1.0)), y = text_pad,
+        w = card_w - math.floor(132 * (_G.density_scale or 1.0)), h = text_h,
+        text = "--", font_size = text_sz,
         color = COLOR_TEXT, align = airui.TEXT_ALIGN_RIGHT
     })
     return vl
@@ -124,11 +128,12 @@ end
 
 local function create_memory_card(p, y, title, percent_color, card_height)
     local card = airui.container({ parent = p, x = margin, y = y, w = card_w, h = card_height, color = COLOR_WHITE, radius = 8 })
-    local pad = math.floor(10 * _G.density_scale)
-    local th = math.floor(28 * _G.density_scale)
-    local ih = math.floor(26 * _G.density_scale)
-    local bh = math.floor(15 * _G.density_scale)
-    local g = math.floor(4 * _G.density_scale)
+    local density = _G.density_scale or 1.0
+    local pad = math.floor(card_height * 0.06)
+    local th = math.floor(card_height * 0.20)
+    local ih = math.floor(card_height * 0.15)
+    local bh = math.floor(card_height * 0.08)
+    local g = math.floor(card_height * 0.025)
 
     local yt = pad
     local yi1 = yt + th + g
@@ -136,16 +141,18 @@ local function create_memory_card(p, y, title, percent_color, card_height)
     local yi3 = yi2 + ih + g
     local yb = yi3 + ih + g
 
-    airui.label({ parent = card, x = math.floor(16 * _G.density_scale), y = yt, w = math.floor(200 * _G.density_scale), h = th,
-        text = title, font_size = math.floor(20 * _G.density_scale), color = COLOR_TEXT })
-    local lp = airui.label({ parent = card, x = card_w - math.floor(180 * _G.density_scale), y = yt, w = math.floor(160 * _G.density_scale), h = th,
-        text = "0% 占用", font_size = math.floor(15 * _G.density_scale), color = percent_color, align = airui.TEXT_ALIGN_RIGHT })
+    local title_font = math.max(12, math.min(26, math.floor(th * 0.7)))
+    local percent_font = math.max(10, math.min(20, math.floor(th * 0.55)))
+    airui.label({ parent = card, x = math.floor(16 * density), y = yt, w = math.floor(200 * density), h = th,
+        text = title, font_size = title_font, color = COLOR_TEXT })
+    local lp = airui.label({ parent = card, x = card_w - math.floor(180 * density), y = yt, w = math.floor(160 * density), h = th,
+        text = "0% 占用", font_size = percent_font, color = percent_color, align = airui.TEXT_ALIGN_RIGHT })
 
-    local lt = create_info_row(card, yi1, "总内存")
-    local lu = create_info_row(card, yi2, "当前使用")
-    local lm = create_info_row(card, yi3, "历史峰值")
-    local lb = airui.bar({ parent = card, x = math.floor(16 * _G.density_scale), y = yb,
-        w = card_w - math.floor(32 * _G.density_scale), h = bh, value = 0,
+    local lt = create_info_row(card, yi1, "总内存", ih)
+    local lu = create_info_row(card, yi2, "当前使用", ih)
+    local lm = create_info_row(card, yi3, "历史峰值", ih)
+    local lb = airui.bar({ parent = card, x = math.floor(16 * density), y = yb,
+        w = card_w - math.floor(32 * density), h = bh, value = 0,
         bg_color = COLOR_DIVIDER, indicator_color = percent_color, radius = 7 })
 
     return { total = lt, used = lu, max = lm, percent = lp, progress = lb }
@@ -153,37 +160,42 @@ end
 
 local function create_fs_card(p, y, title, card_height, is_internal)
     local card = airui.container({ parent = p, x = margin, y = y, w = card_w, h = card_height, color = COLOR_WHITE, radius = 8 })
-    local pad = math.floor(10 * _G.density_scale)
-    local th = math.floor(28 * _G.density_scale)
-    local rh = math.floor(24 * _G.density_scale)
-    local bh = math.floor(15 * _G.density_scale)
-    local g = math.floor(4 * _G.density_scale)
+    local density = _G.density_scale or 1.0
+    local pad = math.floor(card_height * 0.05)
+    local th = math.floor(card_height * 0.20)
+    local rh = math.floor(card_height * 0.18)
+    local bh = math.floor(card_height * 0.08)
+    local g = math.floor(card_height * 0.020)
+    local row_h = math.floor(card_height * 0.18)
 
     local yt = pad
     local yb = yt + th + g
     local yp = yb + bh + g
     local yu = yp + rh + g
-    local yf = yu + rh + g
+    local yf = yu + row_h + g
 
-    airui.label({ parent = card, x = math.floor(16 * _G.density_scale), y = yt, w = math.floor(200 * _G.density_scale), h = th,
-        text = title, font_size = math.floor(20 * _G.density_scale), color = COLOR_TEXT })
+    local title_font = math.max(12, math.min(26, math.floor(th * 0.7)))
+    local status_font = math.max(10, math.min(20, math.floor(th * 0.55)))
+    local pct_font = math.max(10, math.min(18, math.floor(rh * 0.6)))
+    airui.label({ parent = card, x = math.floor(16 * density), y = yt, w = math.floor(200 * density), h = th,
+        text = title, font_size = title_font, color = COLOR_TEXT })
 
     -- 内置先显示占位，外部显示"未挂载"
-    local status_label = airui.label({ parent = card, x = card_w - math.floor(180 * _G.density_scale), y = yt,
-        w = math.floor(160 * _G.density_scale), h = th,
+    local status_label = airui.label({ parent = card, x = card_w - math.floor(180 * density), y = yt,
+        w = math.floor(160 * density), h = th,
         text = is_internal and "--" or "未挂载",
-        font_size = math.floor(15 * _G.density_scale), color = COLOR_TEXT_SECONDARY, align = airui.TEXT_ALIGN_RIGHT })
+        font_size = status_font, color = COLOR_TEXT_SECONDARY, align = airui.TEXT_ALIGN_RIGHT })
 
-    local bar = airui.bar({ parent = card, x = math.floor(16 * _G.density_scale), y = yb,
-        w = card_w - math.floor(32 * _G.density_scale), h = bh, value = 0,
+    local bar = airui.bar({ parent = card, x = math.floor(16 * density), y = yb,
+        w = card_w - math.floor(32 * density), h = bh, value = 0,
         bg_color = COLOR_DIVIDER, indicator_color = COLOR_PRIMARY, radius = 7 })
 
-    local pct_label = airui.label({ parent = card, x = math.floor(16 * _G.density_scale), y = yp,
-        w = card_w - math.floor(32 * _G.density_scale), h = rh,
-        text = "已使用 --%", font_size = math.floor(16 * _G.density_scale), color = COLOR_TEXT })
+    local pct_label = airui.label({ parent = card, x = math.floor(16 * density), y = yp,
+        w = card_w - math.floor(32 * density), h = rh,
+        text = "已使用 --%", font_size = pct_font, color = COLOR_TEXT })
 
-    local total_label = create_info_row(card, yu, "总容量")
-    local free_label = create_info_row(card, yf, "可用空间")
+    local total_label = create_info_row(card, yu, "总容量", row_h)
+    local free_label = create_info_row(card, yf, "可用空间", row_h)
 
     return {
         status = status_label, bar = bar, pct_label = pct_label,
@@ -227,18 +239,24 @@ end
 local function build_ui()
     update_screen_size()
 
-    local card_height_base = math.floor(screen_h * 0.17)
-    if card_height_base < 120 then card_height_base = 120 end
-    if card_height_base > 220 then card_height_base = 220 end
+    -- 6张卡片(3内存+3文件系统) + 间距 + 留白 = 可用高度
+    local th_est = math.floor(60 * (_G.density_scale or 1.0))
+    local margin_top = margin
+    local gap_count = 5
+    local card_gap_est = math.floor(margin * 0.7)
+    local available_h = screen_h - th_est - margin_top * 2 - gap_count * card_gap_est
+    local card_height_base = math.floor(available_h / 6)
+    if card_height_base < 105 then card_height_base = 105 end
+    if card_height_base > 200 then card_height_base = 200 end
 
     memory_card_h = card_height_base
-    fs_card_h = math.floor(card_height_base * 0.9)
+    fs_card_h = math.floor(card_height_base * 0.85)
 
     main_container = airui.container({
         parent = airui.screen, x = 0, y = 0, w = screen_w, h = screen_h, color = COLOR_BG
     })
 
-    local _, th = titlebar.create(main_container, "存储空间", screen_w, function() exwin.close(window_id) end)
+    local _, th = titlebar.create(main_container, "存储和内存", screen_w, function() exwin.close(window_id) end)
 
     local content_area = airui.container({
         parent = main_container, x = 0, y = th, w = screen_w, h = screen_h - th,
