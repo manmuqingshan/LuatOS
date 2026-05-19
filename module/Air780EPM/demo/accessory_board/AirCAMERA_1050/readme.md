@@ -248,5 +248,3 @@ AirCAMERA_1050 配件板插入Air780EPM 开发板的SPI摄像头座子中
 ```
 
 5、登录 https://iot.luatos.com/ 查看拍摄的照片;
-
-![](https://docs.openluat.com/air8101/luatos/app/accessory/AirCAMERA_1020/image/aircloudupload.png)
