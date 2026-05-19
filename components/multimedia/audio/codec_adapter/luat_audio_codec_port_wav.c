@@ -55,9 +55,8 @@ int luat_audio_wav_get_play_info(struct luat_audio_data_codec *codec, luat_buffe
 static int _wav_codec_init(luat_audio_data_codec_t* codec, uint8_t is_encode) {
     return LUAT_ERROR_NONE;
 }
-static int _wav_codec_deinit(luat_audio_data_codec_t* codec, uint8_t is_encode) {
-    return LUAT_ERROR_NONE;
-}
+static void _wav_codec_deinit(luat_audio_data_codec_t* codec) {
+}   
 
 static int _wav_codec_decode(luat_audio_data_codec_t* codec, luat_audio_common_param_t *info,
                   const uint8_t *input, uint32_t input_size,
@@ -117,7 +116,7 @@ const luat_audio_data_codec_opts_t luat_audio_data_codec_wav_opts = {
     .get_play_info = luat_audio_wav_get_play_info,
     .pre_decode = NULL,
     .decode = _wav_codec_decode,
-    .make_head = NULL,
+    .make_head = _wav_codec_make_head,
     .encode = _wav_codec_encode,
     .decode_min_input_len = 4096,
     .decode_max_output_len = 4096,
