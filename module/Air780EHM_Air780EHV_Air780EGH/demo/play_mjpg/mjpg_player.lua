@@ -1,77 +1,32 @@
 --[[
-@module  mjpg_player_server
-@summary MJPG视频播放器 - 服务器下载播放模式
+@module  mjpg_player
+@summary MJPG视频播放器
 @version 1.0.0
 @date    2026.05.19
 @author  拓毅恒
 @usage
-本模块实现从HTTP服务器下载MJPG视频并播放的功能：
-1. 从服务器下载视频到 /ram/server_video.mjpg
+本模块使用AirUI框架实现MJPG视频播放功能：
+1. 从 /luadb/fly_man_80.mjpg 加载视频
 2. 使用 airui.video 组件播放视频
 3. 支持循环播放
 
 使用方法：
-1. 需要插入SIM卡并连接网络
-2. 在 main.lua 中 require "mjpg_player_server"
-3. 上电后自动下载并播放
+1. 将视频文件烧录到固件中
+2. 在 main.lua 中 require "mjpg_player"
+3. 上电后自动开始播放
 
 注意事项：
-1. 服务器视频URL：https://appstoreoss.luatos.com/iot-apps/res/100197/video_160x160.mjpg
-2. 视频保存路径：/ram/server_video.mjpg
-3. 视频分辨率不超过320x480
+1. 视频文件路径：/luadb/fly_man_80.mjpg
+2. 视频分辨率不超过320x480
 ]]
 
 -- ====================== 配置区域 ======================
 
--- 服务器视频URL
-local SERVER_VIDEO_URL = "https://appstoreoss.luatos.com/iot-apps/res/100197/video_160x160.mjpg"
-
--- 下载后保存路径
-local DOWNLOADED_VIDEO_PATH = "/ram/server_video.mjpg"
+-- 视频文件路径
+local VIDEO_PATH = "/luadb/fly_man_80.mjpg"
 
 -- 视频播放帧率
 local VIDEO_FPS = 15
-
--- ====================== 视频下载函数 ======================
-
--- 从服务器下载视频
-local function download_video()
-    log.info("播放器", "从服务器下载视频:", SERVER_VIDEO_URL)
-
-    -- 等待网络就绪
-    log.info("播放器", "等待网络连接...")
-    while not socket.adapter(socket.dft()) do
-        sys.waitUntil("IP_READY", 1000)
-    end
-    log.info("播放器", "网络已就绪")
-
-    -- 清理旧文件
-    if io.exists(DOWNLOADED_VIDEO_PATH) then
-        os.remove(DOWNLOADED_VIDEO_PATH)
-        log.info("播放器", "删除旧视频文件")
-    end
-
-    -- 下载视频文件
-    log.info("播放器", "开始下载...")
-    local code, headers, body_size = http.request("GET", SERVER_VIDEO_URL, nil, nil,
-        {dst = DOWNLOADED_VIDEO_PATH, timeout = 60000}).wait()
-
-    if code ~= 200 then
-        log.error("播放器", "下载失败, code:", code)
-        return false
-    end
-
-    log.info("播放器", "下载完成, 大小:", body_size, "字节")
-
-    -- 检查文件
-    local actual_size = io.fileSize(DOWNLOADED_VIDEO_PATH)
-    if actual_size ~= body_size then
-        log.error("播放器", "文件大小不一致, 预期:", body_size, "实际:", actual_size)
-        return false
-    end
-
-    return true
-end
 
 -- ====================== 视频播放函数 ======================
 
@@ -79,9 +34,9 @@ end
 local function play_video_with_airui()
     log.info("播放器", "准备播放视频...")
 
-    -- 下载视频
-    if not download_video() then
-        log.error("播放器", "下载视频失败")
+    -- 检查视频文件是否存在
+    if not io.exists(VIDEO_PATH) then
+        log.error("播放器", "视频文件不存在:", VIDEO_PATH)
         return false
     end
 
@@ -90,7 +45,7 @@ local function play_video_with_airui()
     log.info("播放器", "LCD尺寸:", lcd_width, "x", lcd_height)
 
     -- 获取视频实际分辨率
-    local temp_player, err = videoplayer.open(DOWNLOADED_VIDEO_PATH)
+    local temp_player, err = videoplayer.open(VIDEO_PATH)
     local video_width, video_height = 160, 160
     if temp_player then
         local info = videoplayer.info(temp_player)
@@ -147,7 +102,7 @@ local function play_video_with_airui()
         parent = video_container,
         x = 0,
         y = 0,
-        src = DOWNLOADED_VIDEO_PATH,
+        src = VIDEO_PATH,
         format = "mjpg",
         interval = interval,
         loop = true

@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-本项目是基于 Air8000 的视频播放演示demo，实现了两种视频播放场景（二选一）：播放本地烧录的视频、以及播放从服务器下载的视频。
+本项目是基于 Air780EHM/Air780EHV/Air780EGH 的视频播放演示demo，实现了两种视频播放场景（二选一）：播放本地烧录的视频、以及播放从服务器下载的视频。
 
 ## 文件结构
 
@@ -32,29 +32,31 @@
 
 ## 演示硬件环境
 
-1、Air8000开发板一块+LCD屏幕
+1、Air780EHM/Air780EHV/Air780EGH开发板一块+LCD屏幕
 
-![alt text](https://docs.openLuat.com/cdn/image/8000_AirLCD1010.jpg )
+![alt text](https://docs.openLuat.com/cdn/image/780EXX_AirLCD1010.jpg )
 
-或者Air8000核心板+AirLCD_1010 LCD配件板
+或者Air780EHM/Air780EHV/Air780EGH核心板+AirLCD_1010 LCD配件板
 
-Air8000核心板和AirLCD_1010配件板的硬件接线方式为:
+Air780EHM/Air780EHV/Air780EGH核心板和AirLCD_1010配件板的硬件接线方式为:
 
-|  Air8000核心板   | AirLCD_1010配件板 |
+|  Air780EHM/Air780EHV/Air780EGH核心板   | AirLCD_1010配件板 |
 | --------------- | -----------------   |
-| 22/LSPI_MISO    | MISO                |
-| 23/LSPI_MOSI    | MOSI                |
-| 24/LSPI_CLK     | CLK                 |
-| 25/LSPI_CS      | CS                  |
-| 2/GPIO2         | RST                 |
-| 1/GPIO1         | BL                  |
-| 141/GPIO141     | PWR                 |
-| VBAT            | VCC                 |
+| 53/LCD_CLK      | SCLK/CLK            |
+| 52/LCD_CS       | CS                  |
+| 49/LCD_RST      | RES/RST             |
+| 50/LCD_SDA      | SDA/MOSI            |
+| 51/LCD_RS       | DC/RS               |
+| 22/GPIO1        | BLK                 |
+| 24/VDD_EXT      | VCC                 |
+| 67/I2C1_SCL     | SCL                 |
+| 66/I2C1_SDA     | SDA                 |
+| 20/GPIO24       | INT                 |
 | GND             | GND                 |
 
 2、TYPE-C USB数据线一根
 
-- Air8000核心板通过 TYPE-C USB 口供电；
+- Air780EHM/Air780EHV/Air780EGH核心板通过 TYPE-C USB 口供电；
 
 - TYPE-C USB 数据线直接插到核心板的 TYPE-C USB 座子，另外一端连接电脑 USB 口；
 
@@ -62,17 +64,19 @@ Air8000核心板和AirLCD_1010配件板的硬件接线方式为:
 
 1、[Luatools下载调试工具](https://docs.openluat.com/common/Luatools/)
 
-2、[Air8000 固件](https://docs.openluat.com/air8000/luatos/firmware/)，选择支持AirUI功能的固件。
+2、[Air780EHM固件](https://docs.openluat.com/air780epm/luatos/firmware/780ehm_version/)，选择支持AirUI功能的固件。
 
-3、 luatos需要的脚本和资源文件
+3、[Air780EHV固件](https://docs.openluat.com/air780ehv/luatos/firmware/version/)，选择支持AirUI功能的固件。
 
-- 脚本和资源文件[点我浏览所有文件](https://gitee.com/openLuat/LuatOS/tree/master/module/Air8000/demo/play_mjpg)
+4、[Air780EGH固件](https://docs.openluat.com/air780egh/luatos/firmware/780egg%26780egh_version/)，选择支持AirUI功能的固件。
 
-- 准备好软件环境之后，接下来查看如何[使用 LuaTools 烧录软件](https://docs.openluat.com/air8000/luatos/common/download/)，将本篇文章中演示使用的项目文件烧录到 Air8000 核心板中，或者查看 Air8000 产品手册--[Air8000 系列整机开发板使用手册 V2.0](https://docs.openluat.com/air8000/product/file/Air8000_V2.0%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E_V1.0.3.pdf)--将本篇文章中演示使用的项目文件烧录到 Air8000 开发板中
+5、 luatos需要的脚本和资源文件
 
-4、[合宙 LuatIO 工具(GPIO 复用初始化配置)使用说明](https://docs.openluat.com/common/luatio/)
+- 脚本和资源文件[点我浏览所有文件](https://gitee.com/openLuat/LuatOS/tree/master/module/Air780EHM_Air780EHV_Air780EGH/demo/play_mjpg)
 
-5、 lib 脚本文件：使用 Luatools 烧录时，勾选 添加默认 lib 选项，使用默认 lib 脚本文件；
+- 准备好软件环境之后，接下来查看如何[使用 LuaTools 烧录软件](https://docs.openluat.com/air780epm/luatos/common/download/)，将本篇文章中演示使用的项目文件烧录到 Air780EHM/Air780EHV/Air780EGH 核心板中
+
+6、 lib 脚本文件：使用 Luatools 烧录时，勾选 添加默认 lib 选项，使用默认 lib 脚本文件；
 
 ## 演示核心步骤
 
@@ -145,5 +149,5 @@ I/user.播放器 视频开始播放
 ## 视频格式要求
 
 - **格式**：MJPG (Motion JPEG)
-- **分辨率**：不超过 320x480（Air8000 LCD 分辨率）
+- **分辨率**：不超过 320x480（LCD 分辨率）
 - **帧率**：默认 15fps，可通过 `VIDEO_FPS` 变量调整

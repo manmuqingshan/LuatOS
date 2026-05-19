@@ -16,7 +16,7 @@
 
 注意事项：
 1. 背光在初始化完成后再开启，避免白屏
-2. GPIO141 控制LCD供电使能
+2. GPIO36 控制LCD复位
 3. GPIO1 控制背光
 ]]
 
@@ -24,25 +24,27 @@
 
 -- LCD初始化函数
 function lcd_drv_init()
-    -- Air8000开发板上，使能lcd供电的ldo电源开关
-    gpio.setup(141, 1)
-
     local result = lcd.init("st7796",
         {
+            pin_rst = 36,                           -- 复位引脚
             pin_pwr = nil,                          -- 背光控制引脚，先不开启
             port = lcd.HWID_0,                      -- 驱动端口
-            pin_rst = 2,                            -- lcd复位引脚
             direction = 0,                          -- lcd屏幕方向
             w = 320,                                -- lcd 水平分辨率
             h = 480,                                -- lcd 竖直分辨率
             xoffset = 0,
             yoffset = 0,
-            bus_speed = 80000000,                   -- SPI总线速度
+            sleepcmd = 0X10,
+            wakecmd = 0X11,
         })
 
     log.info("lcd.init", result)
 
     if result then
+        -- 显示设置
+        lcd.setupBuff(nil, true)
+        lcd.autoFlush(false)
+
         -- 初始化AirUI
         local width, height = lcd.getSize()
         local airui_result = airui.init(width, height)
