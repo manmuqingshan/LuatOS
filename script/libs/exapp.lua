@@ -2906,9 +2906,7 @@ local function build_params(category, sort, page, size, query)
     params.sort = sort or "recommend"
     params.page = page or 1
     params.size = size or PAGE_LIMIT
-    if type(query) == "string" and query ~= "" then
-        params.query = query
-    end
+    params.query = query or ""
     local aids = {}
     local vers = {}
     for aid, info in pairs(installed_info) do
@@ -3103,7 +3101,7 @@ function exapp.get_app_list(params)
     local query = params.query or ""
 
     if category ~= "已安装" and not network_ready then
-        sys.publish("APP_STORE_ERROR", "网络未就绪")
+        sys.publish("APP_STORE_ERROR", "当前无网络，请先连接WiFi")
         return false
     end
 
@@ -3226,6 +3224,26 @@ function exapp.get_current_list()
     return remote_app_list.apps, remote_app_list.has_more
 end
 
+-- HTTP状态码 → 中文提示
+local HTTP_CODE_MESSAGES = {
+    [400] = "参数错误",
+    [401] = "鉴权失败",
+    [403] = "禁止访问",
+    [404] = "应用不存在",
+    [408] = "请求超时",
+    [429] = "请求太频繁",
+    [500] = "服务器内部错误",
+    [502] = "服务暂不可用",
+    [503] = "服务繁忙",
+    [504] = "网关超时",
+}
+local function http_error_msg(code)
+    local msg = HTTP_CODE_MESSAGES[code]
+    if msg then return msg end
+    if code and code < 0 then return "网络连接失败" end
+    return "未知错误(" .. tostring(code) .. ")"
+end
+
 -- 下载文件
 local function download_file(url, dest_path, aid)
     log.info("exapp", "downloading", url, "->", dest_path)
@@ -3251,7 +3269,7 @@ local function download_file(url, dest_path, aid)
         sys.publish("APP_STORE_ERROR", "内存空间不足无法安装")
         return false
     end
-    local code = http.request("GET", url, nil, nil, {
+    local code, headers = http.request("GET", url, nil, nil, {
         dst = dest_path,
         timeout = 60000,
         callback = function(total, received)
@@ -3262,31 +3280,86 @@ local function download_file(url, dest_path, aid)
         end
     }).wait()
     if code == 200 then
-        -- 额外校验：对比实际下载大小与服务端给出的 zip_size（若可用）
-        if app_entry and type(app_entry.zip_size_kb) ~= "nil" then
-            local actual_kb = 0
-            local fsz = io.fileSize(dest_path)
-            if fsz then actual_kb = math.floor(fsz / 1024) end
-            local expected = tonumber(tostring(app_entry.zip_size_kb)) or 0
-            if expected > 0 and actual_kb > 0 then
-                local diff = math.abs(actual_kb - expected)
-                local diff_percent = math.abs(actual_kb - expected) / expected * 100
-                -- 允许10%差异或最多20KB差异，取较大值（对小文件更宽松）
-                if diff > math.max(expected * 0.10, 20) then
-                    log.warn("exapp", "download size mismatch for", aid, actual_kb, expected, "diff:", diff, "KB", string.format("%.1f", diff_percent), "%")
+        -- 详细日志：服务端返回的各字段大小 vs 实际下载大小
+        local fsz = io.fileSize(dest_path) or 0
+        local content_len = headers and headers["content-length"]
+        local zip_size_kb = app_entry and tonumber(tostring(app_entry.zip_size_kb)) or nil
+        local zip_size_b = app_entry and tonumber(tostring(app_entry.zip_size_b)) or nil
+        local origin_size_kb = app_entry and tonumber(tostring(app_entry.origin_size_kb)) or nil
+        local origin_size_b = app_entry and tonumber(tostring(app_entry.origin_size_b)) or nil
+        log.info("exapp", "download detail for", aid,
+            "zip_size_kb:", zip_size_kb or "N/A",
+            "zip_size_b:", zip_size_b or "N/A",
+            "origin_size_kb:", origin_size_kb or "N/A",
+            "origin_size_b:", origin_size_b or "N/A",
+            "http_content_len:", content_len or "N/A",
+            "actual_bytes:", fsz,
+            "actual_kb:", string.format("%.1f", fsz / 1024))
+
+        -- 校验1：zip_size_b 字节级对比（服务端字段，精度高但可能存在偏差）
+        if zip_size_b and zip_size_b > 0 and fsz > 0 then
+            local byte_diff = math.abs(fsz - zip_size_b)
+            -- 允许最大5%或5KB偏差（服务端zip_size_b可能不准）
+            local byte_tolerance = math.max(zip_size_b * 0.05, 5120)
+            if byte_diff > byte_tolerance then
+                log.warn("exapp", "zip_size_b mismatch for", aid, "actual:", fsz, "expected:", zip_size_b, "diff:", byte_diff)
+                -- zip_size_b 不通过时，再走 zip_size_kb 验证一次再决定是否失败
+                local kb_ok = false
+                if zip_size_kb and zip_size_kb > 0 then
+                    local actual_kb = math.floor(fsz / 1024)
+                    local kb_diff = math.abs(actual_kb - zip_size_kb)
+                    if kb_diff <= math.min(math.max(zip_size_kb * 0.05, 1), 20) then
+                        kb_ok = true
+                    end
+                end
+                if not kb_ok then
                     if io.exists(dest_path) then os.remove(dest_path) end
-                    return false
-                elseif diff > 0 then
-                    log.info("exapp", "download size minor mismatch for", aid, actual_kb, expected, "diff:", diff, "KB", string.format("%.1f", diff_percent), "%")
+                    return false, "文件大小不匹配，服务器记录" .. zip_size_b .. "字节，实际" .. fsz .. "字节"
+                end
+                log.info("exapp", "zip_size_b mismatch but kb ok for", aid, fsz, zip_size_b, zip_size_kb)
+            elseif byte_diff > 0 then
+                log.info("exapp", "zip_size_b minor diff for", aid, fsz, zip_size_b, "diff:", byte_diff)
+            end
+        -- 校验2：zip_size_kb 兜底（服务器未返回 zip_size_b 时使用）
+        elseif zip_size_kb and zip_size_kb > 0 and fsz > 0 then
+            local actual_kb = math.floor(fsz / 1024)
+            local diff = math.abs(actual_kb - zip_size_kb)
+            local diff_percent = math.abs(actual_kb - zip_size_kb) / zip_size_kb * 100
+            -- 允许5%差异或最多20KB差异，取较小值（对小文件更严格）
+            if diff > math.min(math.max(zip_size_kb * 0.05, 1), 20) then
+                log.warn("exapp", "download size mismatch for", aid, actual_kb, zip_size_kb, "diff:", diff, "KB", string.format("%.1f", diff_percent), "%")
+                if io.exists(dest_path) then os.remove(dest_path) end
+                return false, "文件大小不匹配(" .. actual_kb .. " vs " .. zip_size_kb .. "KB)"
+            elseif diff > 0 then
+                log.info("exapp", "download size minor mismatch for", aid, actual_kb, zip_size_kb, "diff:", diff, "KB", string.format("%.1f", diff_percent), "%")
+            end
+        end
+        -- Content-MD5 完整性校验（阿里云OSS返回的MD5，base64编码）
+        local content_md5 = headers and headers["content-md5"]
+        if content_md5 and type(content_md5) == "string" and #content_md5 > 0 then
+            local ok_decode, md5_bin = pcall(crypto.base64_decode, content_md5)
+            if ok_decode and md5_bin and #md5_bin == 16 then
+                local expected_hex = md5_bin:toHex():lower()
+                local actual_hex = crypto.md_file("MD5", dest_path)
+                if actual_hex then
+                    if actual_hex:lower() ~= expected_hex then
+                        log.error("exapp", "MD5 mismatch for", aid,
+                            "expected:", expected_hex,
+                            "actual:", actual_hex)
+                        if io.exists(dest_path) then os.remove(dest_path) end
+                        return false, "文件损坏(MD5不匹配)"
+                    end
+                    log.info("exapp", "MD5 verified for", aid, expected_hex)
                 end
             end
         end
         return true
     else
-        log.error("exapp", "download failed", code)
+        local err_msg = http_error_msg(code)
+        log.error("exapp", "download failed for", aid, "code:", code, err_msg)
         -- 下载失败，清理已下载的文件
         if dest_path and io.exists(dest_path) then os.remove(dest_path) end
-        return false
+        return false, err_msg
     end
 end
 
@@ -3307,9 +3380,74 @@ local function dir_size_kb(dir_path)
     return total
 end
 
+-- ZIP EOCD固定大小（不含评论）
+local EOCD_FIXED_SIZE = 22
+
+-- 在文件末尾搜索EOCD签名（支持ZIP评论，最多搜索64KB）
+-- 返回值：找到的EOCD起始偏移（从文件末尾算起，负数），nil表示未找到
+local function find_zip_eocd(f, file_size)
+    local search_size = math.min(65536, file_size)
+    local search_pos = math.max(0, file_size - search_size)
+    f:seek("set", search_pos)
+    local ok, data = pcall(f.read, f, search_size)
+    if not ok or not data or #data < EOCD_FIXED_SIZE then
+        return nil
+    end
+    -- 从后往前扫描EOCD签名
+    local pos = #data - EOCD_FIXED_SIZE + 1
+    while pos >= 1 do
+        if data:byte(pos) == 0x50
+            and data:byte(pos + 1) == 0x4B
+            and data:byte(pos + 2) == 0x05
+            and data:byte(pos + 3) == 0x06 then
+            -- 找到EOCD，确认签名后的字段在文件范围内
+            local eocd_end = search_pos + pos + EOCD_FIXED_SIZE - 1
+            if eocd_end <= file_size then
+                return eocd_end - file_size -- 负数，相对于文件末尾
+            end
+        end
+        pos = pos - 1
+    end
+    return nil
+end
+
+-- 预检ZIP完整性：搜索文件末尾的EOCD签名
+-- 这是轻量级校验，防止截断/损坏的ZIP导致miniz解压时死机
+local function check_zip_eocd(zip_path)
+    local f, err = io.open(zip_path, "rb")
+    if not f then
+        log.warn("exapp", "cannot open zip for eocd check:", err)
+        return true -- 无法打开时跳过校验，由后续步骤兜底
+    end
+    local file_size, seek_err = f:seek("end")
+    if not file_size then
+        log.warn("exapp", "seek end failed:", seek_err)
+        f:close()
+        return true -- 不支持seek时跳过校验
+    end
+    if file_size < EOCD_FIXED_SIZE then
+        log.warn("exapp", "zip file too small:", zip_path, file_size)
+        f:close()
+        return false
+    end
+    -- 在末尾搜索EOCD签名
+    local found = find_zip_eocd(f, file_size)
+    f:close()
+    if not found then
+        log.warn("exapp", "zip eocd signature not found:", zip_path)
+        return false
+    end
+    return true
+end
+
 -- 解压ZIP
 local function unzip_file(zip_path, dest_dir)
     log.info("exapp", "extracting", zip_path, "->", dest_dir)
+    -- 先做轻量级完整性校验
+    if not check_zip_eocd(zip_path) then
+        log.error("exapp", "zip integrity check failed, skipping extraction:", zip_path)
+        return false
+    end
     local success = miniz.unzip(zip_path, dest_dir)
     return success
 end
@@ -3331,7 +3469,7 @@ local function report_result(aid, error_msg)
         if code == 200 then
             log.info("exapp", "download report success for", aid)
         else
-            log.warn("exapp", "download report failed", code, resp_body)
+            log.warn("exapp", "download report failed for", aid, "code:", code, http_error_msg(code), resp_body)
         end
     end)
 end
@@ -3361,7 +3499,7 @@ exapp.install_remote_app("app_hello", "https://example.com/app.zip", "Hello App"
 ]]
 function exapp.install_remote_app(aid, url, app_name, category, sort)
     if not network_ready then
-        sys.publish("APP_STORE_ERROR", "网络未就绪")
+        sys.publish("APP_STORE_ERROR", "当前无网络，请先连接WiFi")
         return
     end
 
@@ -3419,10 +3557,12 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
         -- (在 download_file 中还会再做一次详细校验)
 
         -- 进行下载前对 zip_size 的容量校验，若不通过则直接退出
-        if not download_file(url, temp_path, aid) then
-            sys.publish("APP_STORE_ERROR", "下载失败")
+        local download_ok, download_err = download_file(url, temp_path, aid)
+        if not download_ok then
+            local err_msg = download_err or "下载失败"
+            sys.publish("APP_STORE_ERROR", err_msg)
             sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
-            report_result(aid, "下载失败")
+            report_result(aid, err_msg)
             return
         end
 
@@ -3699,7 +3839,7 @@ local function download_icon(aid, url)
             icon_cache[aid] = { path = local_path, timestamp = os.time(), size = io.fileSize(local_path) }
             sys.publish("APP_STORE_ICON_READY", aid, local_path)
         else
-            log.error("exapp", "icon download failed", code)
+            log.error("exapp", "icon download failed for", aid, "code:", code, http_error_msg(code))
         end
     end)
     return nil
@@ -3850,7 +3990,7 @@ end)
 function exapp.add_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "add_record: network not ready")
-        if callback then callback(false, "网络未就绪") end
+        if callback then callback(false, "当前无网络，请先连接WiFi") end
         return
     end
     local body = {
@@ -3910,7 +4050,7 @@ end)
 function exapp.list_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "list_record: network not ready")
-        if callback then callback(false, "网络未就绪") end
+        if callback then callback(false, "当前无网络，请先连接WiFi") end
         return
     end
     local body = {
@@ -3958,7 +4098,7 @@ end)
 function exapp.delete_record(params, appid, callback)
     if not network_ready then
         log.warn("db", "delete_record: network not ready")
-        if callback then callback(false, "网络未就绪") end
+        if callback then callback(false, "当前无网络，请先连接WiFi") end
         return
     end
     if not params.id then
