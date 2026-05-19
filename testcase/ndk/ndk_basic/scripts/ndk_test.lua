@@ -66,6 +66,19 @@ function ndk_tests.test_ndk_constructor_failure_no_gc_crash()
     assert(ok, "constructor failure path should not crash GC: " .. tostring(msg))
 end
 
+function ndk_tests.test_ndk_invalid_param_constructor_no_resource_exhaustion()
+    for i = 1, 2000 do
+        local ctx, err = ndk.rv32i(IMAGE_PATH, MEM_SIZE + 1, EXCHANGE_SIZE)
+        assert(ctx == nil, "invalid mem_size should fail, round=" .. i)
+        assert(type(err) == "string" and #err > 0, "invalid mem_size should return error string")
+    end
+
+    local ctx2, err2 = ndk.rv32i(IMAGE_PATH, MEM_SIZE, EXCHANGE_SIZE)
+    assert(ctx2, "valid constructor should still succeed after invalid attempts: " .. tostring(err2))
+    local stop_ok, stop_err = ndk.stop(ctx2, 1000)
+    assert(stop_ok == true, "ndk.stop after valid constructor failed: " .. tostring(stop_err))
+end
+
 function ndk_tests.test_ndk_busy_and_stop_restart_sequence()
     local ctx, err = ndk.rv32i(IMAGE_PATH, MEM_SIZE, EXCHANGE_SIZE)
     assert(ctx, "ndk.rv32i failed: " .. tostring(err))

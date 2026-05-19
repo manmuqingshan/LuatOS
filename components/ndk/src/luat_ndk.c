@@ -243,6 +243,7 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
     if (exchange_size == 0) exchange_size = LUAT_NDK_DEFAULT_EXCHANGE_SIZE;
 
     if (mem_size > LUAT_NDK_MAX_RAM_SIZE || exchange_size >= mem_size) {
+        luat_ndk_deinit(ndk);
         return LUAT_NDK_ERR_PARAM;
     }
 
