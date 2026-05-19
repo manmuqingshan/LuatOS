@@ -16,7 +16,7 @@
 3. 上电后自动下载并播放
 
 注意事项：
-1. 服务器视频URL：https://d3-nfs.oss-cn-shanghai.aliyuncs.com/iot-apps/res/100197/video_160x160.mjpg
+1. 服务器视频URL：https://appstoreoss.luatos.com/iot-apps/res/100197/video_160x160.mjpg
 2. 视频保存路径：/ram/server_video.mjpg
 3. 视频分辨率不超过320x480
 ]]
@@ -24,7 +24,7 @@
 -- ====================== 配置区域 ======================
 
 -- 服务器视频URL
-local SERVER_VIDEO_URL = "https://d3-nfs.oss-cn-shanghai.aliyuncs.com/iot-apps/res/100197/video_160x160.mjpg"
+local SERVER_VIDEO_URL = "https://appstoreoss.luatos.com/iot-apps/res/100197/video_160x160.mjpg"
 
 -- 下载后保存路径
 local DOWNLOADED_VIDEO_PATH = "/ram/server_video.mjpg"

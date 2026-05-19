@@ -13,7 +13,6 @@
 使用方式：
 1. 在 main.lua 中 require "lcd_drv"
 2. 调用 lcd_drv_init() 初始化LCD
-3. 初始化成功后即可使用AirUI组件
 
 注意事项：
 1. 背光在初始化完成后再开启，避免白屏
