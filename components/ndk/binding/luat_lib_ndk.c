@@ -51,6 +51,7 @@ static luat_ndk_t *ndk_check(lua_State *L, int idx) {
 static int l_ndk_gc(lua_State *L) {
     luat_ndk_t *ndk = (luat_ndk_t *)luaL_testudata(L, 1, LUAT_NDK_META);
     if (ndk) {
+        luat_ndk_stop_thread(ndk, LUAT_WAIT_FOREVER);
         luat_ndk_deinit(ndk);
     }
     return 0;

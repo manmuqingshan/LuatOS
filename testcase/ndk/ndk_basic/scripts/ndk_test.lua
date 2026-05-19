@@ -133,4 +133,26 @@ function ndk_tests.test_ndk_busy_and_stop_restart_sequence()
     assert(stopping_busy_seen == true, "should observe busy rejection while stopping")
 end
 
+function ndk_tests.test_ndk_gc_during_active_worker_safe()
+    local ctx, err = ndk.rv32i(IMAGE_PATH, MEM_SIZE, EXCHANGE_SIZE)
+    assert(ctx, "ndk.rv32i failed: " .. tostring(err))
+
+    local tid, terr = ndk.thread(ctx, { steps = 0, elapsed = 500 })
+    assert(type(tid) == "number", "ndk.thread start failed: " .. tostring(terr))
+
+    local ok_gc, gc_err = pcall(function()
+        ctx = nil
+        collectgarbage("collect")
+        collectgarbage("collect")
+    end)
+    assert(ok_gc == true, "gc while worker active should be safe: " .. tostring(gc_err))
+
+    local ctx2, err2 = ndk.rv32i(IMAGE_PATH, MEM_SIZE, EXCHANGE_SIZE)
+    assert(ctx2, "ndk should remain usable after gc/worker cleanup: " .. tostring(err2))
+    local ok_exec, ret_or_err = ndk.exec(ctx2, { steps = 100000, elapsed = 500 })
+    assert(ok_exec == true, "ndk.exec after gc/worker cleanup failed: " .. tostring(ret_or_err))
+    local stop_ok, stop_err = ndk.stop(ctx2, 1000)
+    assert(stop_ok == true, "ndk.stop after gc/worker cleanup failed: " .. tostring(stop_err))
+end
+
 return ndk_tests

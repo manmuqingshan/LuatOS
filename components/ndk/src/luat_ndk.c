@@ -329,27 +329,37 @@ int luat_ndk_reset(luat_ndk_t *ndk) {
 }
 
 int luat_ndk_set_data(luat_ndk_t *ndk, const void *data, size_t len, size_t offset) {
-    if (!ndk || !data || !ndk->ram) return LUAT_NDK_ERR_PARAM;
+    if (!ndk || !data) return LUAT_NDK_ERR_PARAM;
     if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
-    bool deinit = ndk->state == LUAT_NDK_STATE_DEINIT;
-    ndk_unlock(ndk);
-    if (deinit) return LUAT_NDK_ERR_PARAM;
-    if (offset >= ndk->exchange_size) return LUAT_NDK_ERR_PARAM;
+    if (ndk->state == LUAT_NDK_STATE_DEINIT || !ndk->ram) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_PARAM;
+    }
+    if (offset >= ndk->exchange_size) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_PARAM;
+    }
     if (len > ndk->exchange_size - offset) len = ndk->exchange_size - offset;
     memcpy(ndk->ram + ndk->exchange_offset + offset, data, len);
+    ndk_unlock(ndk);
     return (int)len;
 }
 
 int luat_ndk_get_data(luat_ndk_t *ndk, void *out, size_t len, size_t offset, size_t *actual) {
-    if (!ndk || !out || !ndk->ram) return LUAT_NDK_ERR_PARAM;
+    if (!ndk || !out) return LUAT_NDK_ERR_PARAM;
     if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
-    bool deinit = ndk->state == LUAT_NDK_STATE_DEINIT;
-    ndk_unlock(ndk);
-    if (deinit) return LUAT_NDK_ERR_PARAM;
-    if (offset >= ndk->exchange_size) return LUAT_NDK_ERR_PARAM;
+    if (ndk->state == LUAT_NDK_STATE_DEINIT || !ndk->ram) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_PARAM;
+    }
+    if (offset >= ndk->exchange_size) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_PARAM;
+    }
     if (len > ndk->exchange_size - offset) len = ndk->exchange_size - offset;
     memcpy(out, ndk->ram + ndk->exchange_offset + offset, len);
     if (actual) *actual = len;
+    ndk_unlock(ndk);
     return LUAT_NDK_OK;
 }
 
