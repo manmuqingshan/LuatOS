@@ -38,8 +38,11 @@ static inline int ndk_lock(luat_ndk_t *ndk) {
 }
 
 static inline void ndk_unlock(luat_ndk_t *ndk) {
-    if (ndk && ndk->lock) {
-        luat_rtos_mutex_unlock(ndk->lock);
+    if (ndk) {
+        luat_rtos_mutex_t lock = ndk->lock ? ndk->lock : ndk->teardown_lock;
+        if (lock) {
+            luat_rtos_mutex_unlock(lock);
+        }
     }
 }
 
@@ -220,6 +223,7 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
     MiniRV32IMAState *core = ndk->core;
     char *image_path = ndk->image_path;
     luat_rtos_mutex_t lock = ndk->lock;
+    ndk->teardown_lock = lock;
     ndk->ram = NULL;
     ndk->core = NULL;
     ndk->image_path = NULL;
@@ -229,8 +233,11 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
     ndk->trap_pending = 0;
     ndk->image_size = 0;
     ndk->thread_id = 0;
-    ndk_unlock(ndk);
     ndk->lock = NULL;
+    ndk_unlock(ndk);
+    if (luat_rtos_mutex_lock(lock, LUAT_WAIT_FOREVER) == 0) {
+        luat_rtos_mutex_unlock(lock);
+    }
 
     if (ram) {
         luat_heap_free(ram);
@@ -244,6 +251,7 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
     if (lock) {
         luat_rtos_mutex_delete(lock);
     }
+    ndk->teardown_lock = NULL;
 }
 
 int luat_ndk_reset(luat_ndk_t *ndk) {

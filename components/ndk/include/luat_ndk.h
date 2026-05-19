@@ -55,6 +55,7 @@ typedef struct luat_ndk {
     uint8_t stop_request;
     luat_ndk_state_t state;
     luat_rtos_mutex_t lock;
+    luat_rtos_mutex_t teardown_lock;
     luat_rtos_task_handle worker;
     uint32_t thread_id;
     char *image_path;
