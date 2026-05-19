@@ -9,7 +9,8 @@ sys.taskInit(function()
     local info = ndk.info(ctx)
     log.info("ndk", "mem", info.mem, "exchange", info.exchange, "running", info.running)
 
-    local wrote = ndk.setData(ctx, "hello ndk")
+    local wrote, wrote_err = ndk.setData(ctx, "hello ndk")
+    assert(wrote and wrote ~= false, "ndk.setData failed: " .. tostring(wrote_err))
     log.info("ndk", "setData", wrote)
 
     local ok, ret_or_err, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
@@ -21,14 +22,15 @@ sys.taskInit(function()
     end
     log.info("ndk", "retval", ret_or_err)
 
-    local data = ndk.getData(ctx, 16, 0)
+    local data, data_err = ndk.getData(ctx, 16, 0)
+    assert(data and data ~= false, "ndk.getData failed: " .. tostring(data_err))
     log.info("ndk", "getData", data)
 
-    local stop_ok, stop_err = ndk.stop(ctx, 1000)
-    log.info("ndk", "stop", stop_ok, stop_err)
+    assert(ndk.stop(ctx, 1000), "ndk.stop failed")
+    log.info("ndk", "stop", true)
 
-    local reset_ok, reset_err = ndk.reset(ctx)
-    log.info("ndk", "reset", reset_ok, reset_err)
+    assert(ndk.reset(ctx), "ndk.reset failed")
+    log.info("ndk", "reset", true)
 
     ctx = nil
     collectgarbage("collect")
