@@ -33,14 +33,35 @@ static inline bool ndk_state_active(luat_ndk_state_t state) {
 }
 
 static inline int ndk_lock(luat_ndk_t *ndk) {
-    if (!ndk || !ndk->lock) return -1;
-    return luat_rtos_mutex_lock(ndk->lock, LUAT_WAIT_FOREVER);
+    if (!ndk) return -1;
+    luat_rtos_mutex_t lock = NULL;
+    uint32_t critical = luat_rtos_entry_critical();
+    if (!ndk->lock || ndk->lock_closing) {
+        luat_rtos_exit_critical(critical);
+        return -1;
+    }
+    ndk->lock_refs++;
+    lock = ndk->lock;
+    luat_rtos_exit_critical(critical);
+    if (luat_rtos_mutex_lock(lock, LUAT_WAIT_FOREVER) != 0) {
+        critical = luat_rtos_entry_critical();
+        if (ndk->lock_refs) ndk->lock_refs--;
+        luat_rtos_exit_critical(critical);
+        return -1;
+    }
+    return 0;
 }
 
 static inline void ndk_unlock(luat_ndk_t *ndk) {
-    if (ndk && ndk->lock) {
+    if (!ndk) return;
+    if (ndk->lock) {
         luat_rtos_mutex_unlock(ndk->lock);
     }
+    uint32_t critical = luat_rtos_entry_critical();
+    if (ndk->lock_refs) {
+        ndk->lock_refs--;
+    }
+    luat_rtos_exit_critical(critical);
 }
 
 static void ndk_init_fail_cleanup(luat_ndk_t *ndk) {
@@ -62,6 +83,8 @@ static void ndk_init_fail_cleanup(luat_ndk_t *ndk) {
     ndk->image_size = 0;
     ndk->trap_pending = 0;
     ndk->stop_request = 0;
+    ndk->lock_closing = 0;
+    ndk->lock_refs = 0;
     ndk->state = LUAT_NDK_STATE_DEINIT;
     if (ndk->lock) {
         luat_rtos_mutex_delete(ndk->lock);
@@ -192,6 +215,8 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
     }
     ndk->state = LUAT_NDK_STATE_IDLE;
     ndk->stop_request = 0;
+    ndk->lock_closing = 0;
+    ndk->lock_refs = 0;
 
     if (mem_size == 0) mem_size = LUAT_NDK_DEFAULT_RAM_SIZE;
     if (exchange_size == 0) exchange_size = LUAT_NDK_DEFAULT_EXCHANGE_SIZE;
@@ -235,6 +260,23 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
 
 void luat_ndk_deinit(luat_ndk_t *ndk) {
     if (!ndk) return;
+    uint32_t critical = luat_rtos_entry_critical();
+    bool deinit_in_progress = ndk->lock && ndk->lock_closing;
+    luat_rtos_exit_critical(critical);
+    if (deinit_in_progress) {
+        uint32_t wait_left = NDK_DEINIT_WAIT_MS;
+        while (wait_left > 0) {
+            luat_rtos_task_sleep(NDK_STOP_POLL_MS);
+            if (wait_left >= NDK_STOP_POLL_MS) wait_left -= NDK_STOP_POLL_MS;
+            else wait_left = 0;
+            critical = luat_rtos_entry_critical();
+            bool done = ndk->lock == NULL;
+            luat_rtos_exit_critical(critical);
+            if (done) return;
+        }
+        return;
+    }
+
     if (!ndk->lock) {
         if (ndk->ram) {
             luat_heap_free(ndk->ram);
@@ -251,6 +293,8 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
         ndk->worker = NULL;
         ndk->state = LUAT_NDK_STATE_DEINIT;
         ndk->stop_request = 0;
+        ndk->lock_closing = 0;
+        ndk->lock_refs = 0;
         ndk->trap_pending = 0;
         ndk->image_size = 0;
         ndk->thread_id = 0;
@@ -276,7 +320,34 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
     ndk->trap_pending = 0;
     ndk->image_size = 0;
     ndk->thread_id = 0;
+    ndk->lock_closing = 1;
     ndk_unlock(ndk);
+
+    uint32_t wait_left = NDK_DEINIT_WAIT_MS;
+    while (wait_left > 0) {
+        critical = luat_rtos_entry_critical();
+        uint32_t lock_refs = ndk->lock_refs;
+        luat_rtos_exit_critical(critical);
+        if (lock_refs == 0) break;
+        luat_rtos_task_sleep(NDK_STOP_POLL_MS);
+        if (wait_left >= NDK_STOP_POLL_MS) {
+            wait_left -= NDK_STOP_POLL_MS;
+        } else {
+            wait_left = 0;
+        }
+    }
+    critical = luat_rtos_entry_critical();
+    luat_rtos_mutex_t lock = (ndk->lock_refs == 0) ? ndk->lock : NULL;
+    if (lock) {
+        ndk->lock = NULL;
+    }
+    luat_rtos_exit_critical(critical);
+    if (lock) {
+        luat_rtos_mutex_delete(lock);
+    }
+    else {
+        LLOGE("deinit timeout waiting lock refs");
+    }
 
     if (ram) {
         luat_heap_free(ram);
