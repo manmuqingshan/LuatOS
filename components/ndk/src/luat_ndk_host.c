@@ -85,7 +85,6 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
 }
 
 uint32_t luat_ndk_host_control_store(luat_ndk_t *ctx, uint32_t addy, uint32_t value) {
-    if (!ctx || !ctx->core) return 0;
     if (addy == 0x11100000) {
         LLOGD("Control Store: set val to %08X", value);
         ctx->core->pc = ctx->core->pc + 4;
