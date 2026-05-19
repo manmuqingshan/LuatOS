@@ -189,7 +189,7 @@ int luat_buffer_resize(luat_buffer_t *buffer, uint32_t len)
 	}
 	return len;
 }
-int luat_write_buffer(luat_buffer_t *buffer, const void *data, uint32_t len)
+int luat_buffer_write(luat_buffer_t *buffer, const void *data, uint32_t len)
 {
 	uint32_t write_len;
 	if (!len)

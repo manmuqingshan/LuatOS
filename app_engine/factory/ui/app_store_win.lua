@@ -405,6 +405,18 @@ local function create_ui()
         border_width = 1,
         border_color = COLOR_DIVIDER
     })
+    -- 搜索框内容跟踪变量（避免焦点切换后 get_text 回滚到旧值）
+    local search_text = ""
+    local function sync_search_text()
+        local t = (search_input and search_input:get_text()) or ""
+        search_text = t
+    end
+    local function publish_get_list()
+        sync_search_text()
+        current_query = search_text
+        sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+    end
+
     search_keyboard = airui.keyboard({
         mode = "text",
         auto_hide = true,
@@ -414,6 +426,7 @@ local function create_ui()
         h = 200,
         bg_color = COLOR_CARD,
         on_commit = function(self)
+            sync_search_text()
             self:hide()
         end,
     })
@@ -439,10 +452,9 @@ local function create_ui()
         font_size = button_font_size,
         style = { bg_color = COLOR_PRIMARY, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = tir, border_width = 0, pad = 4 },
         on_click = function()
-            local q = (search_input and search_input:get_text()) or ""
-            current_query = q or ""
+            if search_keyboard then search_keyboard:hide() end
             current_page = 1
-            sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+            publish_get_list()
         end
     })
 
@@ -478,7 +490,7 @@ local function create_ui()
             local sort_map = { "recommend", "idAsc", "timeAsc", "timeDesc", "hot", "downloads", "updatePriority" }
             current_sort = sort_map[idx + 1] or "recommend"
             current_page = 1
-            sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+            publish_get_list()
         end
     })
     airui.button({
@@ -492,7 +504,7 @@ local function create_ui()
         style = { bg_color = COLOR_DIVIDER, pressed_bg_color = COLOR_DIVIDER, text_color = COLOR_TEXT, radius = stbr, border_width = 1, border_color = COLOR_DIVIDER },
         on_click = function()
             current_page = 1
-            sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+            publish_get_list()
         end
     })
 
@@ -538,7 +550,7 @@ local function create_ui()
                     })
                 end
                 current_page = 1
-                sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+                publish_get_list()
             end
         })
         category_buttons[i] = btn
@@ -596,7 +608,7 @@ local function create_ui()
         on_click = function()
             if current_page > 1 then
                 current_page = current_page - 1
-                sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+                publish_get_list()
                 update_page_label()
             end
         end
@@ -613,7 +625,7 @@ local function create_ui()
         on_click = function()
             if has_more then
                 current_page = current_page + 1
-                sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+                publish_get_list()
                 update_page_label()
             end
         end
@@ -639,6 +651,30 @@ local function render_apps(apps, has_more_pages)
     update_page_label()
 
     if app_grid then app_grid:destroy() end
+
+    -- 空列表时显示提示（避免切换分类后残留旧数据）
+    if #apps == 0 then
+        app_grid = airui.container({
+            parent = app_content_area,
+            x = grid_margin,
+            y = grid_margin,
+            w = app_grid_width,
+            h = grid_area_height,
+            color = COLOR_BG
+        })
+        local empty_text = (current_category == "已安装") and "暂未安装应用" or "暂无应用"
+        airui.label({
+            parent = app_grid,
+            x = 0, y = math.floor(grid_area_height / 2) - 30,
+            w = app_grid_width, h = 60,
+            text = empty_text,
+            font_size = 18,
+            color = COLOR_TEXT_SECONDARY,
+            align = airui.TEXT_ALIGN_CENTER
+        })
+        update_page_label()
+        return
+    end
 
     local row_count = math.ceil(#apps / grid_columns)
     local needed_grid_height = math.max(grid_area_height, row_count * (card_height + grid_margin) + grid_margin + 10)
@@ -917,6 +953,7 @@ local function on_list_updated(apps, page_info)
             end
         end
         if #filtered == 0 then
+            render_apps({}, false)
             return
         end
         apps = filtered
@@ -981,6 +1018,8 @@ local function on_action_done(app_id, action, success)
                 end
                 if #filtered > 0 then
                     render_apps(filtered, false)
+                else
+                    render_apps({}, false)
                 end
             else
                 render_apps(apps, more)
@@ -1042,7 +1081,7 @@ local function on_create()
     sys.subscribe("APP_STORE_ICON_READY", on_icon_ready)
 
     sys.publish("APP_STORE_SYNC_INSTALLED")
-    sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+    publish_get_list()
 end
 
 local function on_destroy()

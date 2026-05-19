@@ -76,6 +76,7 @@ int luat_audio_driver_set_default(luat_audio_driver_probe_t *probe);
  * @return LUAT_ERROR_NONE 表示成功，其他值表示失败
  */
 int luat_audio_get_play_info_from_file(luat_audio_data_codec_t *codec, luat_audio_play_file_info_t *play_file);
+
 /**
  * @brief 音频驱动事件回调函数，已经有默认实现，CSDK用户可以自定义实现，但是不建议修改默认实现的基本逻辑，除非打算自己实现audio功能
  * 

@@ -34,6 +34,14 @@ typedef enum {
     LUAT_NDK_ERR_TIMEOUT = -7
 } luat_ndk_err_t;
 
+typedef enum {
+    LUAT_NDK_STATE_IDLE = 0,
+    LUAT_NDK_STATE_RUNNING = 1,
+    LUAT_NDK_STATE_STOPPING = 2,
+    LUAT_NDK_STATE_DEINIT = 3,
+    LUAT_NDK_STATE_RESETTING = 4
+} luat_ndk_state_t;
+
 typedef struct luat_ndk {
     MiniRV32IMAState *core;
     uint8_t *ram;
@@ -45,8 +53,11 @@ typedef struct luat_ndk {
     uint32_t last_mtval;
     uint32_t last_trap;
     uint8_t trap_pending;
-    uint8_t running;
     uint8_t stop_request;
+    uint8_t lock_closing;
+    luat_ndk_state_t state;
+    uint32_t lock_refs;
+    luat_rtos_mutex_t lock;
     luat_rtos_task_handle worker;
     uint32_t thread_id;
     char *image_path;
