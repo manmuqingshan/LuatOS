@@ -2,25 +2,26 @@
 
 ## 项目概述
 
-本项目是基于 Air8000 的视频播放演示demo，实现了两种视频播放场景（二选一）：从内存播放视频功能模块、以及从服务器下载并播放视频功能模块。
+本项目是基于 Air8000 的视频播放演示demo，实现了两种视频播放场景（二选一）：播放本地烧录的视频、以及播放从服务器下载的视频。
 
 ## 文件结构
 
 - main.lua: 主程序入口，支持二选一演示模式
-- mjpg_player.lua: 从内存播放视频功能模块
-- mjpg_player_server.lua: 从服务器下载并播放视频功能模块
+- lcd_drv.lua: LCD驱动初始化模块
+- mjpg_player.lua: 播放本地烧录的视频功能模块
+- mjpg_player_server.lua: 播放从服务器下载的视频功能模块
 - fly_man_80.mjpg: 示例视频文件
 
 ## 功能模块说明
 
-### 场景一：从内存播放视频（默认启用）
+### 场景一：本地烧录的视频（默认启用）
 
 **使用方式**：
 - 在 main.lua 中启用 `require "mjpg_player"`
 - 将 `fly_man_80.mjpg` 和代码一起烧录到固件中
 - 上电后自动开始播放
 
-### 场景二：从服务器下载并播放视频
+### 场景二：从服务器下载的视频
 
 **使用方式**：
 
@@ -67,7 +68,7 @@ Air8000核心板和AirLCD_1010配件板的硬件接线方式为:
 
 - 脚本和资源文件[点我浏览所有文件](https://gitee.com/openLuat/LuatOS/tree/master/module/Air8000/demo/play_mjpg)
 
-- 准备好软件环境之后，接下来查看[如何烧录项目文件到Air8000核心板](https://docs.openluat.com/air8000/luatos/common/download/)，将本篇文章中演示使用的项目文件烧录到Air8000开发板/核心板中。
+- 准备好软件环境之后，接下来查看如何[使用 LuaTools 烧录软件](https://docs.openluat.com/air8000/luatos/common/download/)，将本篇文章中演示使用的项目文件烧录到 Air8000 核心板中，或者查看 Air8000 产品手册--[Air8000 系列整机开发板使用手册 V2.0](https://docs.openluat.com/air8000/product/file/Air8000_V2.0%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E_V1.0.3.pdf)--将本篇文章中演示使用的项目文件烧录到 Air8000 开发板中
 
 4、[合宙 LuatIO 工具(GPIO 复用初始化配置)使用说明](https://docs.openluat.com/common/luatio/)
 
@@ -80,8 +81,8 @@ Air8000核心板和AirLCD_1010配件板的硬件接线方式为:
 2、根据需求配置演示功能：
 
    - 编辑main.lua文件，选择需要演示的功能
-   - 功能一（从内存播放视频）：取消注释 `require "mjpg_player"`，注释掉 `require "mjpg_player_server"`
-   - 功能二（从服务器下载并播放视频）：注释掉 `require "mjpg_player"`，取消注释 `require "mjpg_player_server"`
+   - 功能一（本地烧录的视频）：取消注释 `require "mjpg_player"`，注释掉 `require "mjpg_player_server"`
+   - 功能二（从服务器下载的视频）：注释掉 `require "mjpg_player"`，取消注释 `require "mjpg_player_server"`
 
 3、功能一需要烧录视频文件：
 
@@ -97,7 +98,7 @@ Air8000核心板和AirLCD_1010配件板的硬件接线方式为:
 
 7、运行程序，观察日志输出了解系统状态
 
-### 功能一：从内存播放视频
+### 功能一：本地烧录的视频
 
 当设备启动并初始化完成后，自动加载并播放视频文件。
 
@@ -144,5 +145,5 @@ I/user.播放器 视频开始播放
 ## 视频格式要求
 
 - **格式**：MJPG (Motion JPEG)
-- **分辨率**：建议不超过 320x480（Air8000 LCD 分辨率）
+- **分辨率**：不超过 320x480（Air8000 LCD 分辨率）
 - **帧率**：默认 15fps，可通过 `VIDEO_FPS` 变量调整

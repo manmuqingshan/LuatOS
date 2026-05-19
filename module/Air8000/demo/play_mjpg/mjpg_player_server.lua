@@ -18,7 +18,7 @@
 注意事项：
 1. 服务器视频URL：https://d3-nfs.oss-cn-shanghai.aliyuncs.com/iot-apps/res/100197/video_160x160.mjpg
 2. 视频保存路径：/ram/server_video.mjpg
-3. 视频分辨率建议不超过320x480
+3. 视频分辨率不超过320x480
 ]]
 
 -- ====================== 配置区域 ======================
@@ -26,47 +26,11 @@
 -- 服务器视频URL
 local SERVER_VIDEO_URL = "https://d3-nfs.oss-cn-shanghai.aliyuncs.com/iot-apps/res/100197/video_160x160.mjpg"
 
--- 下载后临时保存路径
+-- 下载后保存路径
 local DOWNLOADED_VIDEO_PATH = "/ram/server_video.mjpg"
 
 -- 视频播放帧率
 local VIDEO_FPS = 15
-
--- ====================== LCD驱动初始化 ======================
-
--- LCD初始化函数
-local function lcd_drv_init()
-    -- Air8000开发板上，使能lcd供电的ldo电源开关
-    gpio.setup(141, 1)
-
-    local result = lcd.init("st7796",
-        {
-            pin_pwr = nil,                          -- 背光控制引脚，先不开启
-            port = lcd.HWID_0,                      -- 驱动端口
-            pin_rst = 2,                            -- lcd复位引脚
-            direction = 0,                          -- lcd屏幕方向
-            w = 320,                                -- lcd 水平分辨率
-            h = 480,                                -- lcd 竖直分辨率
-            xoffset = 0,
-            yoffset = 0,
-            bus_speed = 80000000,                   -- SPI总线速度
-        })
-
-    log.info("lcd.init", result)
-
-    if result then
-        -- 初始化AirUI
-        local width, height = lcd.getSize()
-        local airui_result = airui.init(width, height)
-        if not airui_result then
-            log.error("airui", "init failed")
-            return false
-        end
-        log.info("airui", "init success", width, height)
-    end
-
-    return result
-end
 
 -- ====================== 视频下载函数 ======================
 
@@ -219,9 +183,6 @@ local function player_task()
         log.error("播放器", "LCD初始化失败")
         return
     end
-
-    -- 等待系统稳定
-    sys.wait(500)
 
     -- 开始播放视频
     play_video_with_airui()

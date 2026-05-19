@@ -17,8 +17,7 @@
 
 注意事项：
 1. 视频文件路径：/luadb/fly_man_80.mjpg
-2. 视频分辨率建议不超过320x480
-
+2. 视频分辨率不超过320x480
 ]]
 
 -- ====================== 配置区域 ======================
@@ -28,42 +27,6 @@ local VIDEO_PATH = "/luadb/fly_man_80.mjpg"
 
 -- 视频播放帧率
 local VIDEO_FPS = 15
-
--- ====================== LCD驱动初始化 ======================
-
--- LCD初始化函数
-local function lcd_drv_init()
-    -- Air8000开发板上，使能lcd供电的ldo电源开关
-    gpio.setup(141, 1)
-
-    local result = lcd.init("st7796",
-        {
-            pin_pwr = nil,                          -- 背光控制引脚，先不开启
-            port = lcd.HWID_0,                      -- 驱动端口
-            pin_rst = 2,                            -- lcd复位引脚
-            direction = 0,                          -- lcd屏幕方向
-            w = 320,                                -- lcd 水平分辨率
-            h = 480,                                -- lcd 竖直分辨率
-            xoffset = 0,
-            yoffset = 0,
-            bus_speed = 80000000,                   -- SPI总线速度
-        })
-
-    log.info("lcd.init", result)
-
-    if result then
-        -- 初始化AirUI
-        local width, height = lcd.getSize()
-        local airui_result = airui.init(width, height)
-        if not airui_result then
-            log.error("airui", "init failed")
-            return false
-        end
-        log.info("airui", "init success", width, height)
-    end
-
-    return result
-end
 
 -- ====================== 视频播放函数 ======================
 
@@ -175,9 +138,6 @@ local function player_task()
         log.error("播放器", "LCD初始化失败")
         return
     end
-
-    -- 等待系统稳定
-    sys.wait(500)
 
     -- 开始播放视频
     play_video_with_airui()

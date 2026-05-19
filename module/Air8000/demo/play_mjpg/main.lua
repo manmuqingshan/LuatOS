@@ -60,6 +60,9 @@ log.info("main", PROJECT, VERSION)
 
 
 
+-- 加载LCD驱动模块
+require "lcd_drv"
+
 -- 加载视频播放业务逻辑模块（二选一）
 -- 场景一：从内存播放视频（默认启用）
 require "mjpg_player"
