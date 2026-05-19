@@ -5,16 +5,26 @@
 @date    2025.12.25
 @tag LUAT_USE_NDK
 @usage
--- 载入一个RV32镜像并执行若干步
-local ctx, err = ndk.rv32i("/luadb/app.bin", 32 * 1024, 1024)
+-- 最小生命周期: create -> info -> setData -> exec -> getData -> stop/reset -> release
+local ctx, err = ndk.rv32i("/luadb/baremetal.bin", 32 * 1024, 1024)
 if not ctx then
     log.error("ndk", err)
     return
 end
-local ok, ret = ndk.exec(ctx, {steps = 100000, elapsed = 500})
-if ok then
-    log.info("ndk", "retval", ret)
+local info = ndk.info(ctx)
+log.info("ndk", "mem", info.mem, "exchange", info.exchange)
+ndk.setData(ctx, "ping")
+local ok, ret, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
+if not ok then
+    log.error("ndk", ret, mcause, mtval)
+    ndk.stop(ctx, 1000)
+    return
 end
+log.info("ndk", "retval", ret, "data", ndk.getData(ctx, 16, 0))
+ndk.stop(ctx, 1000) -- 空闲态也可安全调用
+ndk.reset(ctx)
+ctx = nil
+collectgarbage("collect")
 */
 #include "luat_base.h"
 #include "luat_mem.h"
@@ -61,8 +71,8 @@ static int l_ndk_gc(lua_State *L) {
 创建并加载一个RV32镜像
 @api ndk.rv32i(path, mem_size, exchange_size)
 @string path 镜像路径
-@int mem_size 可选，沙盒RAM大小，默认 LUAT_NDK_DEFAULT_RAM_SIZE
-@int exchange_size 可选，交换区大小，默认 LUAT_NDK_DEFAULT_EXCHANGE_SIZE
+@int mem_size 可选，沙盒RAM大小，默认 LUAT_NDK_DEFAULT_RAM_SIZE，最大 LUAT_NDK_MAX_RAM_SIZE
+@int exchange_size 可选，交换区大小，默认 LUAT_NDK_DEFAULT_EXCHANGE_SIZE，必须小于 mem_size
 @return userdata ctx 成功返回上下文，失败返回 nil,err
 */
 static int l_ndk_create(lua_State *L) {
@@ -182,7 +192,7 @@ static int l_ndk_get_data(lua_State *L) {
 @userdata ctx ndk.rv32i 返回的上下文
 @int|table opts 步数或表 {steps=步数, elapsed=每步时间us}，步数为0使用默认预算
 @int elapsed_us 可选，opts为数字时的步时间us
-@return boolean,int 成功返回 true,retval；失败返回 false,err,mcause,mtval
+@return boolean,int 成功返回 true,retval；失败返回 false,err,mcause,mtval。运行中调用会返回 busy
 */
 static int l_ndk_exec(lua_State *L) {
     luat_ndk_t *ndk = ndk_check(L, 1);
@@ -217,7 +227,7 @@ static int l_ndk_exec(lua_State *L) {
 重置沙箱并重新加载镜像
 @api ndk.reset(ctx)
 @userdata ctx ndk.rv32i 返回的上下文
-@return boolean 成功返回 true，失败返回 false,err
+@return boolean 成功返回 true，失败返回 false,err。运行中/停止中调用会返回 busy
 */
 static int l_ndk_reset(lua_State *L) {
     luat_ndk_t *ndk = ndk_check(L, 1);
@@ -236,7 +246,7 @@ static int l_ndk_reset(lua_State *L) {
 @userdata ctx ndk.rv32i 返回的上下文
 @int|table opts 步数或表 {steps=步数, elapsed=每步时间us}
 @int elapsed_us 可选，opts为数字时的步时间us
-@return int 线程ID，失败返回 nil,err
+@return int 线程ID（递增），失败返回 nil,err。运行中/停止中调用会返回 busy
 */
 static int l_ndk_thread(lua_State *L) {
     luat_ndk_t *ndk = ndk_check(L, 1);
@@ -268,7 +278,7 @@ static int l_ndk_thread(lua_State *L) {
 @api ndk.stop(ctx, wait_ms)
 @userdata ctx ndk.rv32i 返回的上下文
 @int wait_ms 可选，等待超时时间，默认1000
-@return boolean 成功返回 true，失败返回 false,err
+@return boolean 成功返回 true，失败返回 false,err。空闲态调用为幂等成功；wait_ms=0可用于非阻塞轮询
 */
 static int l_ndk_stop(lua_State *L) {
     luat_ndk_t *ndk = ndk_check(L, 1);
@@ -286,7 +296,7 @@ static int l_ndk_stop(lua_State *L) {
 获取当前运行状态
 @api ndk.info(ctx)
 @userdata ctx ndk.rv32i 返回的上下文
-@return table 包含 mem/exchange/exchange_addr/image/running/mcause/mtval
+@return table 包含 mem/exchange/exchange_addr/image/running/mcause/mtval，便于判断生命周期状态
 */
 static int l_ndk_info(lua_State *L) {
     luat_ndk_t *ndk = ndk_check(L, 1);
