@@ -50,7 +50,8 @@ enum {
     LUAT_AUDIO_DRIVER_MODE_CALL_WITH_BUFFER,/**< 通话带缓冲区模式 */
 
     LUAT_AUDIO_DATA_CODEC_TYPE_WAV = 0,    /**< WAV 编解码器 */
-    LUAT_AUDIO_DATA_CODEC_TYPE_AMR,        /**< AMR 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_AMR_NB,        /**< AMR 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_AMR_WB,        /**< AMR 编解码器 */
     LUAT_AUDIO_DATA_CODEC_TYPE_TTS,        /**< TTS 编解码器 */
     LUAT_AUDIO_DATA_CODEC_TYPE_MP3,        /**< MP3 编解码器 */
     LUAT_AUDIO_DATA_CODEC_TYPE_OPUS,       /**< OPUS 编解码器 */
