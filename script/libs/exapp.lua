@@ -3274,9 +3274,7 @@ local function download_file(url, dest_path, aid)
         end
         local needed_kb = math.ceil(origin_size_kb_val * 1.2)
         if needed_kb > fs_free_kb then
-            log.error("exapp", "not enough fs space for", aid, "need", needed_kb, "free", fs_free_kb)
-            sys.publish("APP_STORE_ERROR", "文件系统空间不足无法安装")
-            return false
+            log.warn("exapp", "fs space maybe not enough for", aid, "need", needed_kb, "free", fs_free_kb, "尝试下载")
         end
     end
     -- 校验2：RAM空间满足压缩包大小（用于暂存下载）
@@ -3287,9 +3285,7 @@ local function download_file(url, dest_path, aid)
             ram_free_kb = ram_stat.free_kb
         end
         if zip_size_kb_val > ram_free_kb then
-            log.error("exapp", "not enough ram for temp download", aid, zip_size_kb_val, ram_free_kb)
-            sys.publish("APP_STORE_ERROR", "临时内存空间不足无法下载")
-            return false
+            log.warn("exapp", "ram may not enough for temp download", aid, zip_size_kb_val, ram_free_kb, "尝试下载")
         end
     end
     local code, headers = http.request("GET", url, nil, nil, {
@@ -3818,6 +3814,21 @@ function exapp.update_remote_app(aid, url, app_name, category, sort)
 
     local old_path = installed_info[aid].path
     sys.publish("APP_STORE_PROGRESS", aid, 0, "准备更新")
+
+    -- 先解压前检查空间（避免空间不足时已删旧版本）
+    local origin_size = installed_info[aid].origin_size_kb
+    if origin_size and origin_size > 0 then
+        local fs_stat = io.fsstat and io.fsstat("/") or nil
+        local fs_free = (type(fs_stat) == "table" and type(fs_stat.free_kb) == "number") and fs_stat.free_kb or 0
+        local needed = math.ceil(origin_size * 1.2)
+        if fs_free > 0 and needed > fs_free then
+            log.error("exapp", "not enough fs space for update", aid, "need", needed, "free", fs_free)
+            sys.publish("APP_STORE_ERROR", "空间不足，无法更新")
+            sys.publish("APP_STORE_ACTION_DONE", aid, "update", false)
+            report_result(aid, "空间不足无法更新")
+            return
+        end
+    end
 
     -- 删除旧版本文件（保留 data/ 目录）
     local ret, list = io.lsdir(old_path, 100, 0)
