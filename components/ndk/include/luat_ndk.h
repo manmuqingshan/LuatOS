@@ -38,7 +38,8 @@ typedef enum {
     LUAT_NDK_STATE_IDLE = 0,
     LUAT_NDK_STATE_RUNNING = 1,
     LUAT_NDK_STATE_STOPPING = 2,
-    LUAT_NDK_STATE_DEINIT = 3
+    LUAT_NDK_STATE_DEINIT = 3,
+    LUAT_NDK_STATE_RESETTING = 4
 } luat_ndk_state_t;
 
 typedef struct luat_ndk {

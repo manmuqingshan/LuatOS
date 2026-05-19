@@ -29,7 +29,7 @@ static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t tra
 #define NDK_DEINIT_WAIT_MS 1000
 
 static inline bool ndk_state_active(luat_ndk_state_t state) {
-    return state == LUAT_NDK_STATE_RUNNING || state == LUAT_NDK_STATE_STOPPING;
+    return state == LUAT_NDK_STATE_RUNNING || state == LUAT_NDK_STATE_STOPPING || state == LUAT_NDK_STATE_RESETTING;
 }
 
 static inline int ndk_lock(luat_ndk_t *ndk) {
@@ -363,11 +363,22 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
 int luat_ndk_reset(luat_ndk_t *ndk) {
     if (!ndk) return LUAT_NDK_ERR_PARAM;
     if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
-    bool busy = ndk_state_active(ndk->state);
+    if (ndk_state_active(ndk->state) || ndk->worker != NULL) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_BUSY;
+    }
+    if (ndk->state == LUAT_NDK_STATE_DEINIT || ndk->image_path == NULL || ndk->image_size == 0 || !ndk->ram || !ndk->core) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_IO;
+    }
+
+    ndk->state = LUAT_NDK_STATE_RESETTING;
+    int rc = ndk_reload_image(ndk);
+    if (ndk->state == LUAT_NDK_STATE_RESETTING) {
+        ndk->state = LUAT_NDK_STATE_IDLE;
+    }
     ndk_unlock(ndk);
-    if (busy) return LUAT_NDK_ERR_BUSY;
-    if (ndk->image_path == NULL || ndk->image_size == 0) return LUAT_NDK_ERR_IO;
-    return ndk_reload_image(ndk);
+    return rc;
 }
 
 int luat_ndk_set_data(luat_ndk_t *ndk, const void *data, size_t len, size_t offset) {
