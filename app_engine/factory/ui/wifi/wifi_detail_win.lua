@@ -19,6 +19,7 @@ local COLOR_TEXT           = 0x333333
 local COLOR_TEXT_SECONDARY = 0x757575
 local COLOR_DIVIDER        = 0xE0E0E0
 local COLOR_WHITE          = 0xFFFFFF
+local COLOR_ACCENT         = 0xFF9800
 local COLOR_DANGER         = 0xE63946
 
 local function update_screen_size()
@@ -68,6 +69,18 @@ local function detail_update_detail_info()
             detail_labels.password:set_text(password)
         else
             detail_labels.password:set_text(string.rep("*", #password))
+        end
+    end
+    if detail_labels.connectivity then
+        if current_status.connectivity_verified then
+            detail_labels.connectivity:set_text("已确认 (NTP同步成功)")
+            detail_labels.connectivity:set_color(0x4CAF50)
+        elseif current_status.ready then
+            detail_labels.connectivity:set_text("待确认 (NTP同步中...)")
+            detail_labels.connectivity:set_color(COLOR_ACCENT)
+        else
+            detail_labels.connectivity:set_text("未就绪")
+            detail_labels.connectivity:set_color(COLOR_TEXT_SECONDARY)
         end
     end
 end
@@ -200,6 +213,8 @@ local function detail_create_ui()
     create_detail_row(detail_card, y_offset, "网关", "gateway")
     y_offset = y_offset + math.floor(55 * _G.density_scale)
     create_detail_row(detail_card, y_offset, "MAC地址", "bssid")
+    y_offset = y_offset + math.floor(55 * _G.density_scale)
+    create_detail_row(detail_card, y_offset, "网络连通", "connectivity")
     y_offset = y_offset + math.floor(55 * _G.density_scale)
 
     local password_row = airui.container({
