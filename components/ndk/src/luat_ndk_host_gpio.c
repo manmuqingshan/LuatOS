@@ -4,6 +4,9 @@
 
 #include "luat_gpio.h"
 
+#define NDK_GPIO_TEST_CONFIG_HOST_FAIL_MODE 0xFEu
+#define NDK_GPIO_TEST_WRITE_HOST_FAIL_FLAG  0x80000000u
+
 static luat_ndk_t *g_ndk_gpio_owner[LUAT_NDK_GPIO_TRACK_BYTES * 8u];
 
 static uint32_t ndk_gpio_status_to_error(uint32_t status) {
@@ -234,6 +237,10 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
 
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
+        if (mode == NDK_GPIO_TEST_CONFIG_HOST_FAIL_MODE) {
+            status = LUAT_NDK_GPIO_STATUS_HOST_ERROR;
+            break;
+        }
         if (ndk_gpio_mode_from_abi(mode, &host_mode) != 0) {
             status = LUAT_NDK_GPIO_STATUS_BAD_MODE;
             break;
@@ -278,6 +285,10 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
         uint32_t level = (value >> 16) & 0x1u;
         uint8_t claimed_new = 0;
 
+        if (value & NDK_GPIO_TEST_WRITE_HOST_FAIL_FLAG) {
+            status = LUAT_NDK_GPIO_STATUS_HOST_ERROR;
+            break;
+        }
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
         status = ndk_gpio_claim_owner(ctx, pin, &claimed_new);

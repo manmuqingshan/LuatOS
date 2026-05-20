@@ -56,14 +56,16 @@ M.GPIO_IRQ_STATE_PENDING_MASK = 0x00010000
 M.GPIO_IRQ_STATE_REASON_MASK = 0xFF000000
 M.GPIO_IRQ_STATE_PENDING_SHIFT = 16
 M.GPIO_IRQ_STATE_REASON_SHIFT = 24
+M.GPIO_CONFIG_TEST_HOST_FAIL = 1 << 16
+M.GPIO_WRITE_TEST_HOST_FAIL = 1 << 16
 
 -- Pack command structure (opcode, arg0, arg1, arg2)
 function M.pack_cmd(opcode, a0, a1, a2)
     return string.pack("<I4I4I4I4", opcode, a0 or 0, a1 or 0, a2 or 0)
 end
 
-function M.pack_gpio_config_cmd(pin, mode, pull, irq_mode)
-    local packed = ((irq_mode or 0) & 0xFF) << 8 | ((pull or 0) & 0xFF)
+function M.pack_gpio_config_cmd(pin, mode, pull, irq_mode, extra_flags)
+    local packed = ((extra_flags or 0) & 0xFFFF0000) | (((irq_mode or 0) & 0xFF) << 8) | ((pull or 0) & 0xFF)
     return M.pack_cmd(M.CMD_GPIO_CONFIG, pin, mode, packed)
 end
 

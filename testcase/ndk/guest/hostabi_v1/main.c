@@ -10,7 +10,9 @@ extern unsigned int ndk_time_us_lo(void);
 extern void ndk_event_enable(unsigned int enabled);
 extern unsigned int ndk_event_pending(void);
 extern unsigned int ndk_gpio_config(unsigned int pin, unsigned int mode, unsigned int pull, unsigned int irq_mode);
+extern unsigned int ndk_gpio_config_host_fail(unsigned int pin, unsigned int pull, unsigned int irq_mode);
 extern unsigned int ndk_gpio_write_v2(unsigned int pin, unsigned int level);
+extern unsigned int ndk_gpio_write_v2_host_fail(unsigned int pin, unsigned int level);
 extern unsigned int ndk_gpio_read_v2(unsigned int pin);
 extern unsigned int ndk_gpio_irq_state(unsigned int pin);
 extern unsigned int ndk_gpio_irq_clear(unsigned int pin);
@@ -100,14 +102,26 @@ int main(void) {
         /* Query event state */
         out->value0 = ndk_event_pending();
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_CONFIG) {
-        out->status = ndk_gpio_config(
-            cmd->arg0,
-            cmd->arg1,
-            HOSTABI_GPIO_CONFIG_PULL(cmd->arg2),
-            HOSTABI_GPIO_CONFIG_IRQ_MODE(cmd->arg2)
-        );
+        if (HOSTABI_GPIO_TEST_FLAGS(cmd->arg2) & HOSTABI_GPIO_TEST_HOST_FAIL) {
+            out->status = ndk_gpio_config_host_fail(
+                cmd->arg0,
+                HOSTABI_GPIO_CONFIG_PULL(cmd->arg2),
+                HOSTABI_GPIO_CONFIG_IRQ_MODE(cmd->arg2)
+            );
+        } else {
+            out->status = ndk_gpio_config(
+                cmd->arg0,
+                cmd->arg1,
+                HOSTABI_GPIO_CONFIG_PULL(cmd->arg2),
+                HOSTABI_GPIO_CONFIG_IRQ_MODE(cmd->arg2)
+            );
+        }
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_WRITE) {
-        out->status = ndk_gpio_write_v2(cmd->arg0, cmd->arg1);
+        if (HOSTABI_GPIO_TEST_FLAGS(cmd->arg2) & HOSTABI_GPIO_TEST_HOST_FAIL) {
+            out->status = ndk_gpio_write_v2_host_fail(cmd->arg0, cmd->arg1);
+        } else {
+            out->status = ndk_gpio_write_v2(cmd->arg0, cmd->arg1);
+        }
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_READ) {
         unsigned int level = ndk_gpio_read_v2(cmd->arg0);
         unsigned int last_error = ndk_last_error();

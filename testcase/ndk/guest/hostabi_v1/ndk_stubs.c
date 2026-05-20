@@ -8,6 +8,8 @@
 #define HOSTABI_TEST_GPIO_IRQ_PACKED_STATE (((unsigned int)3u << 24) | (1u << 16) | HOSTABI_TEST_GPIO_IRQ_PACKED_PIN)
 #define HOSTABI_TEST_GPIO_READ_INVALID_PIN 0xB55Bu
 #define HOSTABI_TEST_GPIO_HOST_ERROR_PIN   0xC55Cu
+#define HOSTABI_TEST_GPIO_CONFIG_HOST_FAIL_MODE 0xFEu
+#define HOSTABI_TEST_GPIO_WRITE_HOST_FAIL_FLAG  0x80000000u
 
 unsigned int ndk_exchange_base(void) {
     /* This stub returns the exchange base address.
@@ -73,8 +75,21 @@ unsigned int ndk_gpio_config(unsigned int pin, unsigned int mode, unsigned int p
     return a0;
 }
 
+unsigned int ndk_gpio_config_host_fail(unsigned int pin, unsigned int pull, unsigned int irq_mode) {
+    register unsigned int a0 __asm__("a0") =
+        ((irq_mode & 0xFFu) << 24) | ((pull & 0xFFu) << 16) | (HOSTABI_TEST_GPIO_CONFIG_HOST_FAIL_MODE << 8) | (pin & 0xFFu);
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x210, a0" : "+r"(a0));
+    return a0;
+}
+
 unsigned int ndk_gpio_write_v2(unsigned int pin, unsigned int level) {
     register unsigned int a0 __asm__("a0") = ((level & 0x1u) << 16) | (pin & 0xFFFFu);
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x211, a0" : "+r"(a0));
+    return a0;
+}
+
+unsigned int ndk_gpio_write_v2_host_fail(unsigned int pin, unsigned int level) {
+    register unsigned int a0 __asm__("a0") = HOSTABI_TEST_GPIO_WRITE_HOST_FAIL_FLAG | ((level & 0x1u) << 16) | (pin & 0xFFFFu);
     __asm__ volatile(".option norvc\ncsrrw a0, 0x211, a0" : "+r"(a0));
     return a0;
 }

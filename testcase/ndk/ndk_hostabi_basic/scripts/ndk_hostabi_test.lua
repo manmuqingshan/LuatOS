@@ -5,8 +5,8 @@ local proto = require("hostabi_proto")
 
 local tests = {}
 local IMAGE = "/luadb/hostabi_v1.bin"
-local GPIO_CONFIG_HOST_FAIL_PIN = 126
-local GPIO_WRITE_HOST_FAIL_PIN = 127
+local GPIO_DRIVER_REGRESSION_CONFIG_PIN = 126
+local GPIO_DRIVER_REGRESSION_WRITE_PIN = 127
 
 local function run_payload_with_reset(ctx, payload, do_reset)
     if do_reset ~= false then
@@ -33,8 +33,8 @@ function run_cmd_with_reset(ctx, opcode, a0, a1, a2, do_reset)
     return run_payload_with_reset(ctx, proto.pack_cmd(opcode, a0, a1, a2), do_reset)
 end
 
-local function run_gpio_config(ctx, pin, mode, pull, irq_mode, do_reset)
-    return run_payload_with_reset(ctx, proto.pack_gpio_config_cmd(pin, mode, pull, irq_mode), do_reset)
+local function run_gpio_config(ctx, pin, mode, pull, irq_mode, do_reset, extra_flags)
+    return run_payload_with_reset(ctx, proto.pack_gpio_config_cmd(pin, mode, pull, irq_mode, extra_flags), do_reset)
 end
 
 function tests.test_guest_fixture_binary_present()
@@ -305,10 +305,28 @@ function tests.test_gpio_conflicting_peer_cannot_steal_owner_pin()
     assert(owner_rd.value0 == 1, "peer conflict must not steal owner gpio state")
 end
 
+function tests.test_gpio_shared_pc_pin_126_remains_usable()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+
+    local cfg = run_gpio_config(ctx, GPIO_DRIVER_REGRESSION_CONFIG_PIN, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
+    assert(cfg.status == proto.STATUS_OK, "shared PC GPIO pin 126 should remain usable")
+end
+
+function tests.test_gpio_shared_pc_pin_127_write_remains_usable()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+
+    local cfg = run_gpio_config(ctx, GPIO_DRIVER_REGRESSION_WRITE_PIN, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
+    assert(cfg.status == proto.STATUS_OK, "shared PC GPIO pin 127 config should succeed")
+    local wr = run_cmd_with_reset(ctx, proto.CMD_GPIO_WRITE, GPIO_DRIVER_REGRESSION_WRITE_PIN, 1, 0, false)
+    assert(wr.status == proto.STATUS_OK, "shared PC GPIO pin 127 write should remain usable")
+end
+
 function tests.test_gpio_config_host_failure_surfaces_as_error()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
-    local cfg = run_gpio_config(ctx, GPIO_CONFIG_HOST_FAIL_PIN, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
+    local cfg = run_gpio_config(ctx, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0, true, proto.GPIO_CONFIG_TEST_HOST_FAIL)
     assert(cfg.status == proto.STATUS_HOST_ERROR, "gpio config host failure should surface as host error")
 end
 
@@ -318,10 +336,10 @@ function tests.test_gpio_write_host_failure_does_not_claim_pin()
     local peer, peer_err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(peer, tostring(peer_err))
 
-    local wr = run_cmd(writer, proto.CMD_GPIO_WRITE, GPIO_WRITE_HOST_FAIL_PIN, 1, 0)
+    local wr = run_cmd(writer, proto.CMD_GPIO_WRITE, 7, 1, proto.GPIO_WRITE_TEST_HOST_FAIL)
     assert(wr.status == proto.STATUS_HOST_ERROR, "gpio write host failure should surface as host error")
 
-    local peer_cfg = run_gpio_config(peer, GPIO_WRITE_HOST_FAIL_PIN, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
+    local peer_cfg = run_gpio_config(peer, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
     assert(peer_cfg.status == proto.STATUS_OK, "failed write must not claim gpio ownership")
 end
 
