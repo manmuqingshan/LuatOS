@@ -49,6 +49,7 @@ local ctx, err = ndk.rv32i(path, mem_size, exchange_size)
 ### `ndk.info(ctx)`
 - 返回状态表：
   - `mem`, `exchange`, `exchange_addr`, `image`, `running`, `mcause`, `mtval`
+  - `abi_magic`, `abi_version`, `features`, `last_error`, `event_slots`
 
 ## 3. 当前已实现 CSR / MMIO
 
@@ -62,7 +63,19 @@ local ctx, err = ndk.rv32i(path, mem_size, exchange_size)
 - `0x139`：交换区起始地址
 - `0x13A`：交换区大小
 - `0x13B`：RAM 总大小
+- `0x13C`：Host ABI magic（`NDK1`）
+- `0x13D`：Host ABI 版本（当前 `0x00010000`）
+- `0x13E`：Host 功能位图
+- `0x13F`：最近一次 Host 错误码
+- `0x140`：事件槽数量
+- `0x141`：当前时间低 32 位（ABI 单位为 us，当前 PC 实现来自 ms tick * 1000）
+- `0x142`：当前时间高 32 位
+- `0x145`：是否存在待处理事件
 - `0x201`：GPIO 输入（低 16 位为 pin）
+
+### CSR 写（Host ABI v1 foundation）
+- `0x143`：请求延时（单位 us；当前 PC 实现按 ms 向上取整 sleep）
+- `0x144`：开启/关闭事件投递
 
 ### MMIO（当前仅实现 store hook）
 - `store 0x11100000 = value`：返回 `value` 并令 PC 前进 4（用于 guest 侧控制出口）
@@ -103,4 +116,36 @@ collectgarbage("collect")
 cd bsp\pc
 cmd /c build_windows_32bit_msvc.bat
 build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_basic\scripts\
+```
+
+## 6. Host ABI v1 foundation
+
+当前基础能力覆盖：
+
+- ABI 发现：magic / version / feature bits / last_error / event_slots
+- 时间/事件核心：`delay_us`、`time_us_lo/hi`、`event_enable`、`event_pending`
+- PC regression fixture：`testcase\ndk\guest\hostabi_v1`
+
+交换区布局：
+
+- `0..15`：guest 命令区（`hostabi_cmd_t`）
+- `16..31`：guest 结果区（`hostabi_result_t`）
+- `32..47`：事件头（`luat_ndk_event_header_t`）
+- `48..`：事件槽数组（`luat_ndk_event_t[event_slots]`）
+
+其中 `event_slots` 会按交换区可用空间计算，最大为 8。
+
+重建 PC 测试 fixture：
+
+```powershell
+Set-Location testcase\ndk\guest
+.\build_hostabi_v1.ps1
+```
+
+运行 Host ABI foundation suite：
+
+```powershell
+Set-Location bsp\pc
+cmd /c build_windows_32bit_msvc.bat
+build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_hostabi_basic\scripts\
 ```

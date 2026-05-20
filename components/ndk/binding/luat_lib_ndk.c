@@ -12,7 +12,7 @@ if not ctx then
     return
 end
 local info = ndk.info(ctx)
-log.info("ndk", "mem", info.mem, "exchange", info.exchange)
+log.info("ndk", "mem", info.mem, "exchange", info.exchange, "abi", info.abi_version, "features", info.features, "last_error", info.last_error)
 ndk.setData(ctx, "ping")
 local ok, ret, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
 if not ok then
