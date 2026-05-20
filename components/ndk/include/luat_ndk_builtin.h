@@ -86,5 +86,33 @@ static inline uint32_t ndk_host_last_error(void) {
     return ndk_last_error();
 }
 
+// Time and delay APIs (microsecond precision, may use millisecond-based implementation)
+static inline uint32_t ndk_time_us_lo(void) {
+    uint32_t v = 0;
+    __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_TIME_US_LO));
+    return v;
+}
+
+static inline uint32_t ndk_time_us_hi(void) {
+    uint32_t v = 0;
+    __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_TIME_US_HI));
+    return v;
+}
+
+static inline void ndk_delay_us(uint32_t us) {
+    __asm__ volatile(".option norvc\ncsrrw x0, %0, %1" :: "i"(NDK_CSR_DELAY_US), "r"(us));
+}
+
+// Event APIs
+static inline void ndk_event_enable(uint32_t enabled) {
+    __asm__ volatile(".option norvc\ncsrrw x0, %0, %1" :: "i"(NDK_CSR_EVENT_ENABLE), "r"(enabled));
+}
+
+static inline uint32_t ndk_event_pending(void) {
+    uint32_t v = 0;
+    __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_EVENT_PENDING));
+    return v;
+}
+
 // Provide a familiar alias for the shared buffer base
 #define USERDATA (ndk_exchange_base())

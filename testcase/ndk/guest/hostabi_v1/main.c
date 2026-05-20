@@ -4,6 +4,10 @@
 /* NDK builtin APIs from luat_ndk_builtin.h */
 extern unsigned int ndk_exchange_base(void);
 extern unsigned int ndk_memory_size(void);
+extern void ndk_delay_us(unsigned int us);
+extern unsigned int ndk_time_us_lo(void);
+extern void ndk_event_enable(unsigned int enabled);
+extern unsigned int ndk_event_pending(void);
 
 /* NDK builtin host API (implemented in ndk_stubs.c) */
 unsigned int ndk_host_magic(void);
@@ -64,6 +68,17 @@ int main(void) {
         out->value0 = ndk_host_magic();
         out->value1 = ndk_host_version();
         out->value2 = ndk_host_features();
+    } else if (cmd->opcode == HOSTABI_CMD_DELAY_US) {
+        /* Enable events before delay */
+        ndk_event_enable(1);
+        /* Request delay */
+        ndk_delay_us(cmd->arg0);
+        /* Return timestamp and pending flag */
+        out->value0 = ndk_time_us_lo();
+        out->value1 = ndk_event_pending();
+    } else if (cmd->opcode == HOSTABI_CMD_EVENT_STATE) {
+        /* Query event state */
+        out->value0 = ndk_event_pending();
     } else {
         out->status = 1;
         out->value0 = ndk_last_error();

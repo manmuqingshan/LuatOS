@@ -2,6 +2,8 @@
 
 #include "luat_gpio.h"
 #include "luat_ndk_abi.h"
+#include "luat_mcu.h"
+#include "luat_rtos.h"
 #include "mini-rv32ima.h"
 
 #define LUAT_LOG_TAG "ndk"
@@ -57,6 +59,28 @@ void luat_ndk_host_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t valu
         luat_gpio_set(pin, level);
         break;
     }
+    case NDK_CSR_DELAY_US: {
+        // Validate delay value (max 1 second)
+        if (value > 1000000) {
+            luat_ndk_event_set_last_error(ctx, LUAT_NDK_HOST_ERR_PARAM);
+            break;
+        }
+        // Sleep for requested duration (convert us to ms, rounding up)
+        uint32_t ms = (value + 999) / 1000;
+        if (ms > 0) {
+            luat_rtos_task_sleep(ms);
+        }
+        // Push timer event if enabled
+        if (ctx->event_enabled) {
+            luat_ndk_event_push_timer(ctx, value);
+        }
+        luat_ndk_event_set_last_error(ctx, LUAT_NDK_HOST_ERR_NONE);
+        break;
+    }
+    case NDK_CSR_EVENT_ENABLE:
+        ctx->event_enabled = (value ? 1 : 0);
+        luat_ndk_event_set_last_error(ctx, LUAT_NDK_HOST_ERR_NONE);
+        break;
     default:
         break;
     }
@@ -94,6 +118,23 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
         tmp = (*value) & 0xFFFF;
         *value = (uint32_t)luat_gpio_get(tmp);
         break;
+    case NDK_CSR_TIME_US_LO: {
+        // Use millisecond-based timer converted to microseconds
+        uint64_t us = luat_mcu_tick64_ms() * 1000ull;
+        *value = (uint32_t)(us & 0xFFFFFFFFull);
+        break;
+    }
+    case NDK_CSR_TIME_US_HI: {
+        uint64_t us = luat_mcu_tick64_ms() * 1000ull;
+        *value = (uint32_t)(us >> 32);
+        break;
+    }
+    case NDK_CSR_EVENT_PENDING: {
+        // Check if host_write != guest_read
+        luat_ndk_event_header_t *hdr = (luat_ndk_event_header_t*)(ctx->ram + ctx->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET);
+        *value = (hdr->host_write != hdr->guest_read) ? 1 : 0;
+        break;
+    }
     default:
         *value = 0;
         break;

@@ -40,4 +40,63 @@ function tests.test_ndk_info_exposes_abi_fields()
     assert(info.event_slots >= 1, "missing event_slots")
 end
 
+function tests.test_delay_command_succeeds_and_returns_timestamp()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local delay_us = 1000  -- Request 1ms delay
+    local result = run_cmd(ctx, proto.CMD_DELAY_US, delay_us, 0, 0)
+    assert(result.status == 0, "delay command should succeed")
+    assert(result.value0 > 0, "timestamp should be non-zero")
+end
+
+function tests.test_delay_command_reports_pending_event_flag()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local delay_us = 500
+    local result = run_cmd(ctx, proto.CMD_DELAY_US, delay_us, 0, 0)
+    assert(result.status == 0, "delay command should succeed")
+    assert(result.value1 == 1, "pending flag should be 1 after delay")
+end
+
+function tests.test_event_state_command_reports_pending_flag()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    -- First trigger a delay to generate an event
+    local delay_result = run_cmd(ctx, proto.CMD_DELAY_US, 500, 0, 0)
+    assert(delay_result.status == 0, "delay setup should succeed")
+    -- Read event state from exchange buffer without reset
+    local exchange_data = ndk.getData(ctx, 1024, 0)
+    local header = proto.unpack_event_header(exchange_data)
+    assert(header.host_write == 1, "event should be written after delay")
+    assert(header.guest_read == 0, "guest hasn't read event yet")
+end
+
+function tests.test_event_header_reflects_timer_event()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local delay_us = 1000
+    local result = run_cmd(ctx, proto.CMD_DELAY_US, delay_us, 0, 0)
+    assert(result.status == 0, "delay command should succeed")
+    -- Read entire exchange buffer to inspect event header
+    local exchange_data = ndk.getData(ctx, 1024, 0)
+    local header = proto.unpack_event_header(exchange_data)
+    assert(header.host_write == 1, "host_write should be 1")
+    assert(header.guest_read == 0, "guest_read should be 0")
+    assert(header.slot_count > 0, "slot_count should be > 0")
+    assert(header.overflow == 0, "overflow should be 0")
+end
+
+function tests.test_first_event_slot_contains_timer_event()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local delay_us = 2000
+    local result = run_cmd(ctx, proto.CMD_DELAY_US, delay_us, 0, 0)
+    assert(result.status == 0, "delay command should succeed")
+    -- Read event slot
+    local exchange_data = ndk.getData(ctx, 1024, 0)
+    local event = proto.unpack_event_slot(exchange_data, 0)
+    assert(event.type == proto.EVENT_TYPE_TIMER, "event type should be TIMER")
+    assert(event.data == delay_us, "event data should match requested delay")
+end
+
 return tests

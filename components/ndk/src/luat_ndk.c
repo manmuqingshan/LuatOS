@@ -117,6 +117,15 @@ static void ndk_reset_abi_state(luat_ndk_t *ndk) {
     ndk->event_head = 0;
     ndk->event_tail = 0;
     ndk->event_enabled = 0;
+    
+    // Initialize event header in exchange buffer
+    if (ndk->ram && ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE <= ndk->ram_size) {
+        luat_ndk_event_header_t *hdr = (luat_ndk_event_header_t*)(ndk->ram + ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET);
+        hdr->host_write = 0;
+        hdr->guest_read = 0;
+        hdr->slot_count = ndk->event_slots;
+        hdr->overflow = 0;
+    }
 }
 
 static void ndk_reset_core(luat_ndk_t *ndk) {
@@ -154,6 +163,7 @@ static int ndk_reload_image(luat_ndk_t *ndk) {
         memset(ndk->ram + ndk->exchange_offset, 0, ndk->exchange_size);
     }
     ndk_reset_core(ndk);
+    luat_ndk_event_reset(ndk);
     return LUAT_NDK_OK;
 }
 

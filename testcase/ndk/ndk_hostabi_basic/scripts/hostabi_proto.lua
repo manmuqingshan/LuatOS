@@ -13,6 +13,11 @@ M.HOST_MAGIC = 0x4E444B31  -- "NDK1"
 M.HOST_VERSION = 0x00010000  -- 1.0.0
 M.RESULT_SIZE = 16
 
+-- Event constants
+M.EVENT_HEADER_OFFSET = 32  -- Event header starts at offset 32 (after command + result)
+M.EVENT_SLOT_SIZE = 8       -- Each event slot is 8 bytes (uint16_t type, uint16_t source, uint32_t data)
+M.EVENT_TYPE_TIMER = 1      -- Timer event type
+
 -- Pack command structure (opcode, arg0, arg1, arg2)
 function M.pack_cmd(opcode, a0, a1, a2)
     return string.pack("<I4I4I4I4", opcode, a0 or 0, a1 or 0, a2 or 0)
@@ -25,6 +30,29 @@ function M.unpack_result(data)
     end
     local status, v0, v1, v2 = string.unpack("<I4I4I4I4", data)
     return {status = status, value0 = v0, value1 = v1, value2 = v2}
+end
+
+-- Unpack event header (host_write, guest_read, slot_count, overflow)
+-- Event header is 8 bytes: uint16_t host_write, uint16_t guest_read, uint16_t slot_count, uint16_t overflow
+function M.unpack_event_header(data, offset)
+    offset = offset or M.EVENT_HEADER_OFFSET
+    if not data or #data < offset + 8 then
+        return {host_write = 0, guest_read = 0, slot_count = 0, overflow = 0}
+    end
+    local host_write, guest_read, slot_count, overflow = string.unpack("<I2I2I2I2", data, offset + 1)
+    return {host_write = host_write, guest_read = guest_read, slot_count = slot_count, overflow = overflow}
+end
+
+-- Unpack event slot (type, source, data)
+-- Each event slot is 8 bytes: uint16_t type, uint16_t source, uint32_t data
+function M.unpack_event_slot(data, slot_index, header_offset)
+    header_offset = header_offset or M.EVENT_HEADER_OFFSET
+    local slot_offset = header_offset + 8 + (slot_index * M.EVENT_SLOT_SIZE)
+    if not data or #data < slot_offset + M.EVENT_SLOT_SIZE then
+        return {type = 0, source = 0, data = 0}
+    end
+    local etype, source, edata = string.unpack("<I2I2I4", data, slot_offset + 1)
+    return {type = etype, source = source, data = edata}
 end
 
 return M

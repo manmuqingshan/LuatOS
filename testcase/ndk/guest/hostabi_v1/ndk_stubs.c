@@ -50,3 +50,31 @@ unsigned int ndk_last_error(void) {
     __asm__ volatile(".option norvc\ncsrr %0, 0x13F" : "=r"(error));
     return error;
 }
+
+void ndk_delay_us(unsigned int us) {
+    /* Writes delay request to CSR 0x143 (NDK_CSR_DELAY_US).
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    __asm__ volatile(".option norvc\ncsrrw x0, 0x143, %0" :: "r"(us));
+}
+
+unsigned int ndk_time_us_lo(void) {
+    /* Reads low 32 bits of microsecond timestamp from CSR 0x141 (NDK_CSR_TIME_US_LO).
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    unsigned int time_lo;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x141" : "=r"(time_lo));
+    return time_lo;
+}
+
+void ndk_event_enable(unsigned int enabled) {
+    /* Writes event enable flag to CSR 0x144 (NDK_CSR_EVENT_ENABLE).
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    __asm__ volatile(".option norvc\ncsrrw x0, 0x144, %0" :: "r"(enabled));
+}
+
+unsigned int ndk_event_pending(void) {
+    /* Reads event pending flag from CSR 0x145 (NDK_CSR_EVENT_PENDING).
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    unsigned int pending;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x145" : "=r"(pending));
+    return pending;
+}
