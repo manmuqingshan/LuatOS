@@ -57,7 +57,9 @@ local ctx, err = ndk.rv32i(path, mem_size, exchange_size)
 - `0x136`：打印数字（`vm num`）
 - `0x137`：打印指针值（`vm ptr`）
 - `0x138`：按 guest 地址打印字符串（最多 120 字节）
-- `0x200`：GPIO 输出（`value = (level << 16) | pin`）
+- `0x143`：请求延时（单位 us；当前 PC 实现按 ms 向上取整 sleep）
+- `0x144`：开启/关闭 timer 事件投递
+- `0x200`：legacy GPIO 输出（`value = (level << 16) | pin`）
 
 ### CSR 读
 - `0x139`：交换区起始地址
@@ -71,11 +73,33 @@ local ctx, err = ndk.rv32i(path, mem_size, exchange_size)
 - `0x141`：当前时间低 32 位（ABI 单位为 us，当前 PC 实现来自 ms tick * 1000）
 - `0x142`：当前时间高 32 位
 - `0x145`：是否存在待处理事件
-- `0x201`：GPIO 输入（低 16 位为 pin）
+- `0x201`：legacy GPIO 输入（低 16 位为 pin）
 
-### CSR 写（Host ABI v1 foundation）
-- `0x143`：请求延时（单位 us；当前 PC 实现按 ms 向上取整 sleep）
-- `0x144`：开启/关闭事件投递
+### GPIO v2 CSR（通过 `csrrw a0, csr, a0` 走 CSR 读路径返回）
+
+GPIO v2 不再使用 `0x200/0x201` 的原始读写语义，而是通过 `a0` 载荷 + CSR 返回值完成请求/应答：
+
+- `0x210` `GPIO_CONFIG`
+  - 请求：`a0 = pin[7:0] | mode[15:8] | pull[23:16] | irq_mode[31:24]`
+  - 返回：`LUAT_NDK_GPIO_STATUS_*`
+- `0x211` `GPIO_WRITE`
+  - 请求：`a0 = pin[15:0] | level[16]`
+  - 返回：`LUAT_NDK_GPIO_STATUS_*`
+- `0x212` `GPIO_READ`
+  - 请求：`a0 = pin[15:0]`
+  - 返回：成功时为电平 `0/1`；失败时为 `LUAT_NDK_GPIO_STATUS_*`
+- `0x213` `GPIO_IRQ_STATE`
+  - 请求：`a0 = pin[15:0]`
+  - 返回：成功时为 packed IRQ state，布局与 `components/ndk/include/luat_ndk_abi.h` 一致：
+    - `bits 0..15`：pin
+    - `bit 16`：pending
+    - `bits 24..31`：reason（`LUAT_NDK_GPIO_IRQ_*`）
+  - 原始 CSR 返回值需要结合 `NDK_CSR_HOST_LAST_ERROR` / `last_error` 一起解释；因为合法 packed 值与错误码在数值上可能重叠，不能只看返回整数本身
+  - Host ABI fixture 会把它规范化成明确的 `status/value0/value1` 结果；未启用 IRQ 的 pin 在该层表现为 `LUAT_NDK_GPIO_STATUS_UNSUPPORTED`
+- `0x214` `GPIO_IRQ_CLEAR`
+  - 请求：`a0 = pin[15:0]`
+  - 返回：`LUAT_NDK_GPIO_STATUS_*`
+  - 语义：清除该 pin 的 pending 位，同时把记录的 reason 归零
 
 ### MMIO（当前仅实现 store hook）
 - `store 0x11100000 = value`：返回 `value` 并令 PC 前进 4（用于 guest 侧控制出口）
@@ -118,12 +142,13 @@ cmd /c build_windows_32bit_msvc.bat
 build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_basic\scripts\
 ```
 
-## 6. Host ABI v1 foundation
+## 6. Host ABI v1 foundation / GPIO v2
 
 当前基础能力覆盖：
 
 - ABI 发现：magic / version / feature bits / last_error / event_slots
 - 时间/事件核心：`delay_us`、`time_us_lo/hi`、`event_enable`、`event_pending`
+- GPIO v2：`GPIO_CONFIG`、`GPIO_WRITE`、`GPIO_READ`、`GPIO_IRQ_STATE`、`GPIO_IRQ_CLEAR`
 - PC regression fixture：`testcase\ndk\guest\hostabi_v1`
 
 交换区布局：
@@ -134,6 +159,54 @@ build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_b
 - `48..`：事件槽数组（`luat_ndk_event_t[event_slots]`）
 
 其中 `event_slots` 会按交换区可用空间计算，最大为 8。
+
+### Host ABI fixture 命令族（`testcase\ndk\guest\hostabi_v1`）
+
+- `0x01` `QUERY_META`
+- `0x02` `DELAY_US`
+- `0x03` `EVENT_STATE`
+- `0x10` `GPIO_CONFIG`
+- `0x11` `GPIO_WRITE`
+- `0x12` `GPIO_READ`
+- `0x13` `GPIO_IRQ_STATE`
+- `0x14` `GPIO_IRQ_CLEAR`
+
+其中 GPIO v2 命令的 guest 结果区约定为：
+
+- `GPIO_CONFIG` / `GPIO_WRITE` / `GPIO_IRQ_CLEAR`
+  - `status = LUAT_NDK_GPIO_STATUS_*`
+- `GPIO_READ`
+  - `status = OK` 时 `value0 = 0/1`
+- `GPIO_IRQ_STATE`
+  - fixture 会把 packed CSR 返回值拆成：
+    - `value0 = pending`
+    - `value1 = reason`
+  - `pin` 不再单独返回，因为请求 pin 已知；若需要完整 packed 语义，应以 ABI 宏布局为准
+
+### GPIO_IRQ 事件语义
+
+- 异步通知仍然走现有 event ring，事件类型为 `GPIO_IRQ`（`type = 2`）
+- `source` 为触发 pin
+- `data` 为与 `GPIO_IRQ_STATE` 相同布局的 packed IRQ payload
+- 该事件是**通知型**的：表示“有 IRQ 发生/可检查”，不是最终 ack 状态
+- authoritative 状态与清除语义始终来自：
+  - `GPIO_IRQ_STATE`：读取当前 pending/reason
+  - `GPIO_IRQ_CLEAR`：执行 ack，清 pending 并清空 reason
+
+### PC 模拟器当前确定性 IRQ 行为
+
+当前 PC regression fixture 为了让用例稳定、可重复，在 `GPIO_CONFIG` 成功把 pin 配置为 IRQ 模式后，会立即合成一次该 pin 的 IRQ：
+
+- 立即标记该 pin 为 pending
+- 记录 reason 为配置时传入的 `irq_mode`
+- 立即向 event ring 推入一个 `GPIO_IRQ` 事件
+- 这一行为**不受** `event_enable` 控制（与 timer 事件不同）
+
+因此在当前 PC 模拟器回归里，IRQ pin 配置成功后应可稳定观察到：
+
+- `GPIO_IRQ_STATE.pending == 1`
+- event ring 中出现一个 `GPIO_IRQ`
+- 调用 `GPIO_IRQ_CLEAR` 后，后续 `GPIO_IRQ_STATE.pending == 0`，且 `reason == 0`
 
 重建 PC 测试 fixture：
 

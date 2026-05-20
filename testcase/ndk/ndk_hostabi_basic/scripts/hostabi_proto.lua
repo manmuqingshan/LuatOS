@@ -47,6 +47,11 @@ M.GPIO_IRQ_FALLING = 1
 M.GPIO_IRQ_BOTH = 2
 M.GPIO_IRQ_HIGH = 3
 M.GPIO_IRQ_LOW = 4
+M.GPIO_IRQ_STATE_PIN_MASK = 0x0000FFFF
+M.GPIO_IRQ_STATE_PENDING_MASK = 0x00010000
+M.GPIO_IRQ_STATE_REASON_MASK = 0xFF000000
+M.GPIO_IRQ_STATE_PENDING_SHIFT = 16
+M.GPIO_IRQ_STATE_REASON_SHIFT = 24
 
 -- Pack command structure (opcode, arg0, arg1, arg2)
 function M.pack_cmd(opcode, a0, a1, a2)
@@ -83,6 +88,18 @@ function M.unpack_event_slot(data, slot_index, header_offset)
     end
     local etype, source, edata = string.unpack("<I2I2I4", data, slot_offset + 1)
     return {type = etype, source = source, data = edata}
+end
+
+-- Decode packed GPIO IRQ state/event payload:
+-- bits  0..15 = pin, bit 16 = pending, bits 24..31 = irq reason
+function M.decode_gpio_irq_state(packed)
+    packed = packed or 0
+    return {
+        raw = packed,
+        pin = packed & M.GPIO_IRQ_STATE_PIN_MASK,
+        pending = (packed & M.GPIO_IRQ_STATE_PENDING_MASK) >> M.GPIO_IRQ_STATE_PENDING_SHIFT,
+        reason = (packed & M.GPIO_IRQ_STATE_REASON_MASK) >> M.GPIO_IRQ_STATE_REASON_SHIFT,
+    }
 end
 
 return M
