@@ -37,12 +37,13 @@ struct luat_audio_channel {
     struct luat_audio_request_block *play_request_block;   /**< 当前播放请求块指针 */
     struct luat_audio_request_block *record_request_block; /**< 当前录音请求块指针 */
     uint32_t soft_vol;                          /**< 软件音量控制（0-1000） 1000为10倍 */
-    uint8_t play_state;                        /**< 当前播放状态（0=停止, 1=播放） */
-    uint8_t record_state;                      /**< 当前录音状态（0=停止, 1=录音, 2=转发） */
+    // uint8_t play_state;                        /**< 当前播放状态（0=停止, 1=播放） */
+    // uint8_t record_state;                      /**< 当前录音状态（0=停止, 1=录音, 2=转发） */
     uint8_t error_record_overflow;             /**< 录音溢出错误标志位 */
     uint8_t data_align;                        /**< 数据对齐方式（2=16位, 3=24位, 4=32位, 其他8位） */
-    uint8_t blank_data_cnt;                    /**< 空数据计数，用于记录播放时的空数据数量 */
     uint8_t record_jump_cnt;
+    uint8_t user_play_stop:1;
+    uint8_t user_record_stop:1;
 };
 typedef struct luat_audio_channel luat_audio_channel_t;
 
@@ -79,13 +80,13 @@ int luat_audio_channel_play(luat_audio_channel_t *channel, uint8_t is_play);
 /**
  * @brief 录音音频通道数据
  * @param channel 音频通道指针，必须指向有效的 luat_audio_channel_t 结构
- * @param record_state 录音状态（0=停止, 1=录音, 2=转发）
+ * @param is_record 是否录音（1=录音，0=停止）
  * @return int 成功返回 LUAT_ERROR_NONE，失败返回其他错误码
  * 
  * 此函数会根据 record_state 参数判断是否录音音频数据。
  * 调用前确保 channel 指针有效且已被初始化。
  */
-int luat_audio_channel_record(luat_audio_channel_t *channel, uint8_t record_state);
+int luat_audio_channel_record(luat_audio_channel_t *channel, uint8_t is_record);
 
 /**
  * @brief 写入音频通道数据

@@ -13,6 +13,7 @@ require "settings_about_win"
 require "settings_sound_win"
 require "wifi_list_win"
 require "settings_iot_win"
+require "settings_fota_win"
 local titlebar = require "settings_titlebar"
 
 local window_id = nil
@@ -107,16 +108,7 @@ local function build_ui()
     y = y + card_h + card_spacing
     create_card(y, "存储顺序", function() sys.publish("OPEN_STORAGE_PRI_WIN") end)
     y = y + card_h + card_spacing
-    create_card(y, "系统更新", function()
-        sys.publish("OPEN_SYSTEM_WIN")
-        airui.msgbox({
-            parent = ct,
-            title = "提示",
-            text = "正在开发中...",
-            buttons = {"确定"},
-            on_action = function(self) self:destroy() end
-        })
-    end)
+    create_card(y, "系统更新", function() sys.publish("OPEN_FOTA_WIN") end)
     y = y + card_h + card_spacing
     if is_air8000 then
         create_card(y, "触摸音效", function() sys.publish("OPEN_SOUND_WIN") end)

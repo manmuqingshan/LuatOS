@@ -27,7 +27,7 @@ sys.subscribe("IP_LOSE", function(ad)
 end)
 
 sys.subscribe("WLAN_STA_INC", function(evt, data)
-    log.info("sta", evt, data)
+    log.info("wifi_station", evt, data)
 end)
 
 -- 仅设置默认网卡，不初始化硬件

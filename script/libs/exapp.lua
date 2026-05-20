@@ -668,7 +668,7 @@ local function app_task(app_path)
         "exmodbus", "exmtn", "exmux", "exnetif", "exremotecam", "exremotefile",
         "exril_5101", "exsip", "exsipclient", "exsipproto", "extalk", "extp",
         "exvib", "exvib1", "ex", "gc032a", "gc0310", "httpdns", "httpplus",
-        "lbsLoc", "lbsLoc2", "libfota", "libfota2", "libnet", "netLed", "udpsrv",
+        "lbsLoc", "lbsLoc2", "libnet", "netLed", "udpsrv",
         "xmodem", "sys", "sysplus"
     }
     local ext_libs = {}
@@ -1367,10 +1367,13 @@ local function app_task(app_path)
     my_env.ftp.push = wrap_path(ftp_lib.push, 1, true, false)
 
     -- fota 库
-    -- 功能：包装 fota.file，支持路径转换
-    local fota_lib = safe_global("fota")
-    my_env.fota = setmetatable({}, { __index = fota_lib })
-    my_env.fota.file = wrap_path(fota_lib.file, 1, false, false)
+    -- 禁止应用使用固件升级功能，替换为错误提示
+    my_env.fota = {
+        file = function(...)
+            my_env.log.error("fota", "沙箱环境不允许FOTA升级操作")
+            return -1
+        end,
+    }
 
     -- ymodem 库
     -- 功能：包装 ymodem.create，支持路径转换
@@ -2198,7 +2201,7 @@ local function app_task(app_path)
     -- 检查窗口数量，如果为0则自动退出应用
     local function check_windows()
         if #win_ids == 0 then
-            my_env.log.info("ex", "window count is 0, auto exit app")
+            my_env.log.info("exapp_window", "window count is 0, auto exit app")
             my_env.exapp.close()
         end
     end
@@ -2210,7 +2213,7 @@ local function app_task(app_path)
         local win_id = glob_exwin.open(config)
         if win_id then
             table.insert(win_ids, win_id)
-            my_env.log.info("ee", "window opened, ID:", win_id, "window count:", #win_ids)
+            my_env.log.info("exapp_window_event", "window opened, ID:", win_id, "window count:", #win_ids)
         end
         return win_id
     end
@@ -2224,7 +2227,7 @@ local function app_task(app_path)
                 break
             end
         end
-        my_env.log.info("ex", "window closed, ID:", win_id, "window count:", #win_ids)
+        my_env.log.info("exapp_window", "window closed, ID:", win_id, "window count:", #win_ids)
         check_windows()
     end
 
@@ -2298,7 +2301,7 @@ local co_id = exapp.open("/app_store/app_hello/")
 ]]
 function exapp.open(app_path)
     if app_registry[app_path] then
-        log.info("eo", "app already running:", app_path)
+        log.info("exapp_open", "app already running:", app_path)
         return true
     end
 
@@ -2307,9 +2310,9 @@ function exapp.open(app_path)
     if not io.dexist(data_dir) then
         local ret = io.mkdir(data_dir)
         if ret then
-            log.info("eo", "created data directory:", data_dir)
+            log.info("exapp_open", "created data directory:", data_dir)
         else
-            log.warn("eo", "failed to create data directory:", data_dir)
+            log.warn("exapp_open", "failed to create data directory:", data_dir)
         end
     end
 
@@ -2333,14 +2336,14 @@ function exapp.open(app_path)
             end
             if not io.dexist(dir) then
                 io.mkdir(dir)
-                log.info("eo", "created data dir:", dir, io.dexist(dir) and "ok" or "FAIL")
+                log.info("exapp_open", "created data dir:", dir, io.dexist(dir) and "ok" or "FAIL")
             end
             ::next_data_dir::
         end
     end
 
     app_registry[app_path] = true
-    log.info("eo", "app started:", app_path)
+    log.info("exapp_open", "app started:", app_path)
 
     sys.taskInit(app_task, app_path)
 
@@ -2358,12 +2361,12 @@ end
 ]]
 function exapp.close(app_path)
     if not app_registry[app_path] then
-        log.info("ec", "app not running:", app_path)
+        log.info("exapp_close", "app not running:", app_path)
         return
     end
 
     sys.publish(app_path .. "_close_req", "yes")
-    log.info("ec", "close request sent:", app_path)
+    log.info("exapp_close", "close request sent:", app_path)
 end
 
 --[[
@@ -2398,12 +2401,12 @@ end
 ]]
 function exapp.install(app_path, app_info)
     if installed_info[app_path] then
-        log.info("ei", "app already installed:", app_path)
+        log.info("exapp_init", "app already installed:", app_path)
         return false
     end
 
     installed_info[app_path] = app_info
-    log.info("ei", "app installed:", app_path)
+    log.info("exapp_init", "app installed:", app_path)
     return true
 end
 
@@ -2415,12 +2418,12 @@ end
 ]]
 function exapp.uninstall(app_path)
     if app_registry[app_path] then
-        log.info("eu", "app is running, close first:", app_path)
+        log.info("exapp_uninstall", "app is running, close first:", app_path)
         exapp.close(app_path)
     end
 
     installed_info[app_path] = nil
-    log.info("eu", "app uninstalled:", app_path)
+    log.info("exapp_uninstall", "app uninstalled:", app_path)
     return true
 end
 
@@ -2429,12 +2432,12 @@ end
 -- ==============================================
 
 function exapp.iot_login(account, password)
-    log.info("iot", "login attempt", mask_account(account))
+    log.info("exapp_iot", "login attempt", mask_account(account))
     sys.taskInit(function()
         local ac_cipher = rsa.encrypt(iot_get_public_key(), account)
         local pw_cipher = rsa.encrypt(iot_get_public_key(), password)
         if not ac_cipher or not pw_cipher then
-            log.warn("iot", "rsa encrypt failed")
+            log.warn("exapp_iot", "rsa encrypt failed")
             sys.publish("IOT_LOGIN_RESULT", {
                 success = false, error = "加密失败"
             })
@@ -2448,7 +2451,7 @@ function exapp.iot_login(account, password)
             ["Content-Type"] = "application/json"
         }, body, { timeout = 10000 }).wait()
         if code < 0 or code ~= 200 then
-            log.warn("iot", "auth request failed", code)
+            log.warn("exapp_iot", "auth request failed", code)
             sys.publish("IOT_LOGIN_RESULT", {
                 success = false, error = "服务器连接失败"
             })
@@ -2456,7 +2459,7 @@ function exapp.iot_login(account, password)
         end
         local ok, resp = pcall(json.decode, resp_body)
         if not ok or type(resp) ~= "table" then
-            log.warn("iot", "auth response parse failed")
+            log.warn("exapp_iot", "auth response parse failed")
             sys.publish("IOT_LOGIN_RESULT", {
                 success = false, error = "数据解析失败"
             })
@@ -2471,14 +2474,14 @@ function exapp.iot_login(account, password)
             fskv.set("iot_password", password)
             fskv.set("iot_nickname", value.nickname or GUEST_NICKNAME)
             iot_save_login_time()
-            log.info("iot", "login success", mask_account(account))
+            log.info("exapp_iot", "login success", mask_account(account))
             sys.publish("IOT_LOGIN_RESULT", {
                 success  = true,
                 account  = account,
                 nickname = value.nickname,
             })
         else
-            log.info("iot", "login failed", mask_account(account))
+            log.info("exapp_iot", "login failed", mask_account(account))
             sys.publish("IOT_LOGIN_RESULT", {
                 success = false,
                 error   = resp.value or "账号或密码错误",
@@ -2490,7 +2493,7 @@ end
 function exapp.iot_logout()
     local old_account = iot_info.account
     iot_clear_state()
-    log.info("iot", "logged out", mask_account(old_account))
+    log.info("exapp_iot", "logged out", mask_account(old_account))
     sys.publish("IOT_LOGOUT_RESULT", { account = old_account })
 end
 
@@ -2518,10 +2521,10 @@ function exapp.iot_auto_login()
     fskv.init()
     iot_load_state()
     if iot_info.is_guest then
-        log.info("iot", "auto login skipped, guest mode")
+        log.info("exapp_iot", "auto login skipped, guest mode")
         return
     end
-    log.info("iot", "auto login attempt", mask_account(iot_info.account))
+    log.info("exapp_iot", "auto login attempt", mask_account(iot_info.account))
     local password = fskv.get("iot_password")
     if not password then
         iot_clear_state()
@@ -2530,7 +2533,7 @@ function exapp.iot_auto_login()
     local ac_cipher = rsa.encrypt(iot_get_public_key(), iot_info.account)
     local pw_cipher = rsa.encrypt(iot_get_public_key(), password)
     if not ac_cipher or not pw_cipher then
-        log.warn("iot", "auto login rsa encrypt failed")
+        log.warn("exapp_iot", "auto login rsa encrypt failed")
         return
     end
     local body = json.encode({
@@ -2541,7 +2544,7 @@ function exapp.iot_auto_login()
         ["Content-Type"] = "application/json"
     }, body, { timeout = 10000 }).wait()
     if code < 0 or code ~= 200 then
-        log.warn("iot", "auto login network error", code)
+        log.warn("exapp_iot", "auto login network error", code)
         return
     end
     local ok, resp = pcall(json.decode, resp_body)
@@ -2550,9 +2553,9 @@ function exapp.iot_auto_login()
         iot_info.is_guest = false
         fskv.set("iot_nickname", resp.value.nickname or GUEST_NICKNAME)
         iot_save_login_time()
-        log.info("iot", "auto login success", mask_account(iot_info.account))
+        log.info("exapp_iot", "auto login success", mask_account(iot_info.account))
     else
-        log.warn("iot", "auto login invalid, clearing")
+        log.warn("exapp_iot", "auto login invalid, clearing")
         iot_clear_state()
     end
 end
@@ -2634,7 +2637,7 @@ local function scan(base_dir, storage_type)
     while has_more do
         local ret, dirs = io.lsdir(base_dir, max_per_page, offset)
         if not ret then
-            log.error("ei", "failed to list directory:", base_dir, dirs)
+            log.error("exapp_init", "failed to list directory:", base_dir, dirs)
             break
         end
 
@@ -2649,21 +2652,21 @@ local function scan(base_dir, storage_type)
                 -- 检查 meta.json 是否存在
                 local meta_path = base_dir .. app_dir.name .. "/meta.json"
                 if not io.exists(meta_path) then
-                    log.warn("ei", "app missing meta.json:", app_dir.name)
+                    log.warn("exapp_init", "app missing meta.json:", app_dir.name)
                     goto continue
                 end
 
                 -- 读取 meta.json 内容
                 local meta_content = io.readFile(meta_path)
                 if not meta_content then
-                    log.error("ei", "failed to read meta.json:", meta_path)
+                    log.error("exapp_init", "failed to read meta.json:", meta_path)
                     goto continue
                 end
 
                 -- 解析 JSON
                 local ok, meta_data = pcall(json.decode, meta_content)
                 if not ok then
-                    log.error("ei", "failed to parse meta.json:", app_dir.name, meta_data)
+                    log.error("exapp_init", "failed to parse meta.json:", app_dir.name, meta_data)
                     goto continue
                 end
 
@@ -2686,7 +2689,7 @@ local function scan(base_dir, storage_type)
                     mount_point = mount_point,
                     data_dirs = build_data_dirs(app_name),
                 }
-                log.info("ei", "found app:", app_name, installed_info[app_name].cn_name, "storage:", storage_type)
+                log.info("exapp_init", "found app:", app_name, installed_info[app_name].cn_name, "storage:", storage_type)
                 cnt = cnt + 1
                 ::continue::
             end
@@ -2719,14 +2722,14 @@ local function mount_storage(cfg)
     local storage = cfg.storage_type or "sd_tf"
     local mount_point = STORAGE_DEFS[storage] and STORAGE_DEFS[storage].mount_point or "/sd/"
     if io.dexist(mount_point) then
-        log.info("ei", "storage already mounted:", mount_point)
+        log.info("exapp_init", "storage already mounted:", mount_point)
         return true
     end
 
     -- PC 环境：不操作硬件，直接创建挂载点目录模拟挂载
     local is_pc = (rtos.bsp() == "PC")
     if is_pc then
-        log.info("ei", "PC mode: creating directory", mount_point)
+        log.info("exapp_init", "PC mode: creating directory", mount_point)
         local ok = io.mkdir(mount_point)
         if ok then
             io.mkdir(mount_point .. "app_store")
@@ -2739,29 +2742,29 @@ local function mount_storage(cfg)
     local speed    = cfg.speed  or 2000000
 
     if storage == "sd_tf" then
-        log.info("ei", "mounting sd: spi", spi_id, "cs", pin_cs, "speed", speed)
+        log.info("exapp_init", "mounting sd: spi", spi_id, "cs", pin_cs, "speed", speed)
         spi.setup(spi_id, nil, 0, 0, 8, speed)
         gpio.setup(pin_cs, 1)
         local ok, err = fatfs.mount(fatfs.SPI, mount_point, spi_id, pin_cs, speed)
         if not ok then
-            log.warn("ei", "sd mount failed:", err)
+            log.warn("exapp_init", "sd mount failed:", err)
             return false
         end
         return true
     elseif storage == "little_flash" or storage == "nand_flash" then
         local label = STORAGE_DEFS[storage] and STORAGE_DEFS[storage].label or "Flash"
-        log.info("ei", "mounting", label, ": spi", spi_id, "cs", pin_cs)
+        log.info("exapp_init", "mounting", label, ": spi", spi_id, "cs", pin_cs)
         spi.setup(spi_id, nil, 0, 0, 8, speed)
         gpio.setup(pin_cs, 1)
         -- 使用全局变量存储，避免 GC 回收导致 flash 操作死机
         little_flash_spi_device = spi.deviceSetup(spi_id, pin_cs, 0, 0, 8, speed)
         if not little_flash_spi_device then
-            log.warn("ei", "spi device setup failed")
+            log.warn("exapp_init", "spi device setup failed")
             return false
         end
         little_flash_device = lf.init(little_flash_spi_device)
         if not little_flash_device then
-            log.warn("ei", "lf.init failed")
+            log.warn("exapp_init", "lf.init failed")
             return false
         end
         local ok = lf.mount(little_flash_device, mount_point)
@@ -2769,11 +2772,11 @@ local function mount_storage(cfg)
             -- 挂载失败尝试后再试一次（可能是首次使用需要初始化）
             ok = lf.mount(little_flash_device, mount_point)
             if not ok then
-                log.warn("ei", "lf.mount failed:", mount_point)
+                log.warn("exapp_init", "lf.mount failed:", mount_point)
                 return false
             end
         end
-        log.info("ei", label, "mounted at", mount_point)
+        log.info("exapp_init", label, "mounted at", mount_point)
         return true
     end
     return false
@@ -2833,7 +2836,7 @@ function exapp.init(...)
     storage_available.internal = true
     storage_available.sd_tf = probe_storage("/sd/")
     storage_available.little_flash = probe_storage("/little_flash/")
-    log.info("ei", "storage available: internal=", storage_available.internal,
+    log.info("exapp_init", "storage available: internal=", storage_available.internal,
         "sd_tf=", storage_available.sd_tf,
         "little_flash=", storage_available.little_flash)
 
@@ -2853,7 +2856,7 @@ function exapp.init(...)
     end
 
     installed_total_count = installed_cnt
-    log.info("ei", "scan completed, found", installed_cnt, "apps across all storages")
+    log.info("exapp_init", "scan completed, found", installed_cnt, "apps across all storages")
     sys.publish("APP_STORE_INSTALLED_UPDATED", installed_info)
 
     -- 5. 启动 IOT 自动登录
@@ -4018,22 +4021,22 @@ local function db_request(endpoint, body_params, appid, callback)
     local body = json.encode(body_params)
     local headers = exapp.iot_get_auth_headers(appid)
     headers["Content-Type"] = "application/json"
-    log.info("db", ">>> REQ", url)
-    log.info("db", ">>> BODY", body)
-    -- log.info("db", ">>> HEADERS", json.encode(headers))
+    log.info("exapp_database", ">>> REQ", url)
+    log.info("exapp_database", ">>> BODY", body)
+    -- log.info("exapp_database", ">>> HEADERS", json.encode(headers))
     sys.taskInit(function()
         local code, _, resp_body = http.request("POST", url, headers, body, { timeout = 10000 }).wait()
-        log.info("db", "<<< RESP code", code)
-        log.info("db", "<<< BODY", resp_body or "(empty)")
+        log.info("exapp_database", "<<< RESP code", code)
+        log.info("exapp_database", "<<< BODY", resp_body or "(empty)")
         if code < 0 or code ~= 200 then
-            log.warn("db", endpoint, "request failed", code)
+            log.warn("exapp_database", endpoint, "request failed", code)
             if callback then callback(false, "服务器连接失败") end
             sys.publish("DB_RESULT", endpoint, false, "服务器连接失败(code=" .. tostring(code) .. ")")
             return
         end
         local ok, resp = pcall(json.decode, resp_body)
         if not ok or type(resp) ~= "table" then
-            log.warn("db", endpoint, "response parse failed")
+            log.warn("exapp_database", endpoint, "response parse failed")
             if callback then callback(false, "数据解析失败") end
             sys.publish("DB_RESULT", endpoint, false, "数据解析失败")
             return
@@ -4042,7 +4045,7 @@ local function db_request(endpoint, body_params, appid, callback)
             if callback then callback(true, resp.value) end
             sys.publish("DB_RESULT", endpoint, true, resp.value)
         else
-            log.warn("db", endpoint, "business error", resp.code, resp.value)
+            log.warn("exapp_database", endpoint, "business error", resp.code, resp.value)
             if callback then callback(false, resp.value or "操作失败") end
             sys.publish("DB_RESULT", endpoint, false, "code=" .. tostring(resp.code) .. " " .. tostring(resp.value))
         end
@@ -4071,7 +4074,7 @@ end)
 ]]
 function exapp.add_record(params, appid, callback)
     if not network_ready then
-        log.warn("db", "add_record: network not ready")
+        log.warn("exapp_database", "add_record: network not ready")
         if callback then callback(false, "当前无网络，请先连接WiFi") end
         return
     end
@@ -4098,9 +4101,9 @@ function exapp.add_record(params, appid, callback)
     end
     db_request("add", body, appid, function(success, result)
         if success then
-            log.info("db", "add_record ok")
+            log.info("exapp_database", "add_record ok")
         else
-            log.warn("db", "add_record failed", result)
+            log.warn("exapp_database", "add_record failed", result)
         end
         if callback then callback(success, result) end
     end)
@@ -4131,7 +4134,7 @@ end)
 ]]
 function exapp.list_record(params, appid, callback)
     if not network_ready then
-        log.warn("db", "list_record: network not ready")
+        log.warn("exapp_database", "list_record: network not ready")
         if callback then callback(false, "当前无网络，请先连接WiFi") end
         return
     end
@@ -4154,9 +4157,9 @@ function exapp.list_record(params, appid, callback)
     end
     db_request("list", body, appid, function(success, result)
         if success then
-            log.info("db", "list_record ok")
+            log.info("exapp_database", "list_record ok")
         else
-            log.warn("db", "list_record failed", result)
+            log.warn("exapp_database", "list_record failed", result)
         end
         if callback then callback(success, result) end
     end)
@@ -4179,12 +4182,12 @@ end)
 ]]
 function exapp.delete_record(params, appid, callback)
     if not network_ready then
-        log.warn("db", "delete_record: network not ready")
+        log.warn("exapp_database", "delete_record: network not ready")
         if callback then callback(false, "当前无网络，请先连接WiFi") end
         return
     end
     if not params.id then
-        log.warn("db", "delete_record: id is required")
+        log.warn("exapp_database", "delete_record: id is required")
         if callback then callback(false, "id为空") end
         return
     end
@@ -4194,9 +4197,9 @@ function exapp.delete_record(params, appid, callback)
     }
     db_request("delete", body, appid, function(success, result)
         if success then
-            log.info("db", "delete_record ok")
+            log.info("exapp_database", "delete_record ok")
         else
-            log.warn("db", "delete_record failed", result)
+            log.warn("exapp_database", "delete_record failed", result)
         end
         if callback then callback(success, result) end
     end)

@@ -44,7 +44,8 @@ enum {
     LUAT_AUDIO_DRIVER_STATE_ACTIVE,        /**< 激活状态 */
     LUAT_AUDIO_DRIVER_STATE_RUNNING,       /**< 运行状态 */
 
-    LUAT_AUDIO_DRIVER_MODE_PLAY = 0,       /**< 播放模式 */
+    LUAT_AUDIO_DRIVER_MODE_NONE = 0,       /**< 无模式 */
+    LUAT_AUDIO_DRIVER_MODE_PLAY,           /**< 播放模式 */
     LUAT_AUDIO_DRIVER_MODE_RECORD,         /**< 录音模式 */
     LUAT_AUDIO_DRIVER_MODE_CALL,           /**< 通话模式 */
     LUAT_AUDIO_DRIVER_MODE_CALL_WITH_BUFFER,/**< 通话带缓冲区模式 */

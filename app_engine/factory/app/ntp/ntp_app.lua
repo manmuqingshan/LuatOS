@@ -28,18 +28,18 @@ local ntp_servers = {
 打印时间信息的工具函数
 ]]
 local function print_time_detail()
-    log.info("ntp", "本地时间字符串", os.date())
-    log.info("ntp", "UTC时间字符串", os.date("!%c"))
-    log.info("ntp", "格式化本地时间字符串", os.date("%Y-%m-%d %H:%M:%S"))
-    log.info("ntp", "格式化UTC时间字符串", os.date("!%Y-%m-%d %H:%M:%S"))
+    log.info("ntp_app", "本地时间字符串", os.date())
+    log.info("ntp_app", "UTC时间字符串", os.date("!%c"))
+    log.info("ntp_app", "格式化本地时间字符串", os.date("%Y-%m-%d %H:%M:%S"))
+    log.info("ntp_app", "格式化UTC时间字符串", os.date("!%Y-%m-%d %H:%M:%S"))
 
     local rt = rtc.get()
-    log.info("ntp", "RTC时钟(UTC)", json.encode(rt))
-    log.info("ntp", "本地时间戳", os.time())
+    log.info("ntp_app", "RTC时钟(UTC)", json.encode(rt))
+    log.info("ntp_app", "本地时间戳", os.time())
 
     local lt = os.date("*t")
-    log.info("ntp", "本地时间结构", json.encode(lt))
-    log.info("ntp", "结构时间转时间戳", os.time(lt))
+    log.info("ntp_app", "本地时间结构", json.encode(lt))
+    log.info("ntp_app", "结构时间转时间戳", os.time(lt))
 end
 
 --[[
@@ -48,10 +48,10 @@ end
 local function print_high_precision_time()
     local nt = socket.ntptm()
     if nt and nt.tsec then
-        log.info("ntp", "高精度时间数据", json.encode(nt))
-        log.info("ntp", "高精度时间戳", string.format("%u.%03d", nt.tsec, nt.tms))
+        log.info("ntp_app", "高精度时间数据", json.encode(nt))
+        log.info("ntp_app", "高精度时间戳", string.format("%u.%03d", nt.tsec, nt.tms))
     else
-        log.warn("ntp", "高精度时间戳获取失败")
+        log.warn("ntp_app", "高精度时间戳获取失败")
     end
 end
 
@@ -68,14 +68,14 @@ local function ntp_sync_task()
     -- 先检查当前状态，避免IP_READY在waitUntil之前已发布导致永久等待
     -- 使用 sys.waitUntil 直接等待事件，避免每秒轮询
     if not socket.adapter(socket.dft()) then
-        log.info("ntp", "等待网络就绪...")
+        log.info("ntp_app", "等待网络就绪...")
         sys.waitUntil("IP_READY")
     end
-    log.info("ntp", "检测到IP_READY，默认网卡:", socket.dft())
+    log.info("ntp_app", "检测到IP_READY，默认网卡:", socket.dft())
 
     -- 网络就绪后开始NTP循环同步
     while true do
-        log.info("ntp", "开始NTP时间同步")
+        log.info("ntp_app", "开始NTP时间同步")
         -- 使用默认NTP服务器（ntp.aliyun.com）
         socket.sntp()
 
@@ -83,13 +83,13 @@ local function ntp_sync_task()
         local success = sys.waitUntil("NTP_UPDATE", 5000)
 
         if success then
-            log.info("ntp", "时间同步成功")
+            log.info("ntp_app", "时间同步成功")
             print_time_detail()
             print_high_precision_time()
             -- 同步成功后等待5分钟再次同步
             sys.wait(300 * 1000)
         else
-            log.warn("ntp", "时间同步失败，10秒后重试")
+            log.warn("ntp_app", "时间同步失败，10秒后重试")
             -- 同步失败等待10秒重试
             sys.wait(10 * 1000)
         end
@@ -98,7 +98,7 @@ end
 
 -- 订阅NTP错误消息
 sys.subscribe("NTP_ERROR", function(err_info)
-    log.error("ntp", "同步过程发生错误", err_info or "未知错误")
+    log.error("ntp_app", "同步过程发生错误", err_info or "未知错误")
 end)
 
 -- 启动NTP同步任务
