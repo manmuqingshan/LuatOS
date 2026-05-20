@@ -1,8 +1,8 @@
 --[[
-@module  take_photo_http_post
+@module  photo_to_aircloud
 @summary AirCAMERA_1050 gc0310摄像头拍照上传应用模块
 @version 1.0
-@date    2025.11.09
+@date    2026.5.19
 @author  陈取德
 @usage
 本demo主要使用AirCAMERA_1050 gc0310摄像头完成一次拍照上传任务
@@ -16,6 +16,10 @@ local httpplus = require "httpplus"
 local exmux = require "exmux"
 -- 导入excloud库
 local excloud = require "excloud"
+-- pm.ioVol(pm.IOVOL_ALL_GPIO, 2800) 
+
+-- 配置excloud参数
+local project_auth_key = "123456"
 
 -- 硬件I2C/SPI配置，当您使用合宙开发板时，请根据具体的开发板版本选择对应的变量，
 -- exmux库将会自动处理开发板上的I2C/SPI外设，确保总线通讯正常
@@ -29,9 +33,9 @@ local HARDWARE_ENV = "DEV_BOARD_8000_V2.0"
 -- 2、保存到内存文件系统中，路径名需指向/ram/文件夹
 -- 3、保存到内置FLASH文件系统中
 -- 选择其中一个即可，注释另两个路径变量
--- local save_method = "ZBUFF"
+local save_method = "ZBUFF"
 -- local save_method = "/ram/test.jpg"
-local save_method = "/test.jpg"
+-- local save_method = "/test.jpg"
 
 --[[
 excloud事件回调函数
@@ -98,11 +102,16 @@ local function excloud_task_func()
         sys.waitUntil("IP_READY", 1000)
     end
 
-    -- 配置excloud参数
+    -- 检查是否使用默认的示例key
+    if project_auth_key == "123" or project_auth_key == "123456" then
+        log.warn("photo_to_aircloud",
+            "请改为自己的key，如不知道对应key的可以查看main.lua 54-57行的指导进行添加key的操作")
+    end
+
     local ok, err_msg = excloud.setup({
         use_getip = true, -- 使用getip服务
         device_type = 1, -- 4G设备
-        auth_key = "sh5g0OTP7ThOSlGKmE5jiEMbOBqQWyw9", -- 认证密钥
+        auth_key = project_auth_key, -- 认证密钥
         transport = "tcp", -- 使用TCP传输
         auto_reconnect = true, -- 自动重连
         reconnect_interval = 10, -- 重连间隔(秒)
@@ -141,8 +150,6 @@ end
     4. 处理上传结果
 ]]
 function upload_image_fun(image)
-
-    -- 连接成功，等待图片数据
     if excloud.status().is_connected then
         log.info("开始上传图片")
         if image then
@@ -155,11 +162,10 @@ function upload_image_fun(image)
                 return false
             end
         else
-            log.warn("测试图片文件不存在")
+            log.warn("图片数据为空")
             return false
         end
     end
-    -- 连接断开，等待重连
     log.info("excloud连接已断开，等待重连")
     return false
 end
@@ -241,6 +247,15 @@ local function AirCAMERA_1050_func()
         sys.wait(30000)
     end
 end
+
+-- 按键触发函数，用于手动拍照拍照
+local function press_key()
+    log.info("boot press")
+    sys.publish("ONCE_CAPTURE")
+end
+-- 配置BOOT按键引脚为输入模式，下拉电阻，上升沿触发
+gpio.setup(0, press_key, gpio.PULLDOWN, gpio.RISING)
+gpio.debounce(0, 100, 1)
 
 -- 启动excloud连接任务
 sys.taskInit(excloud_task_func)

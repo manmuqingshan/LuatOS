@@ -4,23 +4,20 @@
 #include "luat_mem.h"
 #include "luat_fs.h"
 #include "luat_rtos.h"
-#include "luat_gpio.h"
 #include "luat_ndk.h"
+#include "luat_ndk_host.h"
 
 #define LUAT_LOG_TAG "ndk"
 #include "luat_log.h"
 
 static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t trap);
-static void ndk_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value);
-static void ndk_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *value);
-static uint32_t ndk_control_store(luat_ndk_t *ctx, uint32_t addy, uint32_t value);
 
 // mini-rv32ima configuration
 #define MINI_RV32_RAM_SIZE (ctx->ram_size)
 #define MINIRV32_POSTEXEC(pc, ir, trap) ndk_postexec(ctx, pc, ir, trap)
-#define MINIRV32_OTHERCSR_WRITE(csrno, value) ndk_othercsr_write(ctx, csrno, value)
-#define MINIRV32_OTHERCSR_READ(csrno, value) ndk_othercsr_read(ctx, csrno, &value)
-#define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( ndk_control_store(ctx, addy, val ) ) return val;
+#define MINIRV32_OTHERCSR_WRITE(csrno, value) luat_ndk_host_othercsr_write(ctx, csrno, value)
+#define MINIRV32_OTHERCSR_READ(csrno, value) luat_ndk_host_othercsr_read(ctx, csrno, &value)
+#define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( luat_ndk_host_control_store(ctx, addy, val ) ) return val;
 #define MINIRV32_STEPPROTO static int32_t MiniRV32IMAStep(luat_ndk_t *ctx, struct MiniRV32IMAState *state, uint8_t *image, uint32_t vProcAddress, uint32_t elapsedUs, int count)
 #define MINIRV32_IMPLEMENTATION
 #include "mini-rv32ima.h"
@@ -28,28 +25,80 @@ static uint32_t ndk_control_store(luat_ndk_t *ctx, uint32_t addy, uint32_t value
 #define NDK_DEFAULT_STEP_BUDGET 32768
 #define NDK_STEP_CHUNK 256
 #define NDK_DEFAULT_ELAPSED_US 100
-#define NDK_MAX_LOG_STR 120
+#define NDK_STOP_POLL_MS 10
+#define NDK_DEINIT_WAIT_MS 1000
 
-static inline bool ndk_addr_valid(luat_ndk_t *ctx, uint32_t addr, size_t len) {
-    if (!ctx) return false;
-    if (addr < MINIRV32_RAM_IMAGE_OFFSET) return false;
-    uint64_t start = (uint64_t)(addr - MINIRV32_RAM_IMAGE_OFFSET);
-    uint64_t end = start + len;
-    return end <= ctx->ram_size;
+static inline bool ndk_state_active(luat_ndk_state_t state) {
+    return state == LUAT_NDK_STATE_RUNNING || state == LUAT_NDK_STATE_STOPPING || state == LUAT_NDK_STATE_RESETTING;
 }
 
-static void ndk_log_string(luat_ndk_t *ctx, uint32_t guest_addr) {
-    if (!ctx) return;
-    if (!ndk_addr_valid(ctx, guest_addr, 1)) return;
-    uint32_t off = guest_addr - MINIRV32_RAM_IMAGE_OFFSET;
-    char tmp[NDK_MAX_LOG_STR + 1];
-    size_t i = 0;
-    for (; i < NDK_MAX_LOG_STR && off + i < ctx->ram_size; i++) {
-        tmp[i] = (char)ctx->ram[off + i];
-        if (tmp[i] == '\0') break;
+static inline int ndk_lock(luat_ndk_t *ndk) {
+    if (!ndk) return -1;
+    luat_rtos_mutex_t lock = NULL;
+    uint32_t critical = luat_rtos_entry_critical();
+    if (!ndk->lock || ndk->lock_closing) {
+        luat_rtos_exit_critical(critical);
+        return -1;
     }
-    tmp[i] = '\0';
-    LLOGI("vm: %s", tmp);
+    ndk->lock_refs++;
+    lock = ndk->lock;
+    luat_rtos_exit_critical(critical);
+    if (luat_rtos_mutex_lock(lock, LUAT_WAIT_FOREVER) != 0) {
+        critical = luat_rtos_entry_critical();
+        if (ndk->lock_refs) ndk->lock_refs--;
+        luat_rtos_exit_critical(critical);
+        return -1;
+    }
+    return 0;
+}
+
+static inline void ndk_unlock(luat_ndk_t *ndk) {
+    if (!ndk) return;
+    if (ndk->lock) {
+        luat_rtos_mutex_unlock(ndk->lock);
+    }
+    uint32_t critical = luat_rtos_entry_critical();
+    if (ndk->lock_refs) {
+        ndk->lock_refs--;
+    }
+    luat_rtos_exit_critical(critical);
+}
+
+static void ndk_init_fail_cleanup(luat_ndk_t *ndk) {
+    if (!ndk) return;
+    if (ndk->ram) {
+        luat_heap_free(ndk->ram);
+        ndk->ram = NULL;
+    }
+    if (ndk->core) {
+        luat_heap_free(ndk->core);
+        ndk->core = NULL;
+    }
+    if (ndk->image_path) {
+        luat_heap_free(ndk->image_path);
+        ndk->image_path = NULL;
+    }
+    ndk->worker = NULL;
+    ndk->thread_id = 0;
+    ndk->image_size = 0;
+    ndk->trap_pending = 0;
+    ndk->stop_request = 0;
+    ndk->lock_closing = 0;
+    ndk->lock_refs = 0;
+    ndk->state = LUAT_NDK_STATE_DEINIT;
+    if (ndk->lock) {
+        luat_rtos_mutex_delete(ndk->lock);
+        ndk->lock = NULL;
+    }
+}
+
+static bool ndk_should_stop(luat_ndk_t *ndk) {
+    bool stop = true;
+    if (!ndk) return true;
+    if (ndk_lock(ndk) != 0) return true;
+    stop = ndk->stop_request || ndk->state == LUAT_NDK_STATE_STOPPING || ndk->state == LUAT_NDK_STATE_DEINIT;
+    ndk_unlock(ndk);
+    return stop;
 }
 
 static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t trap) {
@@ -58,52 +107,6 @@ static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t tra
     if (!ctx || trap == 0) return;
     ctx->trap_pending = 1;
     ctx->last_trap = trap;
-}
-
-static void ndk_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value) {
-    if (!ctx) return;
-    switch (csrno) {
-    case 0x136:
-        LLOGI("vm num: %u", value);
-        break;
-    case 0x137:
-        LLOGI("vm ptr: 0x%08X", value);
-        break;
-    case 0x138:
-        ndk_log_string(ctx, value);
-        break;
-    case 0x200: {
-        uint32_t pin = value & 0xFFFF;
-        uint32_t level = (value >> 16) & 0x1;
-        luat_gpio_set(pin, level);
-        break;
-    }
-    default:
-        break;
-    }
-}
-
-static void ndk_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *value) {
-    if (!ctx || !value) return;
-    uint32_t tmp = 0;
-    switch (csrno) {
-    case 0x139:
-        *value = MINIRV32_RAM_IMAGE_OFFSET + ctx->exchange_offset;
-        break;
-    case 0x13A:
-        *value = (uint32_t)ctx->exchange_size;
-        break;
-    case 0x13B:
-        *value = (uint32_t)ctx->ram_size;
-        break;
-    case 0x201:
-        tmp = (*value) & 0xFFFF;
-        *value = (uint32_t)luat_gpio_get(tmp);
-        break;
-    default:
-        *value = 0; // 未知 CSR 返回0
-        break;
-    }
 }
 
 static void ndk_reset_core(luat_ndk_t *ndk) {
@@ -164,7 +167,6 @@ static int ndk_exec_inner(luat_ndk_t *ndk, uint32_t step_budget, uint32_t elapse
     int32_t ret = 0;
 
     ndk->trap_pending = 0;
-    ndk->stop_request = 0;
     ndk->last_mcause = 0;
     ndk->last_mtval = 0;
     ndk->last_trap = 0;
@@ -174,7 +176,7 @@ static int ndk_exec_inner(luat_ndk_t *ndk, uint32_t step_budget, uint32_t elapse
     uint32_t left = step_budget;
     int rc = LUAT_NDK_OK;
 
-    while (left > 0 && !ndk->trap_pending && !ndk->stop_request) {
+    while (left > 0 && !ndk->trap_pending && !ndk_should_stop(ndk)) {
         uint32_t chunk = left > NDK_STEP_CHUNK ? NDK_STEP_CHUNK : left;
         ret = MiniRV32IMAStep(ndk, ndk->core, ndk->ram, MINIRV32_RAM_IMAGE_OFFSET, elapsed_us, chunk);
         if (ret == 0x5555) {
@@ -184,7 +186,7 @@ static int ndk_exec_inner(luat_ndk_t *ndk, uint32_t step_budget, uint32_t elapse
         if (ndk->core->mcause) break;
     }
 
-    if (ndk->stop_request) {
+    if (ndk_should_stop(ndk)) {
         return LUAT_NDK_ERR_TIMEOUT;
     }
 
@@ -206,11 +208,21 @@ static int ndk_exec_inner(luat_ndk_t *ndk, uint32_t step_budget, uint32_t elapse
 int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exchange_size) {
     if (!ndk || !path) return LUAT_NDK_ERR_PARAM;
     memset(ndk, 0, sizeof(luat_ndk_t));
+    ndk->state = LUAT_NDK_STATE_DEINIT;
+    if (luat_rtos_mutex_create(&ndk->lock) != 0 || !ndk->lock) {
+        ndk->lock = NULL;
+        return LUAT_NDK_ERR_NOMEM;
+    }
+    ndk->state = LUAT_NDK_STATE_IDLE;
+    ndk->stop_request = 0;
+    ndk->lock_closing = 0;
+    ndk->lock_refs = 0;
 
     if (mem_size == 0) mem_size = LUAT_NDK_DEFAULT_RAM_SIZE;
     if (exchange_size == 0) exchange_size = LUAT_NDK_DEFAULT_EXCHANGE_SIZE;
 
     if (mem_size > LUAT_NDK_MAX_RAM_SIZE || exchange_size >= mem_size) {
+        ndk_init_fail_cleanup(ndk);
         return LUAT_NDK_ERR_PARAM;
     }
 
@@ -221,7 +233,7 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
     ndk->ram = luat_heap_malloc(ndk->ram_size);
     ndk->core = luat_heap_malloc(sizeof(MiniRV32IMAState));
     if (ndk->ram == NULL || ndk->core == NULL) {
-        luat_ndk_deinit(ndk);
+        ndk_init_fail_cleanup(ndk);
         return LUAT_NDK_ERR_NOMEM;
     }
     memset(ndk->ram, 0, ndk->ram_size);
@@ -230,7 +242,7 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
     size_t plen = strlen(path);
     ndk->image_path = luat_heap_malloc(plen + 1);
     if (ndk->image_path == NULL) {
-        luat_ndk_deinit(ndk);
+        ndk_init_fail_cleanup(ndk);
         return LUAT_NDK_ERR_NOMEM;
     }
     memcpy(ndk->image_path, path, plen);
@@ -238,7 +250,7 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
 
     int rc = ndk_load_image(ndk, path);
     if (rc != LUAT_NDK_OK) {
-        luat_ndk_deinit(ndk);
+        ndk_init_fail_cleanup(ndk);
         return rc;
     }
 
@@ -248,56 +260,180 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
 
 void luat_ndk_deinit(luat_ndk_t *ndk) {
     if (!ndk) return;
-    ndk->stop_request = 1;
-    if (ndk->worker) {
-        luat_rtos_task_sleep(10);
+    uint32_t critical = luat_rtos_entry_critical();
+    bool deinit_in_progress = ndk->lock && ndk->lock_closing;
+    luat_rtos_exit_critical(critical);
+    if (deinit_in_progress) {
+        uint32_t wait_left = NDK_DEINIT_WAIT_MS;
+        while (wait_left > 0) {
+            luat_rtos_task_sleep(NDK_STOP_POLL_MS);
+            if (wait_left >= NDK_STOP_POLL_MS) wait_left -= NDK_STOP_POLL_MS;
+            else wait_left = 0;
+            critical = luat_rtos_entry_critical();
+            bool done = ndk->lock == NULL;
+            luat_rtos_exit_critical(critical);
+            if (done) return;
+        }
+        return;
     }
-    if (ndk->ram) {
-        luat_heap_free(ndk->ram);
-        ndk->ram = NULL;
+
+    if (!ndk->lock) {
+        if (ndk->ram) {
+            luat_heap_free(ndk->ram);
+            ndk->ram = NULL;
+        }
+        if (ndk->core) {
+            luat_heap_free(ndk->core);
+            ndk->core = NULL;
+        }
+        if (ndk->image_path) {
+            luat_heap_free(ndk->image_path);
+            ndk->image_path = NULL;
+        }
+        ndk->worker = NULL;
+        ndk->state = LUAT_NDK_STATE_DEINIT;
+        ndk->stop_request = 0;
+        ndk->lock_closing = 0;
+        ndk->lock_refs = 0;
+        ndk->trap_pending = 0;
+        ndk->image_size = 0;
+        ndk->thread_id = 0;
+        return;
     }
-    if (ndk->core) {
-        luat_heap_free(ndk->core);
-        ndk->core = NULL;
+
+    int stop_rc = luat_ndk_stop_thread(ndk, NDK_DEINIT_WAIT_MS);
+    if (stop_rc == LUAT_NDK_ERR_TIMEOUT) {
+        LLOGE("deinit timeout waiting worker");
+        return;
     }
-    if (ndk->image_path) {
-        luat_heap_free(ndk->image_path);
-        ndk->image_path = NULL;
-    }
-    ndk->running = 0;
+
+    if (ndk_lock(ndk) != 0) return;
+    uint8_t *ram = ndk->ram;
+    MiniRV32IMAState *core = ndk->core;
+    char *image_path = ndk->image_path;
+    ndk->ram = NULL;
+    ndk->core = NULL;
+    ndk->image_path = NULL;
     ndk->worker = NULL;
+    ndk->state = LUAT_NDK_STATE_DEINIT;
+    ndk->stop_request = 0;
+    ndk->trap_pending = 0;
+    ndk->image_size = 0;
+    ndk->thread_id = 0;
+    ndk->lock_closing = 1;
+    ndk_unlock(ndk);
+
+    uint32_t wait_left = NDK_DEINIT_WAIT_MS;
+    while (wait_left > 0) {
+        critical = luat_rtos_entry_critical();
+        uint32_t lock_refs = ndk->lock_refs;
+        luat_rtos_exit_critical(critical);
+        if (lock_refs == 0) break;
+        luat_rtos_task_sleep(NDK_STOP_POLL_MS);
+        if (wait_left >= NDK_STOP_POLL_MS) {
+            wait_left -= NDK_STOP_POLL_MS;
+        } else {
+            wait_left = 0;
+        }
+    }
+    critical = luat_rtos_entry_critical();
+    luat_rtos_mutex_t lock = (ndk->lock_refs == 0) ? ndk->lock : NULL;
+    if (lock) {
+        ndk->lock = NULL;
+    }
+    luat_rtos_exit_critical(critical);
+    if (lock) {
+        luat_rtos_mutex_delete(lock);
+    }
+    else {
+        LLOGE("deinit timeout waiting lock refs");
+    }
+
+    if (ram) {
+        luat_heap_free(ram);
+    }
+    if (core) {
+        luat_heap_free(core);
+    }
+    if (image_path) {
+        luat_heap_free(image_path);
+    }
 }
 
 int luat_ndk_reset(luat_ndk_t *ndk) {
     if (!ndk) return LUAT_NDK_ERR_PARAM;
-    if (ndk->running) return LUAT_NDK_ERR_BUSY;
-    if (ndk->image_path == NULL || ndk->image_size == 0) return LUAT_NDK_ERR_IO;
-    return ndk_reload_image(ndk);
+    if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
+    if (ndk_state_active(ndk->state) || ndk->worker != NULL) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_BUSY;
+    }
+    if (ndk->state == LUAT_NDK_STATE_DEINIT || ndk->image_path == NULL || ndk->image_size == 0 || !ndk->ram || !ndk->core) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_IO;
+    }
+
+    ndk->state = LUAT_NDK_STATE_RESETTING;
+    int rc = ndk_reload_image(ndk);
+    if (ndk->state == LUAT_NDK_STATE_RESETTING) {
+        ndk->state = LUAT_NDK_STATE_IDLE;
+    }
+    ndk_unlock(ndk);
+    return rc;
 }
 
 int luat_ndk_set_data(luat_ndk_t *ndk, const void *data, size_t len, size_t offset) {
     if (!ndk || !data) return LUAT_NDK_ERR_PARAM;
-    if (offset >= ndk->exchange_size) return LUAT_NDK_ERR_PARAM;
+    if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
+    if (ndk->state == LUAT_NDK_STATE_DEINIT || !ndk->ram) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_PARAM;
+    }
+    if (offset >= ndk->exchange_size) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_PARAM;
+    }
     if (len > ndk->exchange_size - offset) len = ndk->exchange_size - offset;
     memcpy(ndk->ram + ndk->exchange_offset + offset, data, len);
+    ndk_unlock(ndk);
     return (int)len;
 }
 
 int luat_ndk_get_data(luat_ndk_t *ndk, void *out, size_t len, size_t offset, size_t *actual) {
     if (!ndk || !out) return LUAT_NDK_ERR_PARAM;
-    if (offset >= ndk->exchange_size) return LUAT_NDK_ERR_PARAM;
+    if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
+    if (ndk->state == LUAT_NDK_STATE_DEINIT || !ndk->ram) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_PARAM;
+    }
+    if (offset >= ndk->exchange_size) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_PARAM;
+    }
     if (len > ndk->exchange_size - offset) len = ndk->exchange_size - offset;
     memcpy(out, ndk->ram + ndk->exchange_offset + offset, len);
     if (actual) *actual = len;
+    ndk_unlock(ndk);
     return LUAT_NDK_OK;
 }
 
 int luat_ndk_exec(luat_ndk_t *ndk, uint32_t step_budget, uint32_t elapsed_us, int32_t *retval) {
     if (!ndk) return LUAT_NDK_ERR_PARAM;
-    if (ndk->running) return LUAT_NDK_ERR_BUSY;
-    ndk->running = 1;
+    if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
+    if (ndk->state != LUAT_NDK_STATE_IDLE || ndk->worker != NULL) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_BUSY;
+    }
+    ndk->state = LUAT_NDK_STATE_RUNNING;
+    ndk->stop_request = 0;
+    ndk_unlock(ndk);
     int rc = ndk_exec_inner(ndk, step_budget, elapsed_us, retval);
-    ndk->running = 0;
+    if (ndk_lock(ndk) == 0) {
+        if (ndk->state != LUAT_NDK_STATE_DEINIT) {
+            ndk->state = LUAT_NDK_STATE_IDLE;
+        }
+        ndk->stop_request = 0;
+        ndk_unlock(ndk);
+    }
     return rc;
 }
 
@@ -313,10 +449,21 @@ static void ndk_thread_entry(void *param) {
         luat_heap_free(arg);
         return;
     }
-    luat_rtos_task_handle handle = arg->ctx->worker;
-    ndk_exec_inner(arg->ctx, arg->step_budget, arg->elapsed_us, NULL);
-    arg->ctx->running = 0;
-    arg->ctx->worker = NULL;
+    luat_ndk_t *ctx = arg->ctx;
+    luat_rtos_task_handle handle = NULL;
+    if (ndk_lock(ctx) == 0) {
+        handle = ctx->worker;
+        ndk_unlock(ctx);
+    }
+    ndk_exec_inner(ctx, arg->step_budget, arg->elapsed_us, NULL);
+    if (ndk_lock(ctx) == 0) {
+        ctx->worker = NULL;
+        if (ctx->state != LUAT_NDK_STATE_DEINIT) {
+            ctx->state = LUAT_NDK_STATE_IDLE;
+            ctx->stop_request = 0;
+        }
+        ndk_unlock(ctx);
+    }
     luat_heap_free(arg);
     if (handle) {
         luat_rtos_task_delete(handle);
@@ -325,54 +472,79 @@ static void ndk_thread_entry(void *param) {
 
 int luat_ndk_start_thread(luat_ndk_t *ndk, uint32_t step_budget, uint32_t elapsed_us) {
     if (!ndk) return LUAT_NDK_ERR_PARAM;
-    if (ndk->running) return LUAT_NDK_ERR_BUSY;
+    if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
+    if (ndk->state != LUAT_NDK_STATE_IDLE || ndk->worker != NULL) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_BUSY;
+    }
     ndk_thread_arg_t *arg = luat_heap_malloc(sizeof(ndk_thread_arg_t));
-    if (!arg) return LUAT_NDK_ERR_NOMEM;
+    if (!arg) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_ERR_NOMEM;
+    }
     arg->ctx = ndk;
     arg->step_budget = step_budget;
     arg->elapsed_us = elapsed_us;
-    ndk->running = 1;
+    ndk->state = LUAT_NDK_STATE_RUNNING;
     ndk->stop_request = 0;
     int rc = luat_rtos_task_create(&ndk->worker, 2048, 60, "ndk", ndk_thread_entry, arg, 0);
     if (rc) {
-        ndk->running = 0;
+        ndk->state = LUAT_NDK_STATE_IDLE;
         ndk->worker = NULL;
+        ndk_unlock(ndk);
         luat_heap_free(arg);
         return LUAT_NDK_ERR_NOMEM;
     }
     static uint32_t g_thread_counter = 1;
     ndk->thread_id = g_thread_counter++;
-    return (int)ndk->thread_id;
+    uint32_t tid = ndk->thread_id;
+    ndk_unlock(ndk);
+    return (int)tid;
 }
 
 int luat_ndk_stop_thread(luat_ndk_t *ndk, uint32_t wait_ms) {
     if (!ndk) return LUAT_NDK_ERR_PARAM;
-    if (!ndk->running) return LUAT_NDK_OK;
-    ndk->stop_request = 1;
-    uint32_t wait_left = wait_ms;
-    while (ndk->running && wait_left > 0) {
-        luat_rtos_task_sleep(10);
-        if (wait_left >= 10) wait_left -= 10; else wait_left = 0;
+    if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_PARAM;
+    if (ndk->state == LUAT_NDK_STATE_DEINIT || (ndk->state == LUAT_NDK_STATE_IDLE && ndk->worker == NULL)) {
+        ndk_unlock(ndk);
+        return LUAT_NDK_OK;
     }
-    return ndk->running ? LUAT_NDK_ERR_TIMEOUT : LUAT_NDK_OK;
+    if (ndk->state == LUAT_NDK_STATE_RUNNING) {
+        ndk->state = LUAT_NDK_STATE_STOPPING;
+    }
+    ndk->stop_request = 1;
+    ndk_unlock(ndk);
+
+    uint32_t wait_left = wait_ms;
+    while (wait_left > 0) {
+        luat_rtos_task_sleep(NDK_STOP_POLL_MS);
+        if (wait_left >= NDK_STOP_POLL_MS) {
+            wait_left -= NDK_STOP_POLL_MS;
+        } else {
+            wait_left = 0;
+        }
+        if (ndk_lock(ndk) != 0) return LUAT_NDK_ERR_TIMEOUT;
+        bool done = (ndk->state == LUAT_NDK_STATE_DEINIT) || (ndk->state == LUAT_NDK_STATE_IDLE && ndk->worker == NULL);
+        if (done) {
+            ndk->stop_request = 0;
+            ndk_unlock(ndk);
+            return LUAT_NDK_OK;
+        }
+        ndk_unlock(ndk);
+    }
+
+    return LUAT_NDK_ERR_TIMEOUT;
 }
 
 bool luat_ndk_is_busy(luat_ndk_t *ndk) {
     if (!ndk) return false;
-    return ndk->running != 0;
+    if (ndk_lock(ndk) != 0) return true;
+    bool busy = ndk_state_active(ndk->state) || ndk->worker != NULL;
+    ndk_unlock(ndk);
+    return busy;
 }
 
 uint32_t luat_ndk_exchange_addr(const luat_ndk_t *ndk) {
     if (!ndk) return 0;
     return MINIRV32_RAM_IMAGE_OFFSET + ndk->exchange_offset;
-}
-
-static uint32_t ndk_control_store(luat_ndk_t *ctx, uint32_t addy, uint32_t value) {
-    if (addy == 0x11100000) {
-        LLOGD("Control Store: set val to %08X", value);
-        ctx->core->pc = ctx->core->pc + 4;
-        return value;
-    }
-    LLOGD("Control Store: unknown addy %08X val %08X", addy, value);
-    return 0;
 }

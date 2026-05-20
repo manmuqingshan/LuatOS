@@ -10,7 +10,7 @@
 
 5、netdrv_eth_spi.lua：网络驱动设备功能模块，通过以太网SPI网卡驱动，SPI接口连接CH390H芯片实现有线网络连接；
 
-6、netdrv_wifi.lua：WiFi STA模式网卡驱动，连接外部WiFi路由器；(注意：当前netdrv_wifi还不能使用)
+6、netdrv_wifi.lua：WiFi STA模式网卡驱动，连接外部WiFi路由器；
 
 ## 演示功能概述
 

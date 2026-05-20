@@ -565,7 +565,11 @@ local function sip_task(opts)
             session = nil
         }
     }
-    log.info("sip", "state initialized, call_timeout =", state.call_timeout, "opts.call_timeout =", opts.call_timeout)
+    log.info("sip", "SIP task uses locked adapter:", state.locked_adapter, "transport:", state.sip_transport)
+    if not state.locked_adapter then
+        state.locked_adapter = socket.dft()
+        log.info("sip", "locked_adapter initialized to default:", state.locked_adapter)
+    end
 
     local function copy_headers(headers)
         local out = {}
@@ -1020,7 +1024,7 @@ local function sip_task(opts)
         if event == socket.ON_LINE then
             -- ON_LINE: TCP/UDP connect 完成（或 DNS 完成），可以发 REGISTER
             -- 尝试获取本地IP填Contact
-            local ip = socket.localIP()
+            local ip = socket.localIP(state.current_adapter)
             if type(ip) == "string" and #ip > 0 then
                 state.local_ip = ip
             end
@@ -1029,6 +1033,7 @@ local function sip_task(opts)
             state.branch = gen_token("br")
             state.cseq = 1
             state.auth_tried = 0
+            state.last_www = nil
 
             local req = build_register(state, nil)
             log.info("sip", "send REGISTER", state.sip_server_addr, state.sip_server_port)
@@ -1583,34 +1588,101 @@ local function sip_task(opts)
         end
     end
 
+    -- 维护可用网卡表
+    local ready_adapters = {}
+
+    local function ip_ready_handler(ip, adapter)
+        log.info("sip", "IP_READY", adapter)
+        ready_adapters[adapter] = true
+    end
+
+    local function ip_lose_handler(adapter)
+        log.info("sip", "IP_LOSE", adapter)
+        ready_adapters[adapter] = nil
+        local current_adapter = (state.dialog or state.incoming_invite) and state.locked_adapter or socket.dft()
+        if adapter == current_adapter then
+            emit_event(SIP_EVENT.ERROR, "network_changed", {
+                reason = "current_adapter_lost",
+                adapter = adapter
+            })
+            if state.netc then
+                sys.publish(TOPIC_DISCONNECT)
+            end
+        end
+    end
+
+    -- 初始化已就绪网卡表（补偿订阅前已发出的 IP_READY）
+    for _, adapter_id in ipairs({socket.LWIP_GP, socket.LWIP_STA, socket.LWIP_ETH, socket.LWIP_USER1, socket.LWIP_GP_GW}) do
+        if socket.adapter(adapter_id) then
+            ready_adapters[adapter_id] = true
+        end
+    end
+
+    sys.subscribe("IP_READY", ip_ready_handler)
+    sys.subscribe("IP_LOSE", ip_lose_handler)
+
+    -- 订阅网络状态变化，非通话时若默认网卡变化则主动触发重连
+    local function network_status_handler(net_type, adapter)
+        if state.dialog or state.incoming_invite then
+            return
+        end
+        if adapter ~= state.current_adapter and state.netc then
+            log.info("sip", "default network changed from", state.current_adapter, "to", adapter, ", trigger reconnect")
+            sys.publish(TOPIC_DISCONNECT)
+        end
+    end
+    sys.subscribe("EXLIB_NETDRV_NETWORK_STATUS", network_status_handler)
+
     -- 外层重连循环：只要未显式 stop，断线后就会等待 3 秒重连。
     while true do
-        -- 使用锁定的适配器（第一次启动时的网卡）重连，保证在停止前不会切换网卡
-        log.info("sip", "creating socket with locked adapter:", state.locked_adapter, "original opts.adapter:", opts.adapter)
-        local netc = socket.create(state.locked_adapter, netCB)
-        state.netc = netc
-        socket.config(netc, state.local_port, (state.sip_transport == "udp"))
-
-        local succ = socket.connect(netc, state.sip_server_addr, state.sip_server_port)
-        if not succ then
-            log.warn("sip", "connect start failed, retry")
-            socket.close(netc)
-            socket.release(netc)
-            sys.wait(3000)
+        local adapter_to_use
+        if state.dialog or state.incoming_invite then
+            -- 来电/拨号/通话中：锁定为建立 SIP 时的网卡
+            adapter_to_use = state.locked_adapter
         else
-            sys.waitUntil(TOPIC_DISCONNECT)
-            stop_reg_timer()
-            -- 断开连接时强制停止所有通话定时器，防止旧task的定时器泄漏到新实例
-            stop_all_call_timers()
-            socket.close(netc)
-            socket.release(netc)
-            state.netc = nil
+            -- 空闲/注册中：跟随当前默认网卡
+            adapter_to_use = socket.dft()
+        end
+
+        state.current_adapter = adapter_to_use
+
+        if not ready_adapters[adapter_to_use] then
+            log.info("sip", "adapter not ready, waiting for IP_READY:", adapter_to_use)
+            sys.wait(1000)
             if g_stop then
                 break
             end
-            sys.wait(3000)
+        else
+            log.info("sip", "creating socket with adapter:", adapter_to_use, "locked_adapter:", state.locked_adapter)
+            local netc = socket.create(adapter_to_use, netCB)
+            state.netc = netc
+            socket.config(netc, state.local_port, (state.sip_transport == "udp"))
+
+            local succ = socket.connect(netc, state.sip_server_addr, state.sip_server_port)
+            if not succ then
+                log.warn("sip", "connect start failed, retry")
+                socket.close(netc)
+                socket.release(netc)
+                sys.wait(3000)
+            else
+                sys.waitUntil(TOPIC_DISCONNECT)
+                stop_reg_timer()
+                -- 断开连接时强制停止所有通话定时器，防止旧task的定时器泄漏到新实例
+                stop_all_call_timers()
+                socket.close(netc)
+                socket.release(netc)
+                state.netc = nil
+                if g_stop then
+                    break
+                end
+                sys.wait(3000)
+            end
         end
     end
+
+    sys.unsubscribe("IP_READY", ip_ready_handler)
+    sys.unsubscribe("IP_LOSE", ip_lose_handler)
+    sys.unsubscribe("EXLIB_NETDRV_NETWORK_STATUS", network_status_handler)
 
     emit_lifecycle("stopped", {})
 end

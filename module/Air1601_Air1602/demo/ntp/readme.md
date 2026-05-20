@@ -2,7 +2,7 @@
 
 1、main.lua：主程序入口；
 
-2、netdrv_device.lua：网卡驱动设备，可以配置使用netdrv文件夹内的五种网卡(单4g网卡，单wifi网卡，单spi以太网卡，多网卡，pc模拟器上的网卡)中的任何一种网卡；(注意：当前netdrv_wifi还不能使用)
+2、netdrv_device.lua：网卡驱动设备，可以配置使用netdrv文件夹内的五种网卡(单4g网卡，单wifi网卡，单spi以太网卡，多网卡，pc模拟器上的网卡)中的任何一种网卡；
 
 3、netdrv文件夹：五种网卡，单4g网卡、单wifi网卡，、单spi以太网卡、多网卡、pc模拟器上的网卡，供netdrv_device.lua加载配置；
 
@@ -40,24 +40,17 @@
 
 4、使用以太网网络接线方式请参考如下文档以太网章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
 
+5、使用wifi airlink网络方式请参考如下文档wifi章节[1601开发板使用说明](https://docs.openluat.com/air1601/product/file/Air1601%E5%BC%80%E5%8F%91%E6%9D%BF%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.pdf)
+
 ## 演示软件环境
 
 1、 Luatools下载调试工具
 
 2、[Air1601 V1012版本固件](https://docs.openluat.com/air1601/luatos/firmware/)（理论上，2026年4月17日之后发布的固件都可以）
 
-3、 脚本文件：
-   main.lua
+3、[Air780EPM V2034版本 8号固件](https://docs.openluat.com/air780epm/luatos/firmware/780epm_version/)（理论上，2026年5月14日之后发布的固件都可以）
 
-   ntp_test.lua
-
-   netdrv_device.lua
-
-   netdrv文件夹
-
-4、 pc 系统 win11（win10 及以上）
-
-
+4、[Air6205 V1022版本固件](https://docs.openluat.com/air6205/product/firmware/)（理论上，2026年4月23日之后发布的固件都可以）
 
 ## 演示核心步骤
 
@@ -67,11 +60,11 @@
 
 * 如果需要单4G网卡，打开require "netdrv_4g"，其余注释掉
 
-* 如果需要单WIFI STA网卡，打开require "netdrv_wifi"，其余注释掉；同时netdrv_wifi.lua中的wlan.connect("茶室-降功耗,找合宙!", "Air123456", 1)，前两个参数，修改为自己测试时wifi热点的名称和密码；注意：仅支持2.4G的wifi，不支持5G的wifi(注意：当前netdrv_wifi还不能使用)
+* 如果需要单WIFI STA网卡，打开require "netdrv_wifi"，其余注释掉；同时netdrv_wifi.lua中的wlan.connect("茶室-降功耗,找合宙!", "Air123456", 1)，前两个参数，修改为自己测试时wifi热点的名称和密码；注意：仅支持2.4G的wifi，不支持5G的wifi
 
 * 如果需要以太网卡，打开require "netdrv_eth_spi"，其余注释掉
 
-* 如果需要多网卡，打开require "netdrv_multiple"，其余注释掉；同时netdrv_multiple.lua中的ssid = "茶室-降功耗,找合宙!", password = "Air123456", 修改为自己测试时wifi热点的名称和密码；注意：仅支持2.4G的wifi，不支持5G的wifi(注意：当前netdrv_wifi还不能使用)
+* 如果需要多网卡，打开require "netdrv_multiple"，其余注释掉；同时netdrv_multiple.lua中的ssid = "茶室-降功耗,找合宙!", password = "Air123456", 修改为自己测试时wifi热点的名称和密码；注意：仅支持2.4G的wifi，不支持5G的wifi
 
 3、如果使用自定义NTP服务器 地址，脚本文件ntp_test.lua中，在ntp_servers表中修改为自己的服务器地址，并在sntp_sync_loop()函数中，注释sntp时间同步方式2，打开方式1
 

@@ -20,6 +20,8 @@ local eth_adapter = socket.LWIP_USER1 -- 以太网网卡适配器编号
 wlan.init()
 
 local function eth_lan_setup()
+    sys.wait(1000) -- 确保ch390初始化完成,否则会出现netdrv.ipv4设置失败的情况
+    
     -- 使用8101核心板+AirETH以太网扩展板测试
     log.info("ch390", "打开LDO供电")
     gpio.setup(13, 1, gpio.PULLUP) -- 打开ch390供电
@@ -44,18 +46,17 @@ local function eth_lan_setup()
         cs = 15,
         irq = 8
     })
+    
+    -- 设置ip, 子网掩码，网关
+    local ipv4, mark, gw = netdrv.ipv4(eth_adapter, "192.168.4.1", "255.255.255.0", "192.168.4.1")
+    log.info("ipv4", ipv4, mark, gw)
+    -- 开启dhcp服务器
+    dhcpsrv.create({
+        adapter = eth_adapter
+    })
+    -- 设置dns转发
+    dnsproxy.setup(eth_adapter, socket.LWIP_STA)
 end
--- 确保ch390初始化完成,否则会出现netdrv.ipv4设置失败的情况
-sys.wait(1000)
--- 设置ip, 子网掩码，网关
-local ipv4, mark, gw = netdrv.ipv4(eth_adapter, "192.168.4.1", "255.255.255.0", "192.168.4.1")
-log.info("ipv4", ipv4, mark, gw)
--- 开启dhcp服务器
-dhcpsrv.create({
-    adapter = eth_adapter
-})
--- 设置dns转发
-dnsproxy.setup(eth_adapter, socket.LWIP_STA)
 
 local function wifi_sta_ap_setup()
     log.info("执行AP创建操作")

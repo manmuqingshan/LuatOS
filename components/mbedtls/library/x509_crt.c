@@ -3013,6 +3013,41 @@ static int x509_crt_check_cn( const mbedtls_x509_buf *name,
 }
 
 /*
+ * Parse a dotted-quad IPv4 string to binary (like inet_pton for AF_INET).
+ * Returns 0 on success, -1 on failure.
+ */
+static int x509_inet_pton_ipv4( const char *src, void *dst )
+{
+    unsigned char *ip = (unsigned char *) dst;
+    int i, val;
+    char c;
+    size_t len = strlen( src );
+
+    if( len < 7 || len > 15 )
+        return( -1 );
+
+    for( i = 0; i < 4; i++ )
+    {
+        val = 0;
+        while( ( c = *src ) >= '0' && c <= '9' )
+        {
+            val = val * 10 + ( c - '0' );
+            if( val > 255 )
+                return( -1 );
+            src++;
+        }
+        ip[i] = (unsigned char) val;
+
+        if( i < 3 && *src != '.' )
+            return( -1 );
+        if( i < 3 )
+            src++;
+    }
+
+    return( *src == '\0' ? 0 : -1 );
+}
+
+/*
  * Check for SAN match, see RFC 5280 Section 4.2.1.6
  */
 static int x509_crt_check_san( const mbedtls_x509_buf *name,
@@ -3025,7 +3060,14 @@ static int x509_crt_check_san( const mbedtls_x509_buf *name,
     if( san_type == MBEDTLS_X509_SAN_DNS_NAME )
         return( x509_crt_check_cn( name, cn, cn_len ) );
 
-    /* (We may handle other types here later.) */
+    /* iPAddress: parse cn as IPv4 and compare with SAN binary data */
+    if( san_type == MBEDTLS_X509_SAN_IP_ADDRESS )
+    {
+        unsigned char ip_bin[4];
+        if( name->len == 4 && x509_inet_pton_ipv4( cn, ip_bin ) == 0 &&
+            memcmp( name->p, ip_bin, 4 ) == 0 )
+            return( 0 );
+    }
 
     /* Unrecognized type */
     return( -1 );

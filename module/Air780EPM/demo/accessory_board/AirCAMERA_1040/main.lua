@@ -51,8 +51,8 @@ require "netdrv_4g"
 require "gc032a"
 
 -- 拍照和扫描模式需要在初始化时确认，导入对应模式的DEMO后注释另一个DEMO，拍照和扫描不可同时使用
---[[ 导入photo_to_aircloud拍照上传应用DEMO，该DEMO上传照片至aircloud平台，需要先配置photo_to_aircloud.lua中105行的 auth_key ，否则会报错
-        auth_key：aircloud应用的认证密钥，用于验证上传请求的合法性
+--[[ 导入photo_to_aircloud拍照上传应用DEMO，该DEMO上传照片至aircloud平台，需要先配置photo_to_aircloud.lua中32行的 project_auth_key ，否则会报nil
+        project_auth_key：aircloud应用的认证密钥，用于验证上传请求的合法性
         获取方式为：登录iot.openluat.com，点击”我的项目“，找到您所使用的模块对应的项目，即可复制项目KEY
         当您的模块没有在您的账号下时，请参考https://docs.openluat.com/air780epm/product/attributioniot/ 处理办法，获取项目KEY]] --
 require "photo_to_aircloud"

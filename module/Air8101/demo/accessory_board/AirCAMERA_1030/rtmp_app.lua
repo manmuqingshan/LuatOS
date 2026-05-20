@@ -21,11 +21,11 @@ local function rtmp_http_request()
     local get_device_id = netdrv.mac(socket.LWIP_STA) -- Air8101用STA MAC作为设备ID
     log.info("打印设备的ID号", get_device_id)
 
-    local url = "http://video.luatos.com:10030/api-system/deviceVideo/get" .. "/" .. get_device_id
+    local url = "https://video.luatos.com/api-system/deviceVideo/get" .. "/" .. get_device_id
     log.info("打印的URL", url)
     local camera_header = {
         ["Accept-Encoding"] = "identity",
-        ["Host"] = "video.luatos.com:10030",
+        ["Host"] = "video.luatos.com",
         ["Content-Type"] = "application/json"
     }
     local post_body = {

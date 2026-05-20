@@ -16,11 +16,12 @@
 
 -- 配置项键名
 local CONFIG_KEYS = {
-    DEVICE_NAME     = "device_name",
-    IOT_ACCOUNT     = "iot_account",
-    IOT_PASSWORD    = "iot_password",
-    IOT_NICKNAME    = "iot_nickname",
-    IOT_LOGIN_TIME  = "iot_login_time"
+    DEVICE_NAME      = "device_name",
+    IOT_ACCOUNT      = "iot_account",
+    IOT_PASSWORD     = "iot_password",
+    IOT_NICKNAME     = "iot_nickname",
+    IOT_LOGIN_TIME   = "iot_login_time",
+    STORAGE_PRIORITY = "storage_priority",
 }
 
 -- 默认值（不在此处定义，动态生成）
@@ -160,6 +161,38 @@ sys.subscribe("CONFIG_SET_DEVICE_NAME", function(name)
         set_device_name(name)
     else
         log.warn("settings_config", "设置设备名称失败，名称无效")
+    end
+end)
+
+-- ==================== 存储优先级 ====================
+
+-- 订阅获取存储优先级事件
+sys.subscribe("STORAGE_PRIORITY_GET", function()
+    local priority_str = get_config(CONFIG_KEYS.STORAGE_PRIORITY)
+    local priority_list = {}
+    if priority_str and priority_str ~= "" then
+        local ok, parsed = pcall(json.decode, priority_str)
+        if ok and type(parsed) == "table" then
+            priority_list = parsed
+        end
+    end
+    if #priority_list == 0 then
+        priority_list = { "sd_tf", "little_flash", "internal" }
+    end
+    sys.publish("STORAGE_PRIORITY_VALUE", priority_list)
+    log.info("settings_config", "上报存储优先级", json.encode(priority_list))
+end)
+
+-- 订阅设置存储优先级事件
+sys.subscribe("STORAGE_PRIORITY_SET", function(priority_list)
+    if type(priority_list) ~= "table" or #priority_list == 0 then
+        log.warn("settings_config", "无效的存储优先级配置")
+        return
+    end
+    local ok = set_config(CONFIG_KEYS.STORAGE_PRIORITY, json.encode(priority_list))
+    if ok then
+        log.info("settings_config", "存储优先级已更新", json.encode(priority_list))
+        sys.publish("STORAGE_PRIORITY_CHANGED", priority_list)
     end
 end)
 

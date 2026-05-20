@@ -1,4 +1,6 @@
 
+local exsip = require "exsip"
+
 local g_tag = "sip_app_key"
 local g_sip_app_ready = false
 local g_sip_incoming = false
@@ -61,7 +63,8 @@ local function disconnected_ind()
 end
 
 local function incoming_ind()
-    log.info(g_tag, "呼入中")
+    local incoming_number = exsip.get_current_call()
+    log.info(g_tag, "呼入中，来电号码：", incoming_number)
     g_sip_incoming = true
 end
 

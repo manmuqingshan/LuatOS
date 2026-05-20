@@ -1,7 +1,6 @@
 #include "luat_base.h"
-#include "luat_lcd.h"
-#include "luat_mem.h"
 #include "luat_image.h"
+#include "luat_image_decoders_internal.h"
 
 #define LUAT_LOG_TAG "image"
 #include "luat_log.h"
@@ -322,4 +321,3 @@ int luat_image_decode(luat_img_conf_t* img_conf, uint8_t *in_buf, size_t size, l
     }
     return opts->decode(in_buf, size, img_info);
 }
-

@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  app_main
 @summary 应用主入口模块，负责加载所有功能模块

@@ -1,14 +1,17 @@
+
 /*
- * luat_lib_voip.c - VoIP 模块 Lua 绑定
- *
- * 对外提供 voip 模块:
- *   voip.start(opts)     -- 启动 VoIP 音频引擎
- *   voip.stop()          -- 停止
- *   voip.on(event, cb)   -- 注册回调
- *   voip.stats()         -- 获取统计信息
- *   voip.isRunning()     -- 是否运行中
- *   voip.getState()      -- 获取状态
- */
+@module  voip
+@summary voip语音通话
+@catalog 多媒体
+@version 1.0
+@date    2026.05.18
+@demo sip
+@tag LUAT_USE_VOIP
+@usage
+--[[
+]]
+
+*/
 
 #include "luat_base.h"
 #include "luat_mem.h"
@@ -21,12 +24,11 @@
 #include <string.h>
 
 /*
+启动voip语音通话
 @api voip.start(opts)
-@tag LUAT_USE_VOIP
 @table opts 配置表
 @return boolean 成功返回 true, 失败返回 false
 @usage
--- 麦克风全双工模式
 voip.start({
     remote_ip   = "192.168.1.100",
     remote_port = 10000,
@@ -138,8 +140,8 @@ static int l_voip_start(lua_State *L)
 }
 
 /*
+停止voip语音通话
 @api voip.stop()
-@tag LUAT_USE_VOIP
 @return boolean 成功返回 true
 @usage
 voip.stop()
@@ -153,8 +155,8 @@ static int l_voip_stop(lua_State *L)
 }
 
 /*
+注册voip回调函数
 @api voip.on(event, callback)
-@tag LUAT_USE_VOIP
 @string event 事件名: "state", "stats", "error"
 @function callback 回调函数
 @return nil
@@ -208,8 +210,8 @@ static int l_voip_on(lua_State *L)
 }
 
 /*
+获取voip统计信息
 @api voip.stats()
-@tag LUAT_USE_VOIP
 @return table 统计信息
 @usage
 local s = voip.stats()
@@ -234,8 +236,8 @@ static int l_voip_stats(lua_State *L)
 }
 
 /*
+获取voip是否正在运行
 @api voip.isRunning()
-@tag LUAT_USE_VOIP
 @return boolean 是否正在运行
 @usage
 if voip.isRunning() then
@@ -249,8 +251,8 @@ static int l_voip_is_running(lua_State *L)
 }
 
 /*
+获取voip当前状态
 @api voip.getState()
-@tag LUAT_USE_VOIP
 @return string 状态字符串: "idle"/"starting"/"running"/"stopping"/"error"
 @usage
 log.info("voip", "state:", voip.getState())

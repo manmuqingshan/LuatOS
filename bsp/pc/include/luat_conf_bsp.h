@@ -170,9 +170,18 @@
 // 视频播放器(默认mjpeg播放)
 #define LUAT_USE_VIDEOPLAYER 1
 // 视频播放器支持mp4播放
-#define LUAT_USE_MP4PLAYER 1
+// 注意: LUAT_USE_MP4PLAYER 由 xmake 动态控制（基于 luatos-ext-components/vedio_player 的存在性）
+// 请勿在此处硬编码，否则会导致编译配置与实际编译状态不一致
+// #define LUAT_USE_MP4PLAYER 1
 // videoplayer软解依赖TJPGD, 需在GUI块外启用
 #define LUAT_USE_TJPGD
+
+// U8G2 在 GUI/非 GUI PC 构建中都需要保留。
+#define LUAT_USE_U8G2 1
+#ifndef LUAT_USE_GUI
+// EINK 仅在非 GUI PC 构建中启用，对齐 xmake 的非 GUI 源码范围。
+#define LUAT_USE_EINK 1
+#endif
 
 #define LUAT_USE_WEBP 1
 
@@ -211,14 +220,10 @@
 #define LUAT_CONF_USE_HZFONT_BUILTIN_TTF 1
 // pinyin 拼音库支持
 #define LUAT_USE_PINYIN 1
-// EINK 是墨水屏
-// #define LUAT_USE_EINK
-
 //---------------------
 // U8G2
 // 单色屏, 支持i2c/spi
 // #define LUAT_USE_DISP
-#define LUAT_USE_U8G2
 
 /**************FONT*****************/
 // #define LUAT_USE_FONTS

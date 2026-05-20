@@ -1,4 +1,4 @@
--- nconv: var2-4 fn2-5 tag-short
+
 --[[
 @module  settings_about_app
 @summary 关于设备业务逻辑层

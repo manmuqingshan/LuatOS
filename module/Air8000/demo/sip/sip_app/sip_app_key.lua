@@ -1,8 +1,9 @@
 
+local exsip = require "exsip"
+
 local g_tag = "sip_app_key"
 local g_sip_app_ready = false
 local g_sip_incoming = false
-local exsip = require "exsip"
 
 
 

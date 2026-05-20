@@ -29,11 +29,9 @@
  * 通过通道选择机制实现单输出切换。
  */
 struct luat_audio_channel {
-    luat_fifo_t *play_fifo;                    /**< 播放数据FIFO缓冲区 */
-    luat_fifo_t *record_fifo;                  /**< 录音数据FIFO缓冲区 */
-    luat_fifo_t *forward_fifo;                 /**< 转发数据FIFO缓冲区（用于音频转发） */
-    uint32_t play_fifo_need_data_level;        /**< 播放缓存需要更多数据的临界点 */
-    uint32_t record_fifo_enough_data_level;      /**< 录放缓存有足够数据可以处理的临界点 */
+    luat_fifo_t *play_fifo;                    /**< 播放数据FIFO缓冲区，只能在驱动回调的中断里读出，只有1个消费者 */
+    uint32_t play_fifo_low_level;        /**< 播放缓存低水位, 默认为播放缓冲区大小的25%时, 触发数据请求 */
+    uint32_t play_fifo_high_level;        /**< 播放缓存高水位, 不再解码数据 */
     void *play_lock_mutex;                          /**< 播放数据写入保护 */
     struct luat_audio_driver_ctrl *driver_ctrl; /**< 关联的音频驱动控制器指针 */
     struct luat_audio_request_block *play_request_block;   /**< 当前播放请求块指针 */
@@ -44,35 +42,34 @@ struct luat_audio_channel {
     uint8_t error_record_overflow;             /**< 录音溢出错误标志位 */
     uint8_t data_align;                        /**< 数据对齐方式（2=16位, 3=24位, 4=32位, 其他8位） */
     uint8_t blank_data_cnt;                    /**< 空数据计数，用于记录播放时的空数据数量 */
+    uint8_t record_jump_cnt;
 };
 typedef struct luat_audio_channel luat_audio_channel_t;
 
 /**
- * @brief 初始化音频通道
+ * @brief 创建音频通道的FIFO缓冲区
  * @param channel 音频通道指针，必须指向有效的 luat_audio_channel_t 结构
- * @return int 成功返回 0，失败返回负值错误码
+ * @param play_fifo_size_power 播放FIFO缓冲区大小，必须是2的幂次方
+ * @param low_level 播放缓存低水位, 默认为播放缓冲区大小的25%时, 触发数据请求
+ * @param high_level 播放缓存高水位, 不再解码数据
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回其他错误码
  * 
- * 此函数会创建互斥锁。
- * 调用前确保 channel 指针有效且未被初始化过。
- * 初始化后的通道状态为停止状态。
  */
-int luat_audio_channel_init(luat_audio_channel_t *channel, uint32_t fifo_size_power);
+int luat_audio_channel_create_fifo(luat_audio_channel_t *channel, uint32_t play_fifo_size_power, uint32_t low_level, uint32_t high_level);
 
 /**
- * @brief 反初始化音频通道
+ * @brief 销毁音频通道的FIFO缓冲区
  * @param channel 音频通道指针，必须指向有效的 luat_audio_channel_t 结构
- * @return int 成功返回 0，失败返回负值错误码
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回其他错误码
  * 
- * 此函数会释放音频通道占用的资源，包括互斥锁和FIFO缓冲区。
- * 调用前确保 channel 指针有效且已被初始化。
  */
-int luat_audio_channel_deinit(luat_audio_channel_t *channel);
+int luat_audio_channel_destroy_fifo(luat_audio_channel_t *channel);
 
 /**
  * @brief 播放音频通道数据
  * @param channel 音频通道指针，必须指向有效的 luat_audio_channel_t 结构
  * @param is_play 是否播放（1=播放，0=停止）
- * @return int 成功返回 0，失败返回负值错误码
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回其他错误码
  * 
  * 此函数会根据 is_play 参数判断是否播放音频数据。
  * 调用前确保 channel 指针有效且已被初始化。
@@ -83,7 +80,7 @@ int luat_audio_channel_play(luat_audio_channel_t *channel, uint8_t is_play);
  * @brief 录音音频通道数据
  * @param channel 音频通道指针，必须指向有效的 luat_audio_channel_t 结构
  * @param record_state 录音状态（0=停止, 1=录音, 2=转发）
- * @return int 成功返回 0，失败返回负值错误码
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回其他错误码
  * 
  * 此函数会根据 record_state 参数判断是否录音音频数据。
  * 调用前确保 channel 指针有效且已被初始化。
@@ -99,7 +96,7 @@ int luat_audio_channel_record(luat_audio_channel_t *channel, uint8_t record_stat
  * @param is_signed 是否有符号（1=有符号，0=无符号）
  * @param data_align 数据对齐方式（2=16位, 3=24位, 4=32位）
  * @param channel_nums 通道数（1=单声道, 2=双声道）
- * @return int 成功返回 0，失败返回负值错误码
+ * @return int 成功返回 LUAT_ERROR_NONE，失败返回其他错误码
  * 
  * 此函数会将指定的音频数据写入音频通道的播放FIFO缓冲区。
  * 调用前确保 channel 指针有效且已被初始化。

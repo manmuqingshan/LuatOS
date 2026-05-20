@@ -16,11 +16,14 @@ local BASE_URL = "http://speed.cloudflare.com"
 local is_testing = false
 local network_connected = false
 local cancel_requested = false
-local TIME_FACTOR_MS = 1
 
-local bsp = rtos.bsp()
-if string.find(bsp, "Air1601") or string.find(bsp, "Air1602") then
-    TIME_FACTOR_MS = 20
+--[[
+ticks 转毫秒：使用 mcu.hz() 动态获取 tick 频率，无需硬编码 TIME_FACTOR_MS
+]]
+local function ticks_to_ms(diff_ticks)
+    local hz = mcu.hz() or 1
+    if hz <= 0 then hz = 1 end
+    return diff_ticks * 1000 / hz
 end
 
 --[[
@@ -39,7 +42,7 @@ local function measure_latency_jitter()
             local code, headers, body = response.wait()
             local end_ticks = mcu.ticks()
             if code == 200 then
-                local rtt = (end_ticks - start_ticks) * TIME_FACTOR_MS
+                local rtt = ticks_to_ms(end_ticks - start_ticks)
                 table.insert(rtt_samples, rtt)
                 log.info("speedtest", "RTT sample " .. i .. ": " .. rtt .. " ms")
             else
@@ -89,7 +92,7 @@ local function measure_download()
         log.error("speedtest", "Download test failed, code: " .. tostring(code))
         return nil
     end
-    local duration_ms = (end_ticks - start_ticks) * TIME_FACTOR_MS
+    local duration_ms = ticks_to_ms(end_ticks - start_ticks)
     if duration_ms < 10 then duration_ms = 10 end
     local duration_sec = duration_ms / 1000
     local total_bits = #body * 8
@@ -120,7 +123,7 @@ local function measure_upload()
         log.error("speedtest", "Upload test failed, code: " .. tostring(code))
         return nil
     end
-    local duration_ms = (end_ticks - start_ticks) * TIME_FACTOR_MS
+    local duration_ms = ticks_to_ms(end_ticks - start_ticks)
     if duration_ms < 10 then duration_ms = 10 end
     local duration_sec = duration_ms / 1000
     local total_bits = total_bytes * 8

@@ -1,12 +1,22 @@
 --[[
-@module  take_photo_http_post
+@module  photo_to_aircloud
 @summary AirCAMERA_1050 gc0310摄像头拍照上传应用模块
 @version 1.0
-@date    2025.11.09
+@date    2026.4.30
 @author  陈取德
 @usage
 本demo主要使用AirCAMERA_1050 gc0310摄像头完成一次拍照上传任务
-]] -- 摄像头拍照模块
+Air780EPM的sys ram内存资源只有2.3M，在使用camera功能时，需要非常谨慎，避免内存泄漏导致系统崩溃，需要注意以下情况：
+    1、exmcamera业务执行时，必须要确保有连续的内存空间，否则会导致excamera.open()初始化失败，需要的空间计算方式为：
+        （ 摄像头像素高 X 摄像头像素宽 X 2 ），用“GC032A”举例，内存空间为：640 * 480 * 2 = 614400 (B) ≈ 620KB
+    2、当使用ZBUFF方式存储照片，或者将照片放到 /ram/ 路径下保存时，必须确保有更多的内存连续空间，需要的总空间大小计算方式为：
+        （ 摄像头像素高 X 摄像头像素宽 X 3.5 ），用“GC032A”举例，内存空间为：640 * 480 * 3.5 = 1075200 (B) ≈ 1MB
+    3、本DEMO为常规模式下，摄像头稳定供电使用，DEMO逻辑为excamera.open()初始化完摄像头后，只需要重复调用excamera.photo()拍照即可，不需要反复的初始化关闭摄像头；
+    4、在实际应用中，务必将摄像头初始化的优先级排前，因为摄像头业务占用内存过大，尽早的初始化可以确保摄像头初始化时拿到足够的连续内存，确保后续拍照时能够正常执行；
+    5、Air780EPM的内存非常有限，在摄像头需求高的产品设计中，请选择Air780EHM/EGH/EHV、Air8000、Air700ECH这类 8MB + 8MB 的SOC，更大的内存才是摄像头业务稳定运行的最优解；
+    6、低功耗模式下使用excamera请参考lowpower DEMO，链接：https://docs.openluat.com/air780epm/luatos/app/lowpower/sleep/#_1 
+]] --
+-- 摄像头拍照模块
 -- 功能：提供摄像头初始化、拍照和资源管理功能
 -- 引入excamera扩展库模块
 local excamera = require "excamera"
@@ -17,6 +27,7 @@ local exmux = require "exmux"
 -- 导入excloud库
 local excloud = require "excloud"
 -- pm.ioVol(pm.IOVOL_ALL_GPIO, 2800) 
+
 -- 硬件I2C/SPI配置，当您使用合宙开发板时，请根据具体的开发板版本选择对应的变量，
 -- exmux库将会自动处理开发板上的I2C/SPI外设，确保总线通讯正常
 -- 当您使用自己的制作的板子，请参考exmux库的文档，配置对应的变量：https://docs.openluat.com/osapi/ext/exmux/
@@ -48,7 +59,6 @@ excloud事件回调函数
 function on_excloud_event(event, data)
     -- 打印事件信息
     log.info("用户回调函数", event, json.encode(data))
-
     -- 处理连接结果事件
     if event == "connect_result" then
         if data.success then
@@ -169,10 +179,12 @@ end
 local function capture_func()
     -- 定义变量用于存储操作结果和数据
     local result, data, err
+    -- 增加重试次数，最多重试5次，避免日志量过大
+    local retry_count = 0
     -- 初始化开发板
     exmux.setup(HARDWARE_ENV)
-    -- 无限循环，持续等待拍照事件
-    while true do
+    -- 出现异常后重新初始化，最多重试5次
+    while retry_count < 5 do
         -- 配置gc0310摄像头参数表
         local spi_camera_param = {
             id = "gc0310", -- SPI摄像头仅支持"gc032a"、"gc0310"、"bf30a2"，请带引号填写
@@ -183,8 +195,6 @@ local function capture_func()
             camera_pwdn = 5, -- 摄像头pwdn开关脚，填写GPIO号即可，无则填nil
             camera_light = nil -- 摄像头补光灯控制管脚，填写GPIO号即可，无则填nil
         }
-        -- 等待外部触发拍照事件(ONCE_CAPTURE)
-        sys.waitUntil("ONCE_CAPTURE")
         -- 打开外设分组
         exmux.open("i2c1")
         -- 初始化摄像头，传入配置参数
@@ -192,7 +202,10 @@ local function capture_func()
         -- 记录摄像头初始化状态
         log.info("初始化状态", result)
         -- 判断摄像头初始化是否成功，不成功则直接关闭，成功则启动拍照
-        if result then
+        -- 无限循环，持续等待拍照事件
+        while result do
+            -- 等待外部触发拍照事件(ONCE_CAPTURE)
+            sys.waitUntil("ONCE_CAPTURE")
             -- 执行拍照操作
             result, data = excamera.photo()
             -- 拍照执行完成则上传，否则关闭摄像头
@@ -205,11 +218,11 @@ local function capture_func()
                     sys.waitUntil("IP_READY", 30000)
                 end
                 upload_image_fun(data)
-            end
         end
         -- 判断是否ZBUFF存储方式，如果是文件系统保存则删除本地文件
         if save_method ~= "ZBUFF" then
             os.remove(spi_camera_param.save_path)
+            end
         end
         -- 关闭摄像头，释放资源
         -- 使用ZBUFF存储方式时，close传入true后，excamera内部创建的ZBUFF会缩减至0字节，放出内存但是不释放ZBUFF，便于下次拍照时调用；
@@ -217,7 +230,14 @@ local function capture_func()
         excamera.close(true)
         -- 关闭外设分组
         exmux.close("i2c1")
+        -- 拍照出错，等待5秒，重试摄像头初始化
+        sys.wait(5000)
+        -- 重试次数增加
+        retry_count = retry_count + 1
+        log.info("retry_count", retry_count)
     end
+    -- 重试5次后，提示用户检查摄像头连接或重启设备
+    log.info("camera init failed, please check the camera connection or reboot, retry_count:", retry_count)
 end
 
 -- 内存检查函数
@@ -241,6 +261,15 @@ local function AirCAMERA_1050_func()
         sys.publish("ONCE_CAPTURE")
     end
 end
+
+-- 按键触发函数，用于手动拍照拍照
+local function press_key()
+    log.info("boot press")
+    sys.publish("ONCE_CAPTURE")
+end
+-- 配置BOOT按键引脚为输入模式，下拉电阻，上升沿触发
+gpio.setup(0, press_key, gpio.PULLDOWN, gpio.RISING)
+gpio.debounce(0, 100, 1)
 
 -- 启动excloud连接任务
 sys.taskInit(excloud_task_func)

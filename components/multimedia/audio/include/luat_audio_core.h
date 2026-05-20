@@ -42,7 +42,7 @@ void luat_audio_debug_switch(uint8_t on_off);
  * @param opts 音频驱动操作接口结构体指针，包含驱动的具体实现函数
  * @param probe 音频驱动匹配结构，用于描述驱动的匹配条件
  * @param driver_data 驱动私有数据指针，用于存储驱动的私有数据
- * @return 0 表示成功，其他值表示失败
+ * @return LUAT_ERROR_NONE 表示成功，其他值表示失败
  */
 int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, luat_audio_driver_probe_t probe, void *driver_data);
 
@@ -65,43 +65,17 @@ luat_audio_driver_ctrl_t *luat_audio_driver_probe(luat_audio_driver_probe_t *pro
  * @return LUAT_ERROR_NONE 表示成功，其他值表示失败
  */
 int luat_audio_driver_set_default(luat_audio_driver_probe_t *probe);
-/**
- * @brief 初始化音频请求
- * 
- * 此函数用于初始化音频请求结构体，为后续的音频处理做准备。
- * 
- * @param req 音频请求结构体指针，包含请求的详细信息
- * @return 0 表示成功，其他值表示失败
- */
-int luat_audio_request_init(luat_audio_request_block_t *req);
-/**
- * @brief 释放音频请求结构体指针
- * 
- * 此函数用于释放音频请求结构体指针，释放请求资源。
- * 
- * @param req 音频请求结构体指针，包含请求的详细信息
- * @return 0 表示成功，其他值表示失败
- */
-int luat_audio_request_deinit(luat_audio_request_block_t *req);
-/**
- * @brief 提交音频请求
- * 
- * 此函数用于提交音频请求，请求音频框架处理音频数据。
- * 
- * @param req 音频请求结构体指针，包含请求的详细信息
- * @return 0 表示成功，其他值表示失败
- */
-int luat_audio_request(luat_audio_request_block_t *req);
 
 /**
- * @brief 取消音频请求
+ * @brief 获取音频文件的播放信息
  * 
- * 此函数用于取消已提交的音频请求，不释放请求资源。
+ * 此函数用于获取音频文件的播放信息，如采样率、声道数、采样深度等。
  * 
- * @param req 音频请求结构体指针，包含请求的详细信息
- * @return 0 表示成功，其他值表示失败
+ * @param codec 音频编解码器指针
+ * @param play_file 音频文件播放结构体指针
+ * @return LUAT_ERROR_NONE 表示成功，其他值表示失败
  */
-int luat_audio_request_cancel(luat_audio_request_block_t *req);
+int luat_audio_get_play_info_from_file(luat_audio_data_codec_t *codec, luat_audio_play_file_info_t *play_file);
 
 /**
  * @brief 音频驱动事件回调函数，已经有默认实现，CSDK用户可以自定义实现，但是不建议修改默认实现的基本逻辑，除非打算自己实现audio功能

@@ -1,0 +1,23 @@
+{
+    "app_name_cn": "数织",
+    "app_name_en": "nonogram",
+    "version": "1.0.0",
+    "publish_time": "2026-05-13 12:00:00",
+    "category": "游戏",
+    "description": "根据行列数字提示填色，还原隐藏图案的逻辑解谜游戏。",
+    "resolution": "320x480",
+    "supported_models": {
+        "Air8101": [
+            {
+                "firmware_id": 104,
+                "min_firmware_version": 2010
+            },
+            {
+                "firmware_id": 105,
+                "min_firmware_version": 2010
+            }
+        ]
+    },
+    "zip_size_kb": 20,
+    "origin_size_kb": 50
+}

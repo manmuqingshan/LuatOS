@@ -461,7 +461,7 @@ int luat_buffer_resize(luat_buffer_t *buffer, uint32_t len);
  * @note 如果容量不足会自动扩容
  * @note 写入后数据追加到当前 pos 位置
  */
-int luat_write_buffer(luat_buffer_t *buffer, const void *data, uint32_t len);
+int luat_buffer_write(luat_buffer_t *buffer, const void *data, uint32_t len);
 
 /**
  * @brief 从动态缓冲区移除头部数据

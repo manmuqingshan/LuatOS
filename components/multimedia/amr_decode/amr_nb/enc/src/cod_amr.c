@@ -47,6 +47,10 @@ terms listed above has been obtained from the copyright holder.
 */
 
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmemset-elt-size"
+
+
 /*----------------------------------------------------------------------------
 ; INCLUDES
 ----------------------------------------------------------------------------*/
@@ -1498,5 +1502,6 @@ the_end:
 
     return(0);
 }
+#pragma GCC diagnostic pop
 
 
