@@ -2195,6 +2195,11 @@ local function app_task(app_path)
         end
     end
 
+    -- nes 库
+    -- 功能：包装 nes.init，将第一个参数（ROM 文件路径）经沙箱路径解析后传给原始函数
+    my_env.nes = setmetatable({}, { __index = _G.nes })
+    my_env.nes.init = wrap_path(_G.nes and _G.nes.init, 1, false, false)
+
     -- ==============================================
     -- exwin 库（窗口管理）
     -- 功能：跟踪应用打开的窗口，窗口全部关闭时自动退出应用
