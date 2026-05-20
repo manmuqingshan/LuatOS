@@ -376,10 +376,7 @@ AirCAMERA_1030 配件板 + AirMICROSD_1000 配件板+ Air8101 核心板，硬件
 [2025-12-03 10:43:20.323] luat:U(45065):I/user.lua ram 2097144 311256 337952
 ```
 
-5、登录 https://www.air32.cn/upload/data/jpg/ 查看拍摄的照片;
-
-![](https://docs.openluat.com/air8101/luatos/app/accessory/AirCAMERA_1020/image/httpupload.png)
-
+5、”take_photo_http_post.lua“ DEMO中，因为Air32.com平台已经不开放使用了，所以该DEMO仅作上传照片至服务器的演示作用，使用时请将上传URL修改为您自己的服务器地址，或者使用photo_to_aircloud.lua上传照片至air平台；
 
 ### **使用photo_to_aircloud拍照功能演示的核心步骤：**
 
