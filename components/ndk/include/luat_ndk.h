@@ -70,6 +70,9 @@ typedef struct luat_ndk {
     uint16_t event_tail;
     uint8_t event_enabled;
     uint8_t gpio_tracked[LUAT_NDK_GPIO_TRACK_BYTES];
+    uint8_t gpio_irq_enabled[LUAT_NDK_GPIO_TRACK_BYTES];
+    uint8_t gpio_irq_pending[LUAT_NDK_GPIO_TRACK_BYTES];
+    uint8_t gpio_irq_reason[LUAT_NDK_GPIO_TRACK_BYTES * 8];
 } luat_ndk_t;
 
 int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exchange_size);

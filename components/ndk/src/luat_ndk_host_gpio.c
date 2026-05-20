@@ -94,6 +94,59 @@ static int ndk_gpio_is_tracked(const luat_ndk_t *ctx, uint32_t pin) {
     return (ctx->gpio_tracked[pin >> 3] & (uint8_t)(1u << (pin & 0x7u))) != 0;
 }
 
+static uint32_t ndk_gpio_irq_pack_state(uint32_t pin, uint32_t pending, uint32_t reason) {
+    return (pin & 0xFFFFu) | ((pending & 0x1u) << 16) | ((reason & 0xFFu) << 24);
+}
+
+static void ndk_gpio_irq_set_bit(uint8_t *bits, uint32_t pin, int enabled) {
+    uint8_t mask = 0;
+    if (!bits || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return;
+    }
+    mask = (uint8_t)(1u << (pin & 0x7u));
+    if (enabled) {
+        bits[pin >> 3] |= mask;
+    } else {
+        bits[pin >> 3] &= (uint8_t)(~mask);
+    }
+}
+
+static int ndk_gpio_irq_get_bit(const uint8_t *bits, uint32_t pin) {
+    if (!bits || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return 0;
+    }
+    return (bits[pin >> 3] & (uint8_t)(1u << (pin & 0x7u))) != 0;
+}
+
+static void ndk_gpio_irq_reset_pin(luat_ndk_t *ctx, uint32_t pin) {
+    if (!ctx || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return;
+    }
+    ndk_gpio_irq_set_bit(ctx->gpio_irq_enabled, pin, 0);
+    ndk_gpio_irq_set_bit(ctx->gpio_irq_pending, pin, 0);
+    ctx->gpio_irq_reason[pin] = 0;
+}
+
+static void ndk_gpio_irq_mark_pending(luat_ndk_t *ctx, uint32_t pin, uint32_t reason) {
+    if (!ctx || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return;
+    }
+    ndk_gpio_irq_set_bit(ctx->gpio_irq_enabled, pin, 1);
+    ndk_gpio_irq_set_bit(ctx->gpio_irq_pending, pin, 1);
+    ctx->gpio_irq_reason[pin] = (uint8_t)(reason & 0xFFu);
+}
+
+static uint32_t ndk_gpio_irq_state_value(const luat_ndk_t *ctx, uint32_t pin) {
+    uint32_t pending = 0;
+    uint32_t reason = 0;
+    if (!ctx || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return 0;
+    }
+    pending = ndk_gpio_irq_get_bit(ctx->gpio_irq_pending, pin) ? 1u : 0u;
+    reason = ctx->gpio_irq_reason[pin];
+    return ndk_gpio_irq_pack_state(pin, pending, reason);
+}
+
 uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value) {
     uint32_t status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
 
@@ -136,11 +189,15 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
                 status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
                 break;
             }
+            ndk_gpio_track_pin(ctx, pin);
+            ndk_gpio_irq_mark_pending(ctx, pin, irq_mode);
+            luat_ndk_event_push(ctx, LUAT_NDK_EVENT_GPIO_IRQ, (uint16_t)pin, ndk_gpio_irq_state_value(ctx, pin));
         }
         else {
             luat_gpio_mode((int)pin, host_mode, host_pull, LUAT_GPIO_LOW);
+            ndk_gpio_track_pin(ctx, pin);
+            ndk_gpio_irq_reset_pin(ctx, pin);
         }
-        ndk_gpio_track_pin(ctx, pin);
         status = LUAT_NDK_GPIO_STATUS_OK;
         break;
     }
@@ -170,9 +227,24 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
         return (uint32_t)level;
     }
     case NDK_CSR_GPIO_IRQ_STATE:
-    case NDK_CSR_GPIO_IRQ_CLEAR:
-        status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
+    case NDK_CSR_GPIO_IRQ_CLEAR: {
+        uint32_t pin = value & 0xFFFFu;
+
+        status = ndk_gpio_validate_pin(pin);
+        if (status != LUAT_NDK_GPIO_STATUS_OK) break;
+        if (!ndk_gpio_irq_get_bit(ctx->gpio_irq_enabled, pin)) {
+            status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
+            break;
+        }
+        if (csrno == NDK_CSR_GPIO_IRQ_STATE) {
+            luat_ndk_event_set_last_error(ctx, LUAT_NDK_HOST_ERR_NONE);
+            return ndk_gpio_irq_state_value(ctx, pin);
+        }
+        ndk_gpio_irq_set_bit(ctx->gpio_irq_pending, pin, 0);
+        ctx->gpio_irq_reason[pin] = 0;
+        status = LUAT_NDK_GPIO_STATUS_OK;
         break;
+    }
     default:
         status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
         break;
@@ -199,4 +271,7 @@ void luat_ndk_gpio_reset(luat_ndk_t *ctx) {
         }
     }
     memset(ctx->gpio_tracked, 0, sizeof(ctx->gpio_tracked));
+    memset(ctx->gpio_irq_enabled, 0, sizeof(ctx->gpio_irq_enabled));
+    memset(ctx->gpio_irq_pending, 0, sizeof(ctx->gpio_irq_pending));
+    memset(ctx->gpio_irq_reason, 0, sizeof(ctx->gpio_irq_reason));
 }
