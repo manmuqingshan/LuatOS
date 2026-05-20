@@ -123,10 +123,14 @@ int l_tp_callback(luat_tp_config_t* luat_tp_config, luat_tp_data_t* luat_tp_data
     --local softI2C = i2c.createSoft(20, 21)
     --tp.init("gt911",{port=softI2C,pin_rst = 22,pin_int = 23},tp_callBack)
 */
-
+static int s_init = 0;
 static int l_tp_init(lua_State* L){
-    int ret;
+    int ret = 0;
     size_t len = 0;
+    if (s_init){
+        LLOGE("tp has been initialized!!!");
+        return 0;
+    }
     luat_tp_config_t *luat_tp_config = (luat_tp_config_t *)luat_heap_malloc(sizeof(luat_tp_config_t));
     if (luat_tp_config == NULL) {
         LLOGE("out of system memory!!!");
@@ -162,6 +166,7 @@ static int l_tp_init(lua_State* L){
     }
     if (luat_tp_config->opts == NULL){
         LLOGE("tp_name:%s not found!!!", tp_name);
+        luat_heap_free(luat_tp_config);
         return 0;
     }
 
@@ -181,6 +186,7 @@ static int l_tp_init(lua_State* L){
         luat_tp_config->soft_i2c->ei2c_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     }else{
         LLOGE("port type error!!!");
+        luat_heap_free(luat_tp_config);
         return 0;
     }
     lua_pop(L, 1);
@@ -238,6 +244,7 @@ static int l_tp_init(lua_State* L){
         return 0;
     }else{
         lua_pushlightuserdata(L, luat_tp_config);
+        s_init = 1;
         return 1;
     }
 }
