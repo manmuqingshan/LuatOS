@@ -31,8 +31,11 @@ typedef struct {
     uint32_t opcode;
     uint32_t arg0;
     uint32_t arg1;
-    uint32_t arg2;
+    uint32_t arg2; /* GPIO_CONFIG: pull[7:0] | irq_mode[15:8] */
 } hostabi_cmd_t;
+
+#define HOSTABI_GPIO_CONFIG_PULL(arg2)     ((uint32_t)((arg2) & 0xFFu))
+#define HOSTABI_GPIO_CONFIG_IRQ_MODE(arg2) ((uint32_t)(((arg2) >> 8) & 0xFFu))
 
 /* Result structure (16 bytes) */
 typedef struct {

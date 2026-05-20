@@ -100,7 +100,12 @@ int main(void) {
         /* Query event state */
         out->value0 = ndk_event_pending();
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_CONFIG) {
-        out->status = ndk_gpio_config(cmd->arg0, cmd->arg1, cmd->arg2, 0);
+        out->status = ndk_gpio_config(
+            cmd->arg0,
+            cmd->arg1,
+            HOSTABI_GPIO_CONFIG_PULL(cmd->arg2),
+            HOSTABI_GPIO_CONFIG_IRQ_MODE(cmd->arg2)
+        );
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_WRITE) {
         out->status = ndk_gpio_write_v2(cmd->arg0, cmd->arg1);
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_READ) {

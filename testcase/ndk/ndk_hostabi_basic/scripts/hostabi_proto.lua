@@ -25,6 +25,10 @@ M.STATUS_HOST_ERROR = 15
 -- Protocol constants
 M.HOST_MAGIC = 0x4E444B31  -- "NDK1"
 M.HOST_VERSION = 0x00010000  -- 1.0.0
+M.FEATURE_META = 1 << 0
+M.FEATURE_TIME = 1 << 1
+M.FEATURE_EVENT = 1 << 2
+M.FEATURE_GPIO = 1 << 3
 M.RESULT_OFFSET = 16
 M.RESULT_SIZE = 16
 
@@ -56,6 +60,11 @@ M.GPIO_IRQ_STATE_REASON_SHIFT = 24
 -- Pack command structure (opcode, arg0, arg1, arg2)
 function M.pack_cmd(opcode, a0, a1, a2)
     return string.pack("<I4I4I4I4", opcode, a0 or 0, a1 or 0, a2 or 0)
+end
+
+function M.pack_gpio_config_cmd(pin, mode, pull, irq_mode)
+    local packed = ((irq_mode or 0) & 0xFF) << 8 | ((pull or 0) & 0xFF)
+    return M.pack_cmd(M.CMD_GPIO_CONFIG, pin, mode, packed)
 end
 
 -- Unpack result structure (status, value0, value1, value2)

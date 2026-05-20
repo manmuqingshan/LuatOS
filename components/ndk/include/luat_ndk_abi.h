@@ -33,6 +33,7 @@
 #define LUAT_NDK_FEATURE_META   (1u << 0)
 #define LUAT_NDK_FEATURE_TIME   (1u << 1)
 #define LUAT_NDK_FEATURE_EVENT  (1u << 2)
+#define LUAT_NDK_FEATURE_GPIO   (1u << 3)
 
 // Host error codes
 typedef enum {

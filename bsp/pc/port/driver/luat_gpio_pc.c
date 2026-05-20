@@ -13,6 +13,9 @@
 #define LUAT_LOG_TAG "gpio"
 #include "luat_log.h"
 
+#define LUAT_GPIO_TEST_FAIL_OPEN_PIN 126
+#define LUAT_GPIO_TEST_FAIL_SET_PIN 127
+
 luat_gpio_drv_opts_t* gpio_drvs[128];
 
 luat_gpio_t gpio_confs[128];
@@ -40,6 +43,8 @@ int luat_gpio_setup(luat_gpio_t *gpio){
 int luat_gpio_set(int pin, int level)
 {
     if (pin < 0 || pin >= 128)
+        return -1;
+    if (pin == LUAT_GPIO_TEST_FAIL_SET_PIN)
         return -1;
     gpio_levels[pin] = level == 0 ? 0 : 1;
 
@@ -120,6 +125,7 @@ void luat_gpio_set_default_cfg(luat_gpio_cfg_t* gpio) {
 
 int luat_gpio_open(luat_gpio_cfg_t* gpio) {
     if (!gpio || gpio->pin < 0 || gpio->pin >= 128) return -1;
+    if (gpio->pin == LUAT_GPIO_TEST_FAIL_OPEN_PIN) return -1;
     // Minimal PC implementation: store mode, set initial level for output
     gpio_confs[gpio->pin].pin  = gpio->pin;
     gpio_confs[gpio->pin].mode = gpio->mode;

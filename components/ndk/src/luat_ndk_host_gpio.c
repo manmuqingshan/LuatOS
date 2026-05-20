@@ -4,6 +4,8 @@
 
 #include "luat_gpio.h"
 
+static luat_ndk_t *g_ndk_gpio_owner[LUAT_NDK_GPIO_TRACK_BYTES * 8u];
+
 static uint32_t ndk_gpio_status_to_error(uint32_t status) {
     switch (status) {
     case LUAT_NDK_GPIO_STATUS_OK:
@@ -94,6 +96,70 @@ static int ndk_gpio_is_tracked(const luat_ndk_t *ctx, uint32_t pin) {
     return (ctx->gpio_tracked[pin >> 3] & (uint8_t)(1u << (pin & 0x7u))) != 0;
 }
 
+static uint32_t ndk_gpio_claim_owner(luat_ndk_t *ctx, uint32_t pin, uint8_t *claimed_new) {
+    uint32_t critical = 0;
+    luat_ndk_t *owner = NULL;
+
+    if (!ctx || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return LUAT_NDK_GPIO_STATUS_HOST_ERROR;
+    }
+
+    critical = luat_rtos_entry_critical();
+    owner = g_ndk_gpio_owner[pin];
+    if (owner && owner != ctx) {
+        luat_rtos_exit_critical(critical);
+        return LUAT_NDK_GPIO_STATUS_HOST_ERROR;
+    }
+    if (claimed_new) {
+        *claimed_new = owner == NULL ? 1u : 0u;
+    }
+    g_ndk_gpio_owner[pin] = ctx;
+    luat_rtos_exit_critical(critical);
+    return LUAT_NDK_GPIO_STATUS_OK;
+}
+
+static void ndk_gpio_release_owner_if_new(luat_ndk_t *ctx, uint32_t pin, uint8_t claimed_new) {
+    uint32_t critical = 0;
+
+    if (!claimed_new || !ctx || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return;
+    }
+
+    critical = luat_rtos_entry_critical();
+    if (g_ndk_gpio_owner[pin] == ctx) {
+        g_ndk_gpio_owner[pin] = NULL;
+    }
+    luat_rtos_exit_critical(critical);
+}
+
+static int ndk_gpio_owned_by_ctx(const luat_ndk_t *ctx, uint32_t pin) {
+    uint32_t critical = 0;
+    int owned = 0;
+
+    if (!ctx || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return 0;
+    }
+
+    critical = luat_rtos_entry_critical();
+    owned = g_ndk_gpio_owner[pin] == ctx;
+    luat_rtos_exit_critical(critical);
+    return owned;
+}
+
+static void ndk_gpio_release_owner(luat_ndk_t *ctx, uint32_t pin) {
+    uint32_t critical = 0;
+
+    if (!ctx || pin >= (LUAT_NDK_GPIO_TRACK_BYTES * 8u)) {
+        return;
+    }
+
+    critical = luat_rtos_entry_critical();
+    if (g_ndk_gpio_owner[pin] == ctx) {
+        g_ndk_gpio_owner[pin] = NULL;
+    }
+    luat_rtos_exit_critical(critical);
+}
+
 static uint32_t ndk_gpio_irq_pack_state(uint32_t pin, uint32_t pending, uint32_t reason) {
     return LUAT_NDK_GPIO_IRQ_STATE_PACK(pin, pending, reason);
 }
@@ -163,6 +229,8 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
         int host_mode = 0;
         int host_pull = 0;
         int host_irq = 0;
+        uint8_t claimed_new = 0;
+        luat_gpio_cfg_t cfg = {0};
 
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
@@ -178,27 +246,28 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
             status = LUAT_NDK_GPIO_STATUS_BAD_IRQ_MODE;
             break;
         }
+
+        status = ndk_gpio_claim_owner(ctx, pin, &claimed_new);
+        if (status != LUAT_NDK_GPIO_STATUS_OK) break;
+
+        cfg.pin = (int)pin;
+        cfg.mode = host_mode;
+        cfg.pull = host_pull;
+        cfg.irq_type = host_irq;
+        cfg.output_level = LUAT_GPIO_LOW;
+        if (luat_gpio_open(&cfg) != 0) {
+            ndk_gpio_release_owner_if_new(ctx, pin, claimed_new);
+            status = LUAT_NDK_GPIO_STATUS_HOST_ERROR;
+            break;
+        }
+        ndk_gpio_track_pin(ctx, pin);
         if (mode == LUAT_NDK_GPIO_MODE_IRQ) {
-            luat_gpio_cfg_t cfg = {0};
-            cfg.pin = (int)pin;
-            cfg.mode = host_mode;
-            cfg.pull = host_pull;
-            cfg.irq_type = host_irq;
-            cfg.output_level = LUAT_GPIO_LOW;
-            if (luat_gpio_open(&cfg) != 0) {
-                status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
-                break;
-            }
-            ndk_gpio_track_pin(ctx, pin);
             ndk_gpio_irq_mark_pending(ctx, pin, irq_mode);
             // Task 3 intentionally synthesizes a deterministic simulator IRQ as soon
             // as IRQ mode is configured so the hostabi regression suite has a stable
             // trigger path. Unlike timer events, this is not gated by event_enabled.
             luat_ndk_event_push(ctx, LUAT_NDK_EVENT_GPIO_IRQ, (uint16_t)pin, ndk_gpio_irq_state_value(ctx, pin));
-        }
-        else {
-            luat_gpio_mode((int)pin, host_mode, host_pull, LUAT_GPIO_LOW);
-            ndk_gpio_track_pin(ctx, pin);
+        } else {
             ndk_gpio_irq_reset_pin(ctx, pin);
         }
         status = LUAT_NDK_GPIO_STATUS_OK;
@@ -207,10 +276,17 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
     case NDK_CSR_GPIO_WRITE_V2: {
         uint32_t pin = value & 0xFFFFu;
         uint32_t level = (value >> 16) & 0x1u;
+        uint8_t claimed_new = 0;
 
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
-        luat_gpio_set((int)pin, (int)level);
+        status = ndk_gpio_claim_owner(ctx, pin, &claimed_new);
+        if (status != LUAT_NDK_GPIO_STATUS_OK) break;
+        if (luat_gpio_set((int)pin, (int)level) != 0) {
+            ndk_gpio_release_owner_if_new(ctx, pin, claimed_new);
+            status = LUAT_NDK_GPIO_STATUS_HOST_ERROR;
+            break;
+        }
         ndk_gpio_track_pin(ctx, pin);
         status = LUAT_NDK_GPIO_STATUS_OK;
         break;
@@ -270,10 +346,14 @@ void luat_ndk_gpio_reset(luat_ndk_t *ctx) {
         if (!ndk_gpio_is_tracked(ctx, pin)) {
             continue;
         }
+        if (!ndk_gpio_owned_by_ctx(ctx, pin)) {
+            continue;
+        }
         if (pin <= LUAT_GPIO_PIN_MAX) {
             luat_gpio_set((int)pin, LUAT_GPIO_LOW);
             luat_gpio_close((int)pin);
         }
+        ndk_gpio_release_owner(ctx, pin);
     }
     memset(ctx->gpio_tracked, 0, sizeof(ctx->gpio_tracked));
     memset(ctx->gpio_irq_enabled, 0, sizeof(ctx->gpio_irq_enabled));

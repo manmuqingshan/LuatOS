@@ -5,6 +5,18 @@ local proto = require("hostabi_proto")
 
 local tests = {}
 local IMAGE = "/luadb/hostabi_v1.bin"
+local GPIO_CONFIG_HOST_FAIL_PIN = 126
+local GPIO_WRITE_HOST_FAIL_PIN = 127
+
+local function run_payload_with_reset(ctx, payload, do_reset)
+    if do_reset ~= false then
+        assert(ndk.reset(ctx))
+    end
+    assert(ndk.setData(ctx, payload))
+    local ok, ret, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
+    assert(ok == true, string.format("exec failed ret=%s mcause=%s mtval=%s", tostring(ret), tostring(mcause), tostring(mtval)))
+    return proto.unpack_result(assert(ndk.getData(ctx, proto.RESULT_SIZE, proto.RESULT_OFFSET)))
+end
 
 local function run_cmd(ctx, opcode, a0, a1, a2)
     return run_cmd_with_reset(ctx, opcode, a0, a1, a2, true)
@@ -18,14 +30,11 @@ local function release_ctx(ctx)
 end
 
 function run_cmd_with_reset(ctx, opcode, a0, a1, a2, do_reset)
-    local payload = proto.pack_cmd(opcode, a0, a1, a2)
-    if do_reset ~= false then
-        assert(ndk.reset(ctx))
-    end
-    assert(ndk.setData(ctx, payload))
-    local ok, ret, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
-    assert(ok == true, string.format("exec failed ret=%s mcause=%s mtval=%s", tostring(ret), tostring(mcause), tostring(mtval)))
-    return proto.unpack_result(assert(ndk.getData(ctx, proto.RESULT_SIZE, proto.RESULT_OFFSET)))
+    return run_payload_with_reset(ctx, proto.pack_cmd(opcode, a0, a1, a2), do_reset)
+end
+
+local function run_gpio_config(ctx, pin, mode, pull, irq_mode, do_reset)
+    return run_payload_with_reset(ctx, proto.pack_gpio_config_cmd(pin, mode, pull, irq_mode), do_reset)
 end
 
 function tests.test_guest_fixture_binary_present()
@@ -39,6 +48,7 @@ function tests.test_query_meta_command_reports_magic_and_version()
     assert(result.status == 0, "query meta should succeed")
     assert(result.value0 == proto.HOST_MAGIC, "unexpected magic")
     assert(result.value1 == proto.HOST_VERSION, "unexpected version")
+    assert((result.value2 & proto.FEATURE_GPIO) ~= 0, "query meta should advertise GPIO feature")
 end
 
 function tests.test_ndk_info_exposes_abi_fields()
@@ -48,6 +58,7 @@ function tests.test_ndk_info_exposes_abi_fields()
     assert(info.abi_magic == proto.HOST_MAGIC, "missing abi_magic")
     assert(info.abi_version == proto.HOST_VERSION, "missing abi_version")
     assert(type(info.features) == "number", "missing features")
+    assert((info.features & proto.FEATURE_GPIO) ~= 0, "missing gpio feature bit")
     assert(info.last_error == 0, "missing last_error")
     assert(info.event_slots >= 1, "missing event_slots")
 end
@@ -109,14 +120,14 @@ end
 function tests.test_gpio_config_command_succeeds()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
-    local result = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    local result = run_gpio_config(ctx, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
     assert(result.status == proto.STATUS_OK, "gpio config should succeed")
 end
 
 function tests.test_gpio_write_then_read_round_trip()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
-    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    local cfg = run_gpio_config(ctx, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
     assert(cfg.status == proto.STATUS_OK, "gpio config should succeed")
     local wr = run_cmd_with_reset(ctx, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
     assert(wr.status == proto.STATUS_OK, "gpio write should succeed")
@@ -128,7 +139,7 @@ end
 function tests.test_gpio_reset_clears_written_level()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
-    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    local cfg = run_gpio_config(ctx, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
     assert(cfg.status == proto.STATUS_OK, "gpio config should succeed")
     local wr = run_cmd_with_reset(ctx, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
     assert(wr.status == proto.STATUS_OK, "gpio write should succeed")
@@ -143,7 +154,7 @@ function tests.test_gpio_read_only_peer_reset_does_not_clear_owner_pin()
     local peer, peer_err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(peer, tostring(peer_err))
 
-    local cfg = run_cmd(owner, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    local cfg = run_gpio_config(owner, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
     assert(cfg.status == proto.STATUS_OK, "owner gpio config should succeed")
     local wr = run_cmd_with_reset(owner, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
     assert(wr.status == proto.STATUS_OK, "owner gpio write should succeed")
@@ -165,7 +176,7 @@ function tests.test_gpio_irq_probe_peer_reset_does_not_clear_owner_pin()
     local peer, peer_err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(peer, tostring(peer_err))
 
-    local cfg = run_cmd(owner, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    local cfg = run_gpio_config(owner, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
     assert(cfg.status == proto.STATUS_OK, "owner gpio config should succeed")
     local wr = run_cmd_with_reset(owner, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
     assert(wr.status == proto.STATUS_OK, "owner gpio write should succeed")
@@ -185,7 +196,7 @@ function tests.test_gpio_owner_gc_releases_tracked_pin()
         local owner, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
         assert(owner, tostring(err))
 
-        local cfg = run_cmd(owner, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+        local cfg = run_gpio_config(owner, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
         assert(cfg.status == proto.STATUS_OK, "owner gpio config should succeed")
         local wr = run_cmd_with_reset(owner, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
         assert(wr.status == proto.STATUS_OK, "owner gpio write should succeed")
@@ -234,18 +245,19 @@ end
 function tests.test_gpio_irq_state_reports_pending_after_trigger()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
-    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP)
+    local cfg = run_gpio_config(ctx, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP, proto.GPIO_IRQ_HIGH)
     assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
     local state = run_cmd_with_reset(ctx, proto.CMD_GPIO_IRQ_STATE, 9, 0, 0, false)
     assert(state.status == proto.STATUS_OK, "gpio irq state should succeed")
     -- Pending IRQ expectation documents simulator-trigger behavior for later tasks.
     assert(state.value0 == 1, "gpio irq should be pending after simulator trigger")
+    assert(state.value1 == proto.GPIO_IRQ_HIGH, "gpio irq state should preserve non-default irq mode")
 end
 
 function tests.test_gpio_irq_clear_removes_pending_state()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
-    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP)
+    local cfg = run_gpio_config(ctx, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP, proto.GPIO_IRQ_HIGH)
     assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
     local clr = run_cmd_with_reset(ctx, proto.CMD_GPIO_IRQ_CLEAR, 9, 0, 0, false)
     assert(clr.status == proto.STATUS_OK, "gpio irq clear should succeed")
@@ -258,7 +270,7 @@ end
 function tests.test_gpio_irq_event_appears_in_event_ring()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
-    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP)
+    local cfg = run_gpio_config(ctx, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP, proto.GPIO_IRQ_HIGH)
     assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
     local exchange_data = ndk.getData(ctx, 1024, 0)
     local event = proto.unpack_event_slot(exchange_data, 0)
@@ -267,7 +279,50 @@ function tests.test_gpio_irq_event_appears_in_event_ring()
     assert(event.type == proto.EVENT_TYPE_GPIO_IRQ, "event type should be GPIO_IRQ")
     assert(irq.pin == 9, "gpio irq payload should carry the configured pin")
     assert(irq.pending == 1, "gpio irq payload should report pending state")
-    assert(irq.reason == proto.GPIO_IRQ_RISING, "gpio irq payload should report fixture irq reason")
+    assert(irq.reason == proto.GPIO_IRQ_HIGH, "gpio irq payload should report configured irq reason")
+end
+
+function tests.test_gpio_conflicting_peer_cannot_steal_owner_pin()
+    local owner, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(owner, tostring(err))
+    local peer, peer_err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(peer, tostring(peer_err))
+
+    local cfg = run_gpio_config(owner, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
+    assert(cfg.status == proto.STATUS_OK, "owner gpio config should succeed")
+    local wr = run_cmd_with_reset(owner, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
+    assert(wr.status == proto.STATUS_OK, "owner gpio write should succeed")
+
+    local peer_cfg = run_gpio_config(peer, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
+    assert(peer_cfg.status == proto.STATUS_HOST_ERROR, "peer config should be rejected while owner holds pin")
+    local peer_wr = run_cmd_with_reset(peer, proto.CMD_GPIO_WRITE, 7, 0, 0, false)
+    assert(peer_wr.status == proto.STATUS_HOST_ERROR, "peer write should be rejected while owner holds pin")
+
+    assert(ndk.reset(peer), "peer reset should succeed")
+
+    local owner_rd = run_cmd_with_reset(owner, proto.CMD_GPIO_READ, 7, 0, 0, false)
+    assert(owner_rd.status == proto.STATUS_OK, "owner gpio read should still succeed")
+    assert(owner_rd.value0 == 1, "peer conflict must not steal owner gpio state")
+end
+
+function tests.test_gpio_config_host_failure_surfaces_as_error()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local cfg = run_gpio_config(ctx, GPIO_CONFIG_HOST_FAIL_PIN, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
+    assert(cfg.status == proto.STATUS_HOST_ERROR, "gpio config host failure should surface as host error")
+end
+
+function tests.test_gpio_write_host_failure_does_not_claim_pin()
+    local writer, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(writer, tostring(err))
+    local peer, peer_err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(peer, tostring(peer_err))
+
+    local wr = run_cmd(writer, proto.CMD_GPIO_WRITE, GPIO_WRITE_HOST_FAIL_PIN, 1, 0)
+    assert(wr.status == proto.STATUS_HOST_ERROR, "gpio write host failure should surface as host error")
+
+    local peer_cfg = run_gpio_config(peer, GPIO_WRITE_HOST_FAIL_PIN, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT, 0)
+    assert(peer_cfg.status == proto.STATUS_OK, "failed write must not claim gpio ownership")
 end
 
 return tests

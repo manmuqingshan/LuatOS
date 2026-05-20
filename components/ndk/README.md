@@ -50,6 +50,11 @@ local ctx, err = ndk.rv32i(path, mem_size, exchange_size)
 - 返回状态表：
   - `mem`, `exchange`, `exchange_addr`, `image`, `running`, `mcause`, `mtval`
   - `abi_magic`, `abi_version`, `features`, `last_error`, `event_slots`
+- 当前 `features` 位图：
+  - bit0 `META`
+  - bit1 `TIME`
+  - bit2 `EVENT`
+  - bit3 `GPIO`
 
 ## 3. 当前已实现 CSR / MMIO
 
@@ -173,6 +178,10 @@ build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_b
 
 其中 GPIO v2 命令的 guest 结果区约定为：
 
+- `GPIO_CONFIG`
+  - fixture 命令载荷：`arg0 = pin`、`arg1 = mode`、`arg2.low8 = pull`、`arg2.high8 = irq_mode`
+  - 这样在不扩展 16-byte fixture 命令结构的前提下，仍可覆盖非默认 IRQ mode
+
 - `GPIO_CONFIG` / `GPIO_WRITE` / `GPIO_IRQ_CLEAR`
   - `status = LUAT_NDK_GPIO_STATUS_*`
 - `GPIO_READ`
@@ -182,6 +191,12 @@ build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_b
     - `value0 = pending`
     - `value1 = reason`
   - `pin` 不再单独返回，因为请求 pin 已知；若需要完整 packed 语义，应以 ABI 宏布局为准
+
+GPIO ownership / error policy:
+
+- `GPIO_CONFIG` / `GPIO_WRITE` 成功后才会声明 pin 所有权；host HAL 失败会返回 `HOST_ERROR`，不会伪造成功
+- 所有权是进程级别仲裁的；另一上下文对已被占用 pin 的 `GPIO_CONFIG` / `GPIO_WRITE` 会收到 `HOST_ERROR`
+- `GPIO_READ` 仍然是非 owning probe，可读取当前电平但不会抢占或释放所有权
 
 ### GPIO_IRQ 事件语义
 
