@@ -17,7 +17,16 @@
 #define HOSTABI_CMD_GPIO_IRQ_STATE  0x13
 #define HOSTABI_CMD_GPIO_IRQ_CLEAR  0x14
 
-/* UART v1 command opcodes */
+/* UART v1 command opcodes
+ *   UART_CONFIG:  arg0=port, arg1=cfg_offset, arg2=cfg_len
+ *                 exchange[cfg_offset..] holds hostabi_uart_cfg_t
+ *   UART_TX:      arg0=port, arg1=(payload_offset & 0xFFFF)<<16 | (payload_len & 0xFFFF)
+ *                 exchange[payload_offset..] holds bytes to transmit
+ *   UART_RX_STATE: arg0=port  (returns value0=pending, value1=buffered_len, value2=reason)
+ *   UART_RX_READ: arg0=port, arg1=(payload_offset & 0xFFFF)<<16 | (payload_len & 0xFFFF)
+ *                 host copies received bytes into exchange[payload_offset..]
+ *   UART_RX_CLEAR: arg0=port
+ */
 #define HOSTABI_CMD_UART_CONFIG    0x20
 #define HOSTABI_CMD_UART_TX        0x21
 #define HOSTABI_CMD_UART_RX_STATE  0x22
