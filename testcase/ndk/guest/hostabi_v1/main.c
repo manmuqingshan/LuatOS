@@ -112,7 +112,7 @@ int main(void) {
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_IRQ_STATE) {
         unsigned int packed = ndk_gpio_irq_state(cmd->arg0);
         unsigned int last_error = ndk_last_error();
-        if (hostabi_is_gpio_status(packed) && last_error == packed) {
+        if (hostabi_is_gpio_status(packed) && last_error != 0u) {
             out->status = packed;
             out->value0 = 0;
             out->value1 = 0;

@@ -154,7 +154,7 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
         level = luat_gpio_get((int)pin);
-        if (level < 0) {
+        if (level != 0 && level != 1) {
             status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
             break;
         }
