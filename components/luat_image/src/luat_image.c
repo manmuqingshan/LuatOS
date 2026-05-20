@@ -240,23 +240,19 @@ static const luat_img_decoder_opts_t jpeg_hw_decoder_opts = {
 };
 #endif /* LUAT_USE_JPG */
 
-#ifdef LUAT_USE_PNG
+#ifdef LUAT_USE_PNG_HW
 LUAT_WEAK int luat_png_decode_hw(uint8_t *in_buf, size_t in_len, luat_img_info_t* img_info) {
     (void)in_buf; (void)in_len; (void)img_info;
     return LUAT_IMG_ERR;
 }
 static int png_hw_decode_fn(uint8_t *in_buf, size_t in_len, luat_img_info_t* img_info) {
     LLOGI("png hw decode: in_len=%u", (unsigned)in_len);
-    int ret = luat_png_decode_hw(in_buf, in_len, img_info);
-    if (ret == LUAT_IMG_OK) {
-        LLOGI("png hw decoded: %dx%d, size=%u", img_info->width, img_info->height, (unsigned)img_info->size);
-    }
-    return ret;
+    return luat_png_decode_hw(in_buf, in_len, img_info);
 }
 static const luat_img_decoder_opts_t png_hw_decoder_opts = {
     .decode = png_hw_decode_fn,
 };
-#endif /* LUAT_USE_PNG */
+#endif /* LUAT_USE_PNG_HW */
 
 #ifdef LUAT_USE_WEBP
 LUAT_WEAK int luat_webp_decode_hw(uint8_t *in_buf, size_t in_len, luat_img_info_t* img_info) {
@@ -295,7 +291,9 @@ static const luat_img_decoder_opts_t* const decoder_opts_table[] = {
 #ifdef LUAT_USE_LODEPNG
     [LUAT_IMG_DECODER_KEY(LUAT_IMG_FMT_PNG, LUAT_IMG_DECODE_SW)] = &png_sw_decoder_opts,
 #endif
+#ifdef LUAT_USE_PNG_HW
     [LUAT_IMG_DECODER_KEY(LUAT_IMG_FMT_PNG, LUAT_IMG_DECODE_HW)] = &png_hw_decoder_opts,
+#endif
 #endif
 #ifdef LUAT_USE_WEBP
     [LUAT_IMG_DECODER_KEY(LUAT_IMG_FMT_WEBP, LUAT_IMG_DECODE_SW)] = &webp_sw_decoder_opts,
