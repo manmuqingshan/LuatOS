@@ -61,7 +61,7 @@ static __LUAT_C_CODE_IN_ISR__ void _audio_play_next_block(struct luat_audio_driv
 	ctrl->current_play_cnt = (ctrl->current_play_cnt + 1) & 3;
 	next_play_cnt = (ctrl->current_play_cnt + 1) & 3;
 	uint8_t *next_play_buff = ctrl->play_buff_byte + ctrl->one_play_block_len * next_play_cnt;
-	if (ctrl->data_channel->user_play_stop) {	// 播放状态为停止，播放空白音
+	if (ctrl->data_channel->user_play_stop || !ctrl->audio_output_enable) {	// 播放状态为停止，播放空白音
 		ctrl->opts->fill(ctrl, next_play_buff, ctrl->one_play_block_len, ctrl->opts->is_signed, ctrl->data_channel->data_align);
 		return;
 	}
@@ -460,8 +460,10 @@ static void _audio_decode_file_to_fifo(luat_audio_request_block_t *request_block
 			}
 		}
 		if (is_file_end) { //读到文件结尾了，看看是否还有文件文件读	
-			LLOGE("decode file to fifo done,request id %u, file_done_cnt %d, total %d", request_block->request_id, request_block->file_done_cnt, request_block->file_info_cnt);
-			request_block->file_done_cnt++;
+			if (!request_block->is_file_end) {
+				request_block->file_done_cnt++;
+				LLOGC(luat_audio_debug_flag, "decode file to fifo done,request id %u, file_done_cnt %d, total %d", request_block->request_id, request_block->file_done_cnt, request_block->file_info_cnt);
+			}
 			if (request_block->file_done_cnt >= request_block->file_info_cnt) {	//全部文件读取完成
 				request_block->is_file_end = 1;
 				request_block->file_done_cnt = request_block->file_info_cnt;
@@ -498,8 +500,6 @@ static void _audio_decode_file_to_fifo(luat_audio_request_block_t *request_block
 				}
 			}
 		}
-		LLOGC(luat_audio_debug_flag, "decode file to fifo state, request id %u, file_done_cnt %d, total %d,channel %u fifo %u, stop %d", request_block->request_id, request_block->file_done_cnt, request_block->file_info_cnt,
-			luat_fifo_check_used_space(request_block->data_channel->play_fifo),luat_fifo_check_used_space(request_block->org_input_data_fifo), stop);
 	}
 }
 
@@ -516,21 +516,17 @@ static void _audio_start_request(luat_audio_request_block_t *request_block)
 		if (request_block->is_error_stop || request_block->is_user_stop) {
 			return;
 		}
-		ret = luat_audio_driver_start(request_block->data_channel->driver_ctrl, &request_block->codec.common_param, request_block->play_buff, 0, 4);
-		if (ret) {
-			LLOGE("request id %d start driver failed, ret %d", request_block->request_id, ret);
-			request_block->is_error_stop = 1;
-		}
+		request_block->data_channel->driver_ctrl->opts->modify_audio_common_param(request_block->data_channel->driver_ctrl, request_block->codec.common_param.sample_rate, request_block->codec.common_param.data_align,request_block->codec.common_param.channel_nums);
 		_audio_decode_file_to_fifo(request_block);
 	} else {
-		ret = luat_audio_driver_start(request_block->data_channel->driver_ctrl, &request_block->codec.common_param, request_block->play_buff, request_block->one_block_len, request_block->block_nums);
-		if (ret) {
-			LLOGE("request id %d start driver failed, ret %d", request_block->request_id, ret);
-			request_block->is_error_stop = 1;
-		}
+		request_block->data_channel->driver_ctrl->opts->modify_audio_common_param(request_block->data_channel->driver_ctrl, request_block->codec.common_param.sample_rate, request_block->codec.common_param.data_align,request_block->codec.common_param.channel_nums);
 		_audio_decode_stream_to_fifo(request_block);
 	}
-
+	ret = luat_audio_driver_start(request_block->data_channel->driver_ctrl, &request_block->codec.common_param, request_block->play_buff, 0, 4);
+	if (ret) {
+		LLOGE("request id %d start driver failed, ret %d", request_block->request_id, ret);
+		request_block->is_error_stop = 1;
+	}
 }
 
 static void luat_audio_common_task(void *param)

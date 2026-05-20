@@ -113,7 +113,7 @@ int luat_audio_channel_write_data(luat_audio_channel_t *channel, void *data, uin
     // }
     luat_data_union_t data_union;
     data_union.p = data;
-    LLOGC(luat_audio_debug_flag,"write data to channel len_bytes %u, is_signed %u, data_align %u, channel_nums %u", len_bytes, is_signed, data_align, channel_nums);
+    // LLOGC(luat_audio_debug_flag,"write data to channel len_bytes %u, is_signed %u, data_align %u, channel_nums %u", len_bytes, is_signed, data_align, channel_nums);
     if (channel->soft_vol && channel->soft_vol != 100) {     // 音量软件调节
         switch (data_align) {
             case 2:
@@ -475,7 +475,6 @@ int luat_audio_channel_write_data(luat_audio_channel_t *channel, void *data, uin
         luat_fifo_write(channel->play_fifo, new_data_union.p, new_data_bytes);
         luat_heap_free(new_data_union.p8);
     } else {
-        
         LLOGE("data_align not match and channel_nums not match, can not deal with data");
         return -LUAT_ERROR_PARAM_INVALID;
     }
