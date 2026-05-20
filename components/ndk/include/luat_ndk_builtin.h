@@ -86,6 +86,39 @@ static inline uint32_t ndk_host_last_error(void) {
     return ndk_last_error();
 }
 
+/* GPIO v2 uses csrrw a0, csr, a0 on purpose: the host resolves these CSRs
+ * from the CSR read path and inspects the guest's current a0 payload. */
+static inline uint32_t ndk_gpio_config(uint32_t pin, uint32_t mode, uint32_t pull, uint32_t irq_mode) {
+    register uint32_t a0 __asm__("a0") =
+        ((irq_mode & 0xFFu) << 24) | ((pull & 0xFFu) << 16) | ((mode & 0xFFu) << 8) | (pin & 0xFFu);
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_GPIO_CONFIG));
+    return a0;
+}
+
+static inline uint32_t ndk_gpio_write_v2(uint32_t pin, uint32_t level) {
+    register uint32_t a0 __asm__("a0") = ((level & 0x1u) << 16) | (pin & 0xFFFFu);
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_GPIO_WRITE_V2));
+    return a0;
+}
+
+static inline uint32_t ndk_gpio_read_v2(uint32_t pin) {
+    register uint32_t a0 __asm__("a0") = pin & 0xFFFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_GPIO_READ_V2));
+    return a0;
+}
+
+static inline uint32_t ndk_gpio_irq_state(uint32_t pin) {
+    register uint32_t a0 __asm__("a0") = pin & 0xFFFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_GPIO_IRQ_STATE));
+    return a0;
+}
+
+static inline uint32_t ndk_gpio_irq_clear(uint32_t pin) {
+    register uint32_t a0 __asm__("a0") = pin & 0xFFFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_GPIO_IRQ_CLEAR));
+    return a0;
+}
+
 // Time and delay APIs (microsecond precision, may use millisecond-based implementation)
 static inline uint32_t ndk_time_us_lo(void) {
     uint32_t v = 0;
@@ -116,3 +149,34 @@ static inline uint32_t ndk_event_pending(void) {
 
 // Provide a familiar alias for the shared buffer base
 #define USERDATA (ndk_exchange_base())
+
+// UART v1 guest CSR wrappers
+static inline uint32_t ndk_uart_config(uint32_t port, uint32_t cfg_offset) {
+    register uint32_t a0 __asm__("a0") = LUAT_NDK_UART_PTR_PACK(port, cfg_offset);
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_UART_CONFIG));
+    return a0;
+}
+
+static inline uint32_t ndk_uart_tx(uint32_t port, uint32_t data_offset, uint32_t length) {
+    register uint32_t a0 __asm__("a0") = LUAT_NDK_UART_IO_PACK(port, data_offset, length);
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_UART_TX));
+    return a0;
+}
+
+static inline uint32_t ndk_uart_rx_state(uint32_t port) {
+    register uint32_t a0 __asm__("a0") = port & 0xFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_UART_RX_STATE));
+    return a0;
+}
+
+static inline uint32_t ndk_uart_rx_read(uint32_t port, uint32_t data_offset, uint32_t length) {
+    register uint32_t a0 __asm__("a0") = LUAT_NDK_UART_IO_PACK(port, data_offset, length);
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_UART_RX_READ));
+    return a0;
+}
+
+static inline uint32_t ndk_uart_rx_clear(uint32_t port) {
+    register uint32_t a0 __asm__("a0") = port & 0xFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, %1, a0" : "+r"(a0) : "i"(NDK_CSR_UART_RX_CLEAR));
+    return a0;
+}

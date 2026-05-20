@@ -4,6 +4,7 @@ local IMAGE_PATH = "/luadb/baremetal.bin"
 local MEM_SIZE = 32 * 1024
 local EXCHANGE_SIZE = 1024
 local INVALID_IMAGE_PATH = "/luadb/not-exists.bin"
+local NDK_FEATURE_GPIO = 1 << 3
 
 local function wait_until(predicate, timeout_ms)
     local waited = 0
@@ -35,6 +36,7 @@ function ndk_tests.test_ndk_lifecycle_regression()
     assert_info_fields(info)
     assert(info.mem == MEM_SIZE, "unexpected mem size: " .. tostring(info.mem))
     assert(info.exchange == EXCHANGE_SIZE, "unexpected exchange size: " .. tostring(info.exchange))
+    assert((info.features & NDK_FEATURE_GPIO) ~= 0, "ndk.info should expose GPIO feature bit")
 
     local ok, ret_or_err, mcause, mtval = ndk.exec(ctx, { steps = 100000, elapsed = 500 })
     assert(ok == true, string.format("ndk.exec failed: %s mcause=%s mtval=%s", tostring(ret_or_err), tostring(mcause), tostring(mtval)))
