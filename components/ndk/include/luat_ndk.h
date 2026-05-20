@@ -61,6 +61,13 @@ typedef struct luat_ndk {
     luat_rtos_task_handle worker;
     uint32_t thread_id;
     char *image_path;
+    // ABI state
+    uint32_t abi_features;
+    uint32_t last_error;
+    uint16_t event_slots;
+    uint16_t event_head;
+    uint16_t event_tail;
+    uint8_t event_enabled;
 } luat_ndk_t;
 
 int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exchange_size);

@@ -29,4 +29,15 @@ function tests.test_query_meta_command_reports_magic_and_version()
     assert(result.value1 == proto.HOST_VERSION, "unexpected version")
 end
 
+function tests.test_ndk_info_exposes_abi_fields()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local info = ndk.info(ctx)
+    assert(info.abi_magic == proto.HOST_MAGIC, "missing abi_magic")
+    assert(info.abi_version == proto.HOST_VERSION, "missing abi_version")
+    assert(type(info.features) == "number", "missing features")
+    assert(info.last_error == 0, "missing last_error")
+    assert(info.event_slots >= 1, "missing event_slots")
+end
+
 return tests

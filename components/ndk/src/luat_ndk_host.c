@@ -1,6 +1,7 @@
 #include "luat_ndk_host.h"
 
 #include "luat_gpio.h"
+#include "luat_ndk_abi.h"
 #include "mini-rv32ima.h"
 
 #define LUAT_LOG_TAG "ndk"
@@ -73,6 +74,21 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
         break;
     case NDK_CSR_MEMORY_SIZE:
         *value = (uint32_t)ctx->ram_size;
+        break;
+    case NDK_CSR_HOST_MAGIC:
+        *value = LUAT_NDK_HOST_MAGIC;
+        break;
+    case NDK_CSR_HOST_VERSION:
+        *value = LUAT_NDK_HOST_VERSION;
+        break;
+    case NDK_CSR_HOST_FEATURES:
+        *value = ctx->abi_features;
+        break;
+    case NDK_CSR_HOST_LAST_ERROR:
+        *value = ctx->last_error;
+        break;
+    case NDK_CSR_EVENT_SLOTS:
+        *value = ctx->event_slots;
         break;
     case NDK_CSR_GPIO_GET:
         tmp = (*value) & 0xFFFF;

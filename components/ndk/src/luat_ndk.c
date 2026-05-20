@@ -6,6 +6,7 @@
 #include "luat_rtos.h"
 #include "luat_ndk.h"
 #include "luat_ndk_host.h"
+#include "luat_ndk_abi.h"
 
 #define LUAT_LOG_TAG "ndk"
 #include "luat_log.h"
@@ -255,6 +256,15 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
     }
 
     ndk_reset_core(ndk);
+    
+    // Initialize ABI state
+    ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT;
+    ndk->last_error = LUAT_NDK_HOST_ERR_NONE;
+    ndk->event_slots = 8;
+    ndk->event_head = 0;
+    ndk->event_tail = 0;
+    ndk->event_enabled = 0;
+    
     return LUAT_NDK_OK;
 }
 

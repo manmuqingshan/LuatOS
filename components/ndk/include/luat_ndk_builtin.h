@@ -11,6 +11,11 @@
 #define NDK_CSR_EXCHANGE_BASE 0x139
 #define NDK_CSR_EXCHANGE_SIZE 0x13A
 #define NDK_CSR_MEMORY_SIZE  0x13B
+#define NDK_CSR_HOST_MAGIC      0x13C
+#define NDK_CSR_HOST_VERSION    0x13D
+#define NDK_CSR_HOST_FEATURES   0x13E
+#define NDK_CSR_HOST_LAST_ERROR 0x13F
+#define NDK_CSR_EVENT_SLOTS     0x140
 #define NDK_CSR_GPIO_SET     0x200
 #define NDK_CSR_GPIO_GET     0x201
 
@@ -54,6 +59,30 @@ static inline void ndk_gpio_set(uint32_t pin, uint32_t level) {
 static inline uint32_t ndk_gpio_get(uint32_t pin) {
     uint32_t v = pin & 0xFFFF;
     __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_GPIO_GET));
+    return v;
+}
+
+static inline uint32_t ndk_host_magic(void) {
+    uint32_t v = 0;
+    __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_HOST_MAGIC));
+    return v;
+}
+
+static inline uint32_t ndk_host_version(void) {
+    uint32_t v = 0;
+    __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_HOST_VERSION));
+    return v;
+}
+
+static inline uint32_t ndk_host_features(void) {
+    uint32_t v = 0;
+    __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_HOST_FEATURES));
+    return v;
+}
+
+static inline uint32_t ndk_host_last_error(void) {
+    uint32_t v = 0;
+    __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_HOST_LAST_ERROR));
     return v;
 }
 
