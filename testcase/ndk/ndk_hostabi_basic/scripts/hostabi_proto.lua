@@ -7,6 +7,19 @@ local M = {}
 M.CMD_QUERY_META = 0x01
 M.CMD_DELAY_US = 0x02
 M.CMD_EVENT_STATE = 0x03
+M.CMD_GPIO_CONFIG = 0x10
+M.CMD_GPIO_WRITE = 0x11
+M.CMD_GPIO_READ = 0x12
+M.CMD_GPIO_IRQ_STATE = 0x13
+M.CMD_GPIO_IRQ_CLEAR = 0x14
+
+-- Status codes
+M.STATUS_OK = 0
+M.STATUS_BAD_PIN = 10
+M.STATUS_BAD_MODE = 11
+M.STATUS_BAD_PULL = 12
+M.STATUS_BAD_IRQ_MODE = 13
+M.STATUS_UNSUPPORTED = 14
 
 -- Protocol constants
 M.HOST_MAGIC = 0x4E444B31  -- "NDK1"
@@ -19,6 +32,20 @@ M.EVENT_HEADER_OFFSET = 32  -- Event header starts at offset 32 (after command +
 M.EVENT_HEADER_SIZE = 16    -- Event header is 4 uint32_t values
 M.EVENT_SLOT_SIZE = 8       -- Each event slot is 8 bytes (uint16_t type, uint16_t source, uint32_t data)
 M.EVENT_TYPE_TIMER = 1      -- Timer event type
+M.EVENT_TYPE_GPIO_IRQ = 2
+
+-- GPIO constants
+M.GPIO_MODE_INPUT = 0
+M.GPIO_MODE_OUTPUT = 1
+M.GPIO_MODE_IRQ = 2
+M.GPIO_PULL_DEFAULT = 0
+M.GPIO_PULL_UP = 1
+M.GPIO_PULL_DOWN = 2
+M.GPIO_IRQ_RISING = 0
+M.GPIO_IRQ_FALLING = 1
+M.GPIO_IRQ_BOTH = 2
+M.GPIO_IRQ_HIGH = 3
+M.GPIO_IRQ_LOW = 4
 
 -- Pack command structure (opcode, arg0, arg1, arg2)
 function M.pack_cmd(opcode, a0, a1, a2)

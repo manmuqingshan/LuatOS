@@ -99,4 +99,55 @@ function tests.test_first_event_slot_contains_timer_event()
     assert(event.data == delay_us, "event data should match requested delay")
 end
 
+function tests.test_gpio_config_command_succeeds()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local result = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    assert(result.status == proto.STATUS_OK, "gpio config should succeed")
+end
+
+function tests.test_gpio_write_then_read_round_trip()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    assert(cfg.status == proto.STATUS_OK, "gpio config should succeed")
+    local wr = run_cmd_with_reset(ctx, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
+    assert(wr.status == proto.STATUS_OK, "gpio write should succeed")
+    local rd = run_cmd_with_reset(ctx, proto.CMD_GPIO_READ, 7, 0, 0, false)
+    assert(rd.status == proto.STATUS_OK, "gpio read should succeed")
+    assert(rd.value0 == 1, "gpio read should report written level")
+end
+
+function tests.test_gpio_irq_state_reports_pending_after_trigger()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP)
+    assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
+    local state = run_cmd_with_reset(ctx, proto.CMD_GPIO_IRQ_STATE, 9, 0, 0, false)
+    assert(state.status == proto.STATUS_OK, "gpio irq state should succeed")
+    assert(state.value0 == 1, "gpio irq should be pending after simulator trigger")
+end
+
+function tests.test_gpio_irq_clear_removes_pending_state()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP)
+    assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
+    local clr = run_cmd_with_reset(ctx, proto.CMD_GPIO_IRQ_CLEAR, 9, 0, 0, false)
+    assert(clr.status == proto.STATUS_OK, "gpio irq clear should succeed")
+    local state = run_cmd_with_reset(ctx, proto.CMD_GPIO_IRQ_STATE, 9, 0, 0, false)
+    assert(state.value0 == 0, "gpio irq clear should drop pending state")
+end
+
+function tests.test_gpio_irq_event_appears_in_event_ring()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 9, proto.GPIO_MODE_IRQ, proto.GPIO_PULL_UP)
+    assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
+    local exchange_data = ndk.getData(ctx, 1024, 0)
+    local event = proto.unpack_event_slot(exchange_data, 0)
+    assert(event.type == proto.EVENT_TYPE_GPIO_IRQ, "event type should be GPIO_IRQ")
+    assert(event.data ~= 0, "gpio irq event payload should be non-zero")
+end
+
 return tests
