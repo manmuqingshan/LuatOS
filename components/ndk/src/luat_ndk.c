@@ -128,6 +128,7 @@ static void ndk_reset_abi_state(luat_ndk_t *ndk) {
     ndk->event_head = 0;
     ndk->event_tail = 0;
     ndk->event_enabled = 0;
+    luat_ndk_gpio_reset(ndk);
 
     if (ndk->ram && ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE <= ndk->ram_size) {
         luat_ndk_event_header_t *hdr = (luat_ndk_event_header_t*)(ndk->ram + ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET);

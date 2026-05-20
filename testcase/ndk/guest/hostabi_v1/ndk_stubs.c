@@ -51,6 +51,37 @@ unsigned int ndk_last_error(void) {
     return error;
 }
 
+unsigned int ndk_gpio_config(unsigned int pin, unsigned int mode, unsigned int pull, unsigned int irq_mode) {
+    register unsigned int a0 __asm__("a0") =
+        ((irq_mode & 0xFFu) << 24) | ((pull & 0xFFu) << 16) | ((mode & 0xFFu) << 8) | (pin & 0xFFu);
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x210, a0" : "+r"(a0));
+    return a0;
+}
+
+unsigned int ndk_gpio_write_v2(unsigned int pin, unsigned int level) {
+    register unsigned int a0 __asm__("a0") = ((level & 0x1u) << 16) | (pin & 0xFFFFu);
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x211, a0" : "+r"(a0));
+    return a0;
+}
+
+unsigned int ndk_gpio_read_v2(unsigned int pin) {
+    register unsigned int a0 __asm__("a0") = pin & 0xFFFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x212, a0" : "+r"(a0));
+    return a0;
+}
+
+unsigned int ndk_gpio_irq_state(unsigned int pin) {
+    register unsigned int a0 __asm__("a0") = pin & 0xFFFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x213, a0" : "+r"(a0));
+    return a0;
+}
+
+unsigned int ndk_gpio_irq_clear(unsigned int pin) {
+    register unsigned int a0 __asm__("a0") = pin & 0xFFFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x214, a0" : "+r"(a0));
+    return a0;
+}
+
 void ndk_delay_us(unsigned int us) {
     /* Writes delay request to CSR 0x143 (NDK_CSR_DELAY_US).
      * The .option norvc directive ensures 32-bit instruction encoding. */

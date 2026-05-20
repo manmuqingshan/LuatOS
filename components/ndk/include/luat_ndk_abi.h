@@ -22,6 +22,13 @@
 #define NDK_CSR_EVENT_ENABLE    0x144
 #define NDK_CSR_EVENT_PENDING   0x145
 
+// GPIO v2 CSR addresses
+#define NDK_CSR_GPIO_CONFIG     0x210
+#define NDK_CSR_GPIO_WRITE_V2   0x211
+#define NDK_CSR_GPIO_READ_V2    0x212
+#define NDK_CSR_GPIO_IRQ_STATE  0x213
+#define NDK_CSR_GPIO_IRQ_CLEAR  0x214
+
 // Feature flags
 #define LUAT_NDK_FEATURE_META   (1u << 0)
 #define LUAT_NDK_FEATURE_TIME   (1u << 1)
@@ -46,6 +53,27 @@ typedef enum {
 // Event types
 #define LUAT_NDK_EVENT_NONE     0u
 #define LUAT_NDK_EVENT_TIMER    1u
+#define LUAT_NDK_EVENT_GPIO_IRQ 2u
+
+typedef enum {
+    LUAT_NDK_GPIO_MODE_INPUT = 0,
+    LUAT_NDK_GPIO_MODE_OUTPUT = 1,
+    LUAT_NDK_GPIO_MODE_IRQ = 2
+} luat_ndk_gpio_mode_t;
+
+typedef enum {
+    LUAT_NDK_GPIO_PULL_DEFAULT = 0,
+    LUAT_NDK_GPIO_PULL_UP = 1,
+    LUAT_NDK_GPIO_PULL_DOWN = 2
+} luat_ndk_gpio_pull_t;
+
+typedef enum {
+    LUAT_NDK_GPIO_IRQ_RISING = 0,
+    LUAT_NDK_GPIO_IRQ_FALLING = 1,
+    LUAT_NDK_GPIO_IRQ_BOTH = 2,
+    LUAT_NDK_GPIO_IRQ_HIGH = 3,
+    LUAT_NDK_GPIO_IRQ_LOW = 4
+} luat_ndk_gpio_irq_mode_t;
 
 // Event header structure (16 bytes)
 typedef struct {

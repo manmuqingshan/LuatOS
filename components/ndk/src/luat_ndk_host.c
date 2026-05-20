@@ -53,6 +53,12 @@ void luat_ndk_host_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t valu
     case NDK_CSR_PRINT_STR:
         ndk_log_string(ctx, value);
         break;
+    case NDK_CSR_GPIO_CONFIG:
+    case NDK_CSR_GPIO_WRITE_V2:
+    case NDK_CSR_GPIO_READ_V2:
+    case NDK_CSR_GPIO_IRQ_STATE:
+    case NDK_CSR_GPIO_IRQ_CLEAR:
+        break;
     case NDK_CSR_GPIO_SET: {
         uint32_t pin = value & 0xFFFF;
         uint32_t level = (value >> 16) & 0x1;
@@ -113,6 +119,13 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
         break;
     case NDK_CSR_EVENT_SLOTS:
         *value = ctx->event_slots;
+        break;
+    case NDK_CSR_GPIO_CONFIG:
+    case NDK_CSR_GPIO_WRITE_V2:
+    case NDK_CSR_GPIO_READ_V2:
+    case NDK_CSR_GPIO_IRQ_STATE:
+    case NDK_CSR_GPIO_IRQ_CLEAR:
+        *value = luat_ndk_gpio_csr_write(ctx, csrno, ctx->core ? ctx->core->regs[10] : 0);
         break;
     case NDK_CSR_GPIO_GET:
         tmp = (*value) & 0xFFFF;

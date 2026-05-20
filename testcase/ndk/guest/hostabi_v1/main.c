@@ -8,6 +8,11 @@ extern void ndk_delay_us(unsigned int us);
 extern unsigned int ndk_time_us_lo(void);
 extern void ndk_event_enable(unsigned int enabled);
 extern unsigned int ndk_event_pending(void);
+extern unsigned int ndk_gpio_config(unsigned int pin, unsigned int mode, unsigned int pull, unsigned int irq_mode);
+extern unsigned int ndk_gpio_write_v2(unsigned int pin, unsigned int level);
+extern unsigned int ndk_gpio_read_v2(unsigned int pin);
+extern unsigned int ndk_gpio_irq_state(unsigned int pin);
+extern unsigned int ndk_gpio_irq_clear(unsigned int pin);
 
 /* NDK builtin host API (implemented in ndk_stubs.c) */
 unsigned int ndk_host_magic(void);
@@ -79,6 +84,28 @@ int main(void) {
     } else if (cmd->opcode == HOSTABI_CMD_EVENT_STATE) {
         /* Query event state */
         out->value0 = ndk_event_pending();
+    } else if (cmd->opcode == HOSTABI_CMD_GPIO_CONFIG) {
+        out->status = ndk_gpio_config(cmd->arg0, cmd->arg1, cmd->arg2, 0);
+    } else if (cmd->opcode == HOSTABI_CMD_GPIO_WRITE) {
+        out->status = ndk_gpio_write_v2(cmd->arg0, cmd->arg1);
+    } else if (cmd->opcode == HOSTABI_CMD_GPIO_READ) {
+        out->value0 = ndk_gpio_read_v2(cmd->arg0);
+        if (out->value0 <= 1u) {
+            out->status = HOSTABI_STATUS_OK;
+        } else {
+            out->status = out->value0;
+            out->value0 = 0;
+        }
+    } else if (cmd->opcode == HOSTABI_CMD_GPIO_IRQ_STATE) {
+        out->value0 = ndk_gpio_irq_state(cmd->arg0);
+        if (out->value0 <= 1u) {
+            out->status = HOSTABI_STATUS_OK;
+        } else {
+            out->status = out->value0;
+            out->value0 = 0;
+        }
+    } else if (cmd->opcode == HOSTABI_CMD_GPIO_IRQ_CLEAR) {
+        out->status = ndk_gpio_irq_clear(cmd->arg0);
     } else {
         out->status = 1;
         out->value0 = ndk_last_error();
