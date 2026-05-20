@@ -27,6 +27,7 @@
 /* UART v1 buffer offsets */
 #define HOSTABI_UART_CFG_OFFSET     128u
 #define HOSTABI_UART_PAYLOAD_OFFSET 256u
+#define HOSTABI_UART_PORT_LOOPBACK  0x20u
 
 /* Status codes */
 #define HOSTABI_STATUS_OK           LUAT_NDK_GPIO_STATUS_OK
