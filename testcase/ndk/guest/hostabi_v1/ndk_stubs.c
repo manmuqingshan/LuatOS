@@ -11,6 +11,14 @@ unsigned int ndk_exchange_base(void) {
     return base;
 }
 
+unsigned int ndk_memory_size(void) {
+    /* Returns the guest memory size in bytes by reading CSR 0x13B.
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    unsigned int size;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x13B" : "=r"(size));
+    return size;
+}
+
 unsigned int ndk_host_magic(void) {
     return 0x4E444B31;  /* "NDK1" */
 }
