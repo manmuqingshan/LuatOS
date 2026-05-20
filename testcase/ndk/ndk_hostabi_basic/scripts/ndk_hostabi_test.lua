@@ -125,6 +125,7 @@ function tests.test_gpio_irq_state_reports_pending_after_trigger()
     assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
     local state = run_cmd_with_reset(ctx, proto.CMD_GPIO_IRQ_STATE, 9, 0, 0, false)
     assert(state.status == proto.STATUS_OK, "gpio irq state should succeed")
+    -- Pending IRQ expectation documents simulator-trigger behavior for later tasks.
     assert(state.value0 == 1, "gpio irq should be pending after simulator trigger")
 end
 
@@ -136,6 +137,8 @@ function tests.test_gpio_irq_clear_removes_pending_state()
     local clr = run_cmd_with_reset(ctx, proto.CMD_GPIO_IRQ_CLEAR, 9, 0, 0, false)
     assert(clr.status == proto.STATUS_OK, "gpio irq clear should succeed")
     local state = run_cmd_with_reset(ctx, proto.CMD_GPIO_IRQ_STATE, 9, 0, 0, false)
+    assert(state.status == proto.STATUS_OK, "gpio irq state should succeed")
+    -- Pending-clear expectation documents simulator-trigger behavior for later tasks.
     assert(state.value0 == 0, "gpio irq clear should drop pending state")
 end
 
@@ -146,6 +149,7 @@ function tests.test_gpio_irq_event_appears_in_event_ring()
     assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
     local exchange_data = ndk.getData(ctx, 1024, 0)
     local event = proto.unpack_event_slot(exchange_data, 0)
+    -- IRQ event expectation documents simulator-trigger behavior for later tasks.
     assert(event.type == proto.EVENT_TYPE_GPIO_IRQ, "event type should be GPIO_IRQ")
     assert(event.data ~= 0, "gpio irq event payload should be non-zero")
 end

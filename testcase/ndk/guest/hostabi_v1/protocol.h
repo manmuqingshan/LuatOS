@@ -8,6 +8,8 @@
 #define HOSTABI_CMD_QUERY_META  0x01
 #define HOSTABI_CMD_DELAY_US    0x02
 #define HOSTABI_CMD_EVENT_STATE 0x03
+
+/* GPIO v2 command opcodes */
 #define HOSTABI_CMD_GPIO_CONFIG     0x10
 #define HOSTABI_CMD_GPIO_WRITE      0x11
 #define HOSTABI_CMD_GPIO_READ       0x12

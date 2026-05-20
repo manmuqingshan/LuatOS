@@ -32,7 +32,7 @@ M.EVENT_HEADER_OFFSET = 32  -- Event header starts at offset 32 (after command +
 M.EVENT_HEADER_SIZE = 16    -- Event header is 4 uint32_t values
 M.EVENT_SLOT_SIZE = 8       -- Each event slot is 8 bytes (uint16_t type, uint16_t source, uint32_t data)
 M.EVENT_TYPE_TIMER = 1      -- Timer event type
-M.EVENT_TYPE_GPIO_IRQ = 2
+M.EVENT_TYPE_GPIO_IRQ = 2   -- GPIO IRQ event type
 
 -- GPIO constants
 M.GPIO_MODE_INPUT = 0
