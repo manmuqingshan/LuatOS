@@ -160,10 +160,15 @@ int main(void) {
         out->status = ndk_uart_tx(cmd->arg0, (cmd->arg1 >> 16) & 0xFFFFu, cmd->arg1 & 0xFFFFu);
     } else if (cmd->opcode == HOSTABI_CMD_UART_RX_STATE) {
         uint32_t packed = ndk_uart_rx_state(cmd->arg0);
-        out->status = HOSTABI_STATUS_OK;
-        out->value0 = LUAT_NDK_UART_RX_STATE_PENDING(packed);
-        out->value1 = LUAT_NDK_UART_RX_STATE_LENGTH(packed);
-        out->value2 = LUAT_NDK_UART_RX_STATE_REASON(packed);
+        unsigned int last_error = ndk_last_error();
+        if (last_error != 0u && packed >= HOSTABI_STATUS_UART_BAD_PORT) {
+            out->status = packed;
+        } else {
+            out->status = HOSTABI_STATUS_OK;
+            out->value0 = LUAT_NDK_UART_RX_STATE_PENDING(packed);
+            out->value1 = LUAT_NDK_UART_RX_STATE_LENGTH(packed);
+            out->value2 = LUAT_NDK_UART_RX_STATE_REASON(packed);
+        }
     } else if (cmd->opcode == HOSTABI_CMD_UART_RX_READ) {
         uint32_t copied = ndk_uart_rx_read(cmd->arg0, (cmd->arg1 >> 16) & 0xFFFFu, cmd->arg1 & 0xFFFFu);
         unsigned int last_error = ndk_last_error();

@@ -55,6 +55,7 @@ local ctx, err = ndk.rv32i(path, mem_size, exchange_size)
   - bit1 `TIME`
   - bit2 `EVENT`
   - bit3 `GPIO`
+  - bit4 `UART`
 
 ## 3. 当前已实现 CSR / MMIO
 
@@ -107,7 +108,7 @@ GPIO v2 不再使用 `0x200/0x201` 的原始读写语义，而是通过 `a0` 载
   - 语义：清除该 pin 的 pending 位，同时把记录的 reason 归零
 
 ### MMIO（当前仅实现 store hook）
-- `store 0x11100000 = value`：返回 `value` 并令 PC 前进 4（用于 guest 侧控制出口）
+- `store 0x11100000 = value`：将 guest PC 重置到镜像入口点并返回 `value`；下次 `do_reset=false` 的 exec 将从 `_start` 重新进入（而非从陈旧 PC 继续执行）
 - 其他地址：未定义（记录调试日志，返回 0）
 
 ## 4. 最小生命周期示例

@@ -420,6 +420,16 @@ function tests.test_uart_config_bad_port_returns_error()
         string.format("expected STATUS_UART_BAD_PORT (%d), got %d", proto.STATUS_UART_BAD_PORT, result.status))
 end
 
+function tests.test_uart_rx_state_bad_port_returns_error()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    -- Port 0xFF is not a valid UART port; UART_RX_STATE must surface BAD_PORT
+    -- rather than silently decoding the error code as a packed success state.
+    local result = run_cmd(ctx, proto.CMD_UART_RX_STATE, 0xFF, 0, 0)
+    assert(result.status == proto.STATUS_UART_BAD_PORT,
+        string.format("expected STATUS_UART_BAD_PORT (%d), got %d", proto.STATUS_UART_BAD_PORT, result.status))
+end
+
 function tests.test_uart_context_isolation_holds()
     local a, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(a, tostring(err))
