@@ -42,6 +42,7 @@ typedef struct airui_component_ref airui_component_ref_t;
 #define AIRUI_QRCODE_MT "airui.qrcode"
 #define AIRUI_SPINNER_MT "airui.spinner"
 #define AIRUI_SHAPE_MT "airui.shape"
+#define AIRUI_CHECKBOX_MT "airui.checkbox"
 
 /** 组件类型 */
 typedef enum {
@@ -64,7 +65,8 @@ typedef enum {
     AIRUI_COMPONENT_CHART,
     AIRUI_COMPONENT_QRCODE,
     AIRUI_COMPONENT_SPINNER,
-    AIRUI_COMPONENT_SHAPE
+    AIRUI_COMPONENT_SHAPE,
+    AIRUI_COMPONENT_CHECKBOX
 } airui_component_type_t;
 
 /** Video 格式 */
@@ -654,6 +656,17 @@ int airui_chart_remove_series(lv_obj_t *chart, uint32_t series_index);
 int airui_chart_remove_last_series(lv_obj_t *chart);
 int airui_chart_set_axis_config(lv_obj_t *chart, bool is_x, bool enable, int32_t min, int32_t max, uint32_t ticks, const char *unit);
 int airui_chart_set_legend_enabled(lv_obj_t *chart, bool enable);
+
+/**
+ * Checkbox 组件
+ */
+lv_obj_t *airui_checkbox_create_from_config(void *L, int idx);
+int airui_checkbox_set_checked(lv_obj_t *cb, bool checked);
+bool airui_checkbox_get_checked(lv_obj_t *cb);
+int airui_checkbox_set_text(lv_obj_t *cb, const char *text);
+const char *airui_checkbox_get_text(lv_obj_t *cb);
+int airui_checkbox_set_on_change(lv_obj_t *cb, int callback_ref);
+int airui_checkbox_set_style(lv_obj_t *cb, void *L, int idx);
 
 /**
  * Shape缁勪欢
