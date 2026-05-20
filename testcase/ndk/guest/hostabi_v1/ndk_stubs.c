@@ -2,6 +2,15 @@
 
 /* These are placeholder implementations until the actual host ABI is implemented */
 
+unsigned int ndk_exchange_base(void) {
+    /* This stub returns the exchange base address.
+     * In a real implementation, this would read from CSR 0x139.
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    unsigned int base;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x139" : "=r"(base));
+    return base;
+}
+
 unsigned int ndk_host_magic(void) {
     return 0x4E444B31;  /* "NDK1" */
 }

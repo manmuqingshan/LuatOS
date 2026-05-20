@@ -1,6 +1,9 @@
 /* main.c - NDK Host ABI Test Fixture */
 #include "protocol.h"
 
+/* NDK builtin APIs from luat_ndk_builtin.h */
+extern unsigned int ndk_exchange_base(void);
+
 /* NDK builtin host API (implemented in ndk_stubs.c) */
 unsigned int ndk_host_magic(void);
 unsigned int ndk_host_version(void);
@@ -10,15 +13,13 @@ unsigned int ndk_last_error(void);
 /* Memory-mapped control register */
 #define CONTROL_STORE (*(volatile unsigned int*)0x11100000)
 
-/* USERDATA base address from NDK specification */
-#define USERDATA ((unsigned char*)0x11000000)
-
+/* Command and result are in the exchange buffer at offset 0 and 16 bytes respectively */
 static volatile hostabi_cmd_t* cmd_buf(void) {
-    return (volatile hostabi_cmd_t*)USERDATA;
+    return (volatile hostabi_cmd_t*)ndk_exchange_base();
 }
 
 static volatile hostabi_result_t* result_buf(void) {
-    return (volatile hostabi_result_t*)(USERDATA + 128);
+    return (volatile hostabi_result_t*)(ndk_exchange_base() + sizeof(hostabi_cmd_t));
 }
 
 int main(void) {

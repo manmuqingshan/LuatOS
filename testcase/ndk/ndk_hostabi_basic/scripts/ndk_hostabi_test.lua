@@ -12,7 +12,8 @@ local function run_cmd(ctx, opcode, a0, a1, a2)
     assert(ndk.setData(ctx, payload))
     local ok, ret, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
     assert(ok == true, string.format("exec failed ret=%s mcause=%s mtval=%s", tostring(ret), tostring(mcause), tostring(mtval)))
-    return proto.unpack_result(assert(ndk.getData(ctx, proto.RESULT_SIZE, 0)))
+    -- Result is at offset 16 (after the 16-byte command structure)
+    return proto.unpack_result(assert(ndk.getData(ctx, proto.RESULT_SIZE, 16)))
 end
 
 function tests.test_guest_fixture_binary_present()
