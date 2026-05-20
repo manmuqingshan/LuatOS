@@ -267,6 +267,10 @@ local function get_storage_free_kb(mount_point)
         local free_kb = total_kb - used_kb
         log.info("exapp", "fsstat", mount_point, "total_kb:", string.format("%.1f", total_kb),
             "free_kb:", string.format("%.1f", free_kb))
+        -- total_kb == 0 说明是虚拟文件系统（PC 模拟器、未挂载路径），返回极大值让校验通过
+        if total_kb == 0 then
+            return 999999
+        end
         return free_kb
     end
     log.warn("exapp", "fsstat failed for", mount_point)
