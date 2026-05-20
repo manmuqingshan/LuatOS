@@ -392,7 +392,8 @@ local function create_ui()
         end
     })
 
-    local sbwe = screen_w - tih - 12 - 60 - 8
+    local search_btn_w = math.max(60, math.floor(button_font_size * 2.5))
+    local sbwe = screen_w - tih - 12 - search_btn_w - 8
     local sbhe = math.min(tih, search_box_height)
     local sbg = airui.container({
         parent = tb,
@@ -441,7 +442,7 @@ local function create_ui()
         color = COLOR_TEXT,
         keyboard = search_keyboard
     })
-    local sbnw = math.min(60, screen_w - tih - 12 - sbwe - 8)
+    local sbnw = math.min(search_btn_w, screen_w - tih - 12 - sbwe - 8)
     airui.button({
         parent = tb,
         x = tih + 12 + sbwe + 4,
@@ -471,7 +472,8 @@ local function create_ui()
     local stbr = math.floor(stbh / 2)
     sort_by = math.floor((sort_height - stbh) / 2)
     local sddx = math.floor(12 * _G.density_scale)
-    local sddw = math.min(150, math.floor((screen_w - sddx - 90) * 0.65))
+    local sort_dd_max = math.max(150, math.floor(150 * _G.density_scale))
+    local sddw = math.min(sort_dd_max, math.floor((screen_w - sddx - 90) * 0.65))
     local srfx = sddx + sddw + 20
     if srfx + 70 > screen_w then
         sddw = math.floor(screen_w - sddx - 90)
@@ -497,7 +499,7 @@ local function create_ui()
         parent = srb,
         x = math.max(srfx, screen_w - 78),
         y = sort_by,
-        w = math.min(70, screen_w - math.max(srfx, screen_w - 78) - 4),
+        w = math.min(math.max(70, math.floor(button_font_size * 3)), screen_w - math.max(srfx, screen_w - 78) - 4),
         h = stbh,
         text = "刷新",
         font_size = button_font_size,
@@ -586,10 +588,11 @@ local function create_ui()
         h = pagination_bar_height,
         color = COLOR_CARD
     })
+    local pag_btn_w = math.max(70, math.floor(button_font_size * 3))
     local pvx = 16
-    local pvw = 70
-    local nxw = 70
-    local nxx = page_bar_width - 86
+    local pvw = pag_btn_w
+    local nxw = pag_btn_w
+    local nxx = page_bar_width - pag_btn_w - 16
     local lx = pvx + pvw + 4
 
     local pnbh = math.min(40, math.floor(pagination_bar_height * 0.8))
@@ -738,8 +741,10 @@ local function render_apps(apps, has_more_pages)
 
         -- 信息行：大小和下载量（格式：XXKB | ↓ xx次）
         local ioy = ny + title_font_size + 6
-        local szt = (app.origin_size_kb and app.origin_size_kb ~= "") and (app.origin_size_kb .. "KB") or "未知"
-        local dlt = (app.total_downloads and tostring(app.total_downloads)) or "0"
+        local osz = tonumber(app.origin_size_kb) or 0
+        local szt = (osz > 0) and (math.floor(osz) .. "KB") or "未知"
+        local tdl = tonumber(app.total_downloads) or 0
+        local dlt = (tdl > 0) and tostring(math.floor(tdl)) or "0"
         local ift = string.format("%s | ↓ %s次", szt, dlt)
         airui.label({
             parent = card,
@@ -1059,7 +1064,7 @@ local function on_error(error_msg)
     close_progress_dialog()
     local msg_box = airui.msgbox({
         title = "错误",
-        text = msg,
+        text = error_msg,
         buttons = { "确定" },
         on_action = function(self, btn_label) self:hide() end
     })
@@ -1081,7 +1086,15 @@ local function on_create()
     sys.subscribe("APP_STORE_ICON_READY", on_icon_ready)
 
     sys.publish("APP_STORE_SYNC_INSTALLED")
-    publish_get_list()
+    -- 立即请求列表（网络已就绪时马上加载）
+    sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+    -- 网络未就绪时等IP_READY后再重试一次（避免首次进入需手动刷新）
+    sys.taskInit(function()
+        local ok = sys.waitUntil("IP_READY", 30000)
+        if ok then
+            sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+        end
+    end)
 end
 
 local function on_destroy()

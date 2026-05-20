@@ -39,6 +39,8 @@ end
 sys.subscribe("IP_READY", ip_ready_func)
 sys.subscribe("IP_LOSE", ip_lose_func)
 local function eth_wan_setup()
+    sys.wait(1000) -- 等待以太网模块初始化完成,去掉会导致以太网初始化失败
+    
     -- 使用8101核心板+AirETH以太网扩展板测试
     log.info("ch390", "打开LDO供电")
     gpio.setup(13, 1, gpio.PULLUP) -- 打开ch390供电
@@ -65,17 +67,16 @@ local function eth_wan_setup()
         cs = 15,
         irq = 8
     })
+    
+    if static_ip then
+        -- 静态ip配置
+        log.info("静态ip", netdrv.ipv4(eth_adapter, "192.168.4.100", "255.255.255.0", "192.168.4.1"))
+    else
+        -- 使用dhcp动态获取ip地址
+        netdrv.dhcp(eth_adapter, true)
+    end
+    log.info("LWIP_ETH", "mac addr", netdrv.mac(eth_adapter))
 end
-
-sys.wait(1000) -- 等待以太网模块初始化完成,去掉会导致以太网初始化失败
-if static_ip then
-    -- 静态ip配置
-    log.info("静态ip", netdrv.ipv4(eth_adapter, "192.168.4.100", "255.255.255.0", "192.168.4.1"))
-else
-    -- 使用dhcp动态获取ip地址
-    netdrv.dhcp(eth_adapter, true)
-end
-log.info("LWIP_ETH", "mac addr", netdrv.mac(eth_adapter))
 
 local function http_test()
     -- sys.waitUntil("IP_READY")

@@ -114,15 +114,21 @@ end
 local function handle_wifi_connected(ssid)
     log.info("status_provider", "WiFi已连接:", ssid)
     wifi_connected = true
-    wifi_signal_level = 3
+    -- 不立即设置信号等级，由 IP_READY 或后续 RSSI 轮询更新
+    wifi_signal_level = 0
     sys.publish("STATUS_WIFI_SIGNAL_UPDATED", wifi_signal_level)
+end
 
-    -- 启动RSSI轮询（每秒更新一次）
+local function handle_ip_ready()
+    log.info("status_provider", "IP已就绪，启动RSSI轮询")
+    -- IP就绪后才开始RSSI轮询（每秒更新一次）
     if wifi_timer then
         sys.timerStop(wifi_timer)
         wifi_timer = nil
     end
     wifi_timer = sys.timerLoopStart(update_wifi_signal, 1000)
+    -- 立即刷新一次
+    update_wifi_signal()
 end
 
 --[[
@@ -230,6 +236,7 @@ local function init_module()
     -- 这样wifi_app是WLAN_STA_INC的唯一消费者，状态管理清晰
     sys.subscribe("WIFI_CONNECTED", handle_wifi_connected)
     sys.subscribe("WIFI_DISCONNECTED", handle_wifi_disconnected)
+    sys.subscribe("IP_READY", handle_ip_ready)
 
     -- Air8000有4G模块
     if is_air8000 then
