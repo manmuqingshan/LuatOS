@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "luat_ndk_abi.h"
 
 // CSR numbers used for host interaction
 #define NDK_CSR_PRINT_NUM 0x136
@@ -11,11 +12,6 @@
 #define NDK_CSR_EXCHANGE_BASE 0x139
 #define NDK_CSR_EXCHANGE_SIZE 0x13A
 #define NDK_CSR_MEMORY_SIZE  0x13B
-#define NDK_CSR_HOST_MAGIC      0x13C
-#define NDK_CSR_HOST_VERSION    0x13D
-#define NDK_CSR_HOST_FEATURES   0x13E
-#define NDK_CSR_HOST_LAST_ERROR 0x13F
-#define NDK_CSR_EVENT_SLOTS     0x140
 #define NDK_CSR_GPIO_SET     0x200
 #define NDK_CSR_GPIO_GET     0x201
 
@@ -80,10 +76,14 @@ static inline uint32_t ndk_host_features(void) {
     return v;
 }
 
-static inline uint32_t ndk_host_last_error(void) {
+static inline uint32_t ndk_last_error(void) {
     uint32_t v = 0;
     __asm__ volatile(".option norvc\ncsrr %0, %1" : "=r"(v) : "i"(NDK_CSR_HOST_LAST_ERROR));
     return v;
+}
+
+static inline uint32_t ndk_host_last_error(void) {
+    return ndk_last_error();
 }
 
 // Provide a familiar alias for the shared buffer base

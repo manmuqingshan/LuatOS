@@ -110,6 +110,15 @@ static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t tra
     ctx->last_trap = trap;
 }
 
+static void ndk_reset_abi_state(luat_ndk_t *ndk) {
+    ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT;
+    ndk->last_error = LUAT_NDK_HOST_ERR_NONE;
+    ndk->event_slots = 8;
+    ndk->event_head = 0;
+    ndk->event_tail = 0;
+    ndk->event_enabled = 0;
+}
+
 static void ndk_reset_core(luat_ndk_t *ndk) {
     memset(ndk->core, 0, sizeof(MiniRV32IMAState));
     ndk->core->pc = MINIRV32_RAM_IMAGE_OFFSET;
@@ -120,6 +129,7 @@ static void ndk_reset_core(luat_ndk_t *ndk) {
     ndk->last_mcause = 0;
     ndk->last_mtval = 0;
     ndk->last_trap = 0;
+    ndk_reset_abi_state(ndk);
 }
 
 static int ndk_reload_image(luat_ndk_t *ndk) {
@@ -256,15 +266,7 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
     }
 
     ndk_reset_core(ndk);
-    
-    // Initialize ABI state
-    ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT;
-    ndk->last_error = LUAT_NDK_HOST_ERR_NONE;
-    ndk->event_slots = 8;
-    ndk->event_head = 0;
-    ndk->event_tail = 0;
-    ndk->event_enabled = 0;
-    
+
     return LUAT_NDK_OK;
 }
 
