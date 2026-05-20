@@ -235,7 +235,7 @@ local function build_app_grid_page(page_container, start_idx, apps)
                 if app.is_builtin then
                     sys.publish("OPEN_" .. app.win .. "_WIN")
                 else
-                    log.info("iw", "open app", app.path)
+                    log.info("idle_window", "open app", app.path)
                     exapp.open(app.path)
                 end
             end

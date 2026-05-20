@@ -54,14 +54,14 @@ function lcd_drv.init()
             yoffset = 0,       -- y偏移(不同屏幕ic 不同屏幕方向会有差异)
         })
 
-    log.info("lcd", r)
+    log.info("lcd_driver", r)
 
     if r then
         -- 初始化AirUI
         local w, h = lcd.getSize()
         r = airui.init(w, h)
         if not r then
-            log.error("arui", "init failed")
+            log.error("airui", "init failed")
             return r
         end
 
@@ -76,7 +76,7 @@ function lcd_drv.init()
 
         airui.set_rotation(0)
         local vr = airui.version()
-        log.info("arui", "version -> " .. vr)
+        log.info("airui", "version -> " .. vr)
 
         local rot = airui.get_rotation()
         local pw, ph = lcd.getSize()

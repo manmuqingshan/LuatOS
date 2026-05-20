@@ -22,3 +22,5 @@ require "speedtest_app"
 require "settings_iot_app"
 -- 加载设置主模块（会通知settings_config_app进行初始化）
 require "settings_app"
+-- 加载FOTA固件升级模块
+require "fota_app"

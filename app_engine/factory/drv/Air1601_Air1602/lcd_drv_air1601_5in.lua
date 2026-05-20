@@ -61,14 +61,14 @@ function lcd_drv.init()
 		bus_speed = 62 * 1000 * 1000,
 	})
 
-	log.info("ld", res)
+	log.info("lcd_driver", res)
 
 	if res then
 		-- 初始化AirUI
 		local w, h = lcd.getSize()
 		local res = airui.init(w, h)
 		if not res then
-			log.error("au", "init failed")
+			log.error("airui", "init failed")
 		end
 
 		lcd.setupBuff(nil, true) -- 设置帧缓冲区，使用heap内存
@@ -257,7 +257,7 @@ function lcd_drv.init()
 		lcd.cmd(0x29, 0x00)
 		sys.wait(100)
 
-		log.info("nv", "LCD自定义初始化完成")
+		log.info("lcd_nv_init", "LCD自定义初始化完成")
 
 		-- 加载中文字体
 		airui.font_load({
@@ -272,7 +272,7 @@ function lcd_drv.init()
 		local ver = airui.version()
 
 		-- 打印查询结果
-		log.info("au", "version -> " .. ver)
+		log.info("airui", "version -> " .. ver)
 
 		local rot = airui.get_rotation()
 		local pw, ph = lcd.getSize()
