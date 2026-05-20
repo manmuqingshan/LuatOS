@@ -12,6 +12,7 @@
 #include "lvgl9/src/widgets/dropdown/lv_dropdown.h"
 #include "lvgl9/src/widgets/tabview/lv_tabview.h"
 #include "lvgl9/src/widgets/table/lv_table.h"
+#include "lvgl9/src/widgets/table/lv_table_private.h"
 #include "lvgl9/src/misc/lv_event.h"
 #include <string.h>
 
@@ -200,6 +201,27 @@ static void airui_push_dropdown_selected_value(lua_State *L, lv_obj_t *dropdown)
     lua_pushstring(L, value);
 }
 
+// 获取合并单元格的锚点列
+static uint32_t airui_table_get_merge_anchor(lv_obj_t *table, uint32_t row, uint32_t col)
+{
+    lv_table_t *table_dsc = (lv_table_t *)table;
+    if (col == 0 || table_dsc->cell_data == NULL || table_dsc->col_cnt == 0) {
+        return col;
+    }
+
+    for (int32_t c = (int32_t)col - 1; c >= 0; c--) {
+        uint32_t cell_idx = row * table_dsc->col_cnt + (uint32_t)c;
+        if (table_dsc->cell_data[cell_idx] != NULL &&
+            (table_dsc->cell_data[cell_idx]->ctrl & LV_TABLE_CELL_CTRL_MERGE_RIGHT)) {
+            col = (uint32_t)c;
+        }
+        else {
+            break;
+        }
+    }
+    return col;
+}
+
 /**
  * 调用 Lua 回调函数
  * @param meta 组件元数据
@@ -257,6 +279,7 @@ void airui_component_call_callback(
                  meta->component_type == AIRUI_COMPONENT_TABLE) {
             uint32_t row = 0, col = 0;
             lv_table_get_selected_cell(meta->obj, &row, &col);
+            col = airui_table_get_merge_anchor(meta->obj, row, col);
             lua_pushinteger(L_state, (lua_Integer)row);
             lua_pushinteger(L_state, (lua_Integer)col);
             const char *value = lv_table_get_cell_value(meta->obj, row, col);

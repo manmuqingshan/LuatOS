@@ -519,6 +519,8 @@ int airui_table_auto_marquee_scroll_control(lv_obj_t *table,
                                             uint16_t speed); //控制跑马灯滚动
 int airui_table_set_on_cell_click(lv_obj_t *table, int callback_ref); //设置单元格点击回调
 void airui_table_scroll_row_into_view(lv_obj_t *table, uint32_t row, bool animated, bool align_top); //滚动到指定行
+int airui_table_merge_cells(lv_obj_t *table, uint16_t row, uint16_t col, uint16_t colspan, bool center); //水平合并单元格，center 为 true 时文字自动居中
+int airui_table_unmerge_cells(lv_obj_t *table, uint16_t row, uint16_t col, uint16_t colspan); //取消水平合并
 
 /**
  * TabView 组件创建

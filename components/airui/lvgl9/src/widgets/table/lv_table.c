@@ -1045,6 +1045,17 @@ static lv_result_t get_pressed_cell(lv_obj_t * obj, uint32_t * row, uint32_t * c
     /* If the click was on valid column AND row then return valid result, return invalid otherwise */
     lv_result_t result = LV_RESULT_INVALID;
     if((is_click_on_valid_column) && (is_click_on_valid_row)) {
+        if(col && table->cell_data != NULL && *col > 0 && *row < table->row_cnt) {
+            for(int32_t c = (int32_t)(*col) - 1; c >= 0; c--) {
+                lv_table_cell_t *cell_data = table->cell_data[(*row) * table->col_cnt + (uint32_t)c];
+                if(cell_data != NULL && (cell_data->ctrl & LV_TABLE_CELL_CTRL_MERGE_RIGHT)) {
+                    *col = (uint32_t)c;
+                }
+                else {
+                    break;
+                }
+            }
+        }
         result = LV_RESULT_OK;
     }
 
