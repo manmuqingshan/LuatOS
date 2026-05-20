@@ -35,7 +35,7 @@ local function ipw()
         pwm.setup(pch, pf, cb)
         pwm.start(pch)
         pi = true
-        log.info("sda", "PWM 初始化完成，初始亮度: " .. cb)
+        log.info("settings_display_app", "PWM 初始化完成，初始亮度: " .. cb)
     end
 end
 
@@ -55,7 +55,7 @@ local function sb(lv)
     end
     cb = lv
     pwm.setDuty(pch, lv)
-    log.info("sda", "亮度设置为: " .. lv .. "%")
+    log.info("settings_display_app", "亮度设置为: " .. lv .. "%")
     -- 上报亮度变化事件
     sys.publish("DISPLAY_BRIGHTNESS_CHANGED", cb)
 end

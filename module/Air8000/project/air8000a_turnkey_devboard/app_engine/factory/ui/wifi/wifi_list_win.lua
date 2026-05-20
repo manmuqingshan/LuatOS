@@ -381,12 +381,12 @@ local function lcui()
 end
 
 local function scst()
-    log.info("wlw", "扫描开始")
+    log.info("wifi_list_win", "扫描开始")
     sish()
 end
 
 local function scdn(rs)
-    log.info("wlw", "扫描完成，找到", #rs, "个热点")
+    log.info("wifi_list_win", "扫描完成，找到", #rs, "个热点")
     sihd()
     csr = rs or {}
     uwfl(rs)
@@ -394,18 +394,18 @@ local function scdn(rs)
 end
 
 local function scto()
-    log.warn("wlw", "扫描超时")
+    log.warn("wifi_list_win", "扫描超时")
     sihd()
     airui.msgbox({ text = "扫描超时，未找到WiFi热点", buttons = { "确定" }, on_action = function(s) s:hide() end }):show()
 end
 
 local function cng(sid)
-    log.info("wlw", "正在连接:", sid)
+    log.info("wifi_list_win", "正在连接:", sid)
     if lcc then lcc:open() end
 end
 
 local function cnd(sid)
-    log.info("wlw", "连接成功:", sid)
+    log.info("wifi_list_win", "连接成功:", sid)
     if lcc then lcc:hide() end
     usnl()
     uwfl(csr)
@@ -413,7 +413,7 @@ local function cnd(sid)
 end
 
 local function dsc(rs, cd)
-    log.error("wlw", "连接失败:", rs, cd)
+    log.error("wifi_list_win", "连接失败:", rs, cd)
     if lcc then lcc:hide() end
     airui.msgbox({ text = "WiFi 连接失败: " .. rs, buttons = { "确定" }, timeout = 3000, on_action = function(s) s:destroy() end })
     usnl()
@@ -421,7 +421,7 @@ local function dsc(rs, cd)
 end
 
 local function stup(st)
-    log.info("wlw", "WiFi状态更新:", json.encode(st))
+    log.info("wifi_list_win", "WiFi状态更新:", json.encode(st))
     sts = st
     if cfg then
         if not cfg.wifi_enabled and not st.connected then
@@ -432,7 +432,7 @@ local function stup(st)
 end
 
 local function slrs(dt)
-    log.info("wlw", "收到已保存网络列表:", #dt.list)
+    log.info("wifi_list_win", "收到已保存网络列表:", #dt.list)
     snl = dt.list or {}
     usnl()
 end
@@ -440,7 +440,7 @@ end
 local function cfrs(dt)
     local oe = cfg and cfg.wifi_enabled
     cfg = dt.config
-    log.info("wlw", "配置加载完成, enabled:", cfg.wifi_enabled)
+    log.info("wifi_list_win", "配置加载完成, enabled:", cfg.wifi_enabled)
     if wes and (oe == nil or oe ~= cfg.wifi_enabled) then
         ipss = true
         wes:set_state(cfg.wifi_enabled)
@@ -517,9 +517,9 @@ local function open()
             on_get_focus = lgfc,
             on_lose_focus = llfc,
         })
-        log.info("wlw", "WiFi列表窗口打开，ID:", wid)
+        log.info("wifi_list_win", "WiFi列表窗口打开，ID:", wid)
     end
 end
 
 sys.subscribe("OPEN_WIFI_WIN", open)
-log.info("wlw", "订阅 OPEN_WIFI_WIN 消息")
+log.info("wifi_list_win", "订阅 OPEN_WIFI_WIN 消息")

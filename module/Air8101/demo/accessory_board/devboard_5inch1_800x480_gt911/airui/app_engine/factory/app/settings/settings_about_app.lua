@@ -60,5 +60,5 @@ end
 sys.subscribe("ABOUT_DEVICE_GET_INFO", function()
     local inf = gdi()
     sys.publish("ABOUT_DEVICE_INFO", inf)
-    log.info("saa", "上报设备信息")
+    log.info("settings_about_app", "上报设备信息")
 end)

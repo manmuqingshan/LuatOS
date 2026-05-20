@@ -53,7 +53,7 @@ local function wsf(evt, data)
     -- evt 可能的值有: "CONNECTED", "DISCONNECTED"
     -- 当evt=CONNECTED, data是连接的AP的ssid, 字符串类型
     -- 当evt=DISCONNECTED, data断开的原因, 整数类型
-    log.info("sta", evt, data)
+    log.info("wifi_station", evt, data)
 end
 
 -- wifi的STA相关事件

@@ -49,14 +49,14 @@ function lcd_drv.init()
         xoffset = 0,    -- x偏移(不同屏幕ic 不同屏幕方向会有差异)
         yoffset = 0,    -- y偏移(不同屏幕ic 不同屏幕方向会有差异)
     })
-    log.info("ld", res)
+    log.info("lcd_driver", res)
 
     if res then
         -- 初始化AirUI
         local w, h = lcd.getSize()
         local res = airui.init(w, h)
         if not res then
-            log.error("au", "init failed")
+            log.error("airui", "init failed")
         end
 
         lcd.setupBuff(nil, true) -- 设置帧缓冲区，使用heap内存
@@ -88,7 +88,7 @@ function lcd_drv.init()
 
         airui.set_rotation(180)
         local ver = airui.version()
-        log.info("au", "version -> " .. ver)
+        log.info("airui", "version -> " .. ver)
 
         local rot = airui.get_rotation()
         local pw, ph = lcd.getSize()

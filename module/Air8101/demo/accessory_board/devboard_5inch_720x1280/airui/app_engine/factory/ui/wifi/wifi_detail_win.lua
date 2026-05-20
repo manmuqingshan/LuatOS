@@ -272,14 +272,14 @@ local function dcui()
 end
 
 local function onst(st)
-    log.info("wfdw", "WiFi状态更新:", json.encode(st))
+    log.info("wifi_detail_win", "WiFi状态更新:", json.encode(st))
     cs = st
     updi()
 end
 
 local function oncf(dt)
     cc = dt.config
-    log.info("wfdw", "配置加载完成:", json.encode(cc))
+    log.info("wifi_detail_win", "配置加载完成:", json.encode(cc))
     updi()
 end
 

@@ -59,7 +59,7 @@ local ccfg = {
 
 local function ccrs(d)
     ccfg = d.config
-    log.info("wcw", "配置加载完成:", json.encode(ccfg))
+    log.info("wifi_connect_win", "配置加载完成:", json.encode(ccfg))
 
     if cfs and cpt and ccw then
         if ccfg.ssid == ccw.ssid then
@@ -430,11 +430,11 @@ local function ccui()
 end
 
 local function ccoc(ssid)
-    log.info("wcw", "WiFi连接成功:", ssid)
+    log.info("wifi_connect_win", "WiFi连接成功:", ssid)
 end
 
 local function cdsc(rs, cd)
-    log.info("wcw", "WiFi连接失败:", rs, cd)
+    log.info("wifi_connect_win", "WiFi连接失败:", rs, cd)
 end
 
 local function ccre()

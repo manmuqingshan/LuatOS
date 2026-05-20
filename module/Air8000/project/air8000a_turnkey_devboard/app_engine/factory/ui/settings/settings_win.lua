@@ -13,6 +13,7 @@ require "settings_about_win"
 require "settings_sound_win"
 require "wifi_list_win"
 require "settings_iot_win"
+require "settings_fota_win"
 
 local wid = nil
 local mc
@@ -136,16 +137,7 @@ local function cui()
     y = y + ch + csp
     mk(y, "存储", function() sys.publish("OPEN_STORAGE_WIN") end)
     y = y + ch + csp
-    mk(y, "系统更新", function()
-        sys.publish("OPEN_SYSTEM_WIN")
-        airui.msgbox({
-            parent = ct,
-            title = "提示",
-            text = "正在开发中...",
-            buttons = {"确定"},
-            on_action = function(self) self:destroy() end
-        })
-    end)
+    mk(y, "系统更新", function() sys.publish("OPEN_FOTA_WIN") end)
     y = y + ch + csp
     if a8k then
         mk(y, "触摸音效", function() sys.publish("OPEN_SOUND_WIN") end)
