@@ -397,7 +397,10 @@ function tests.test_uart_rx_state_read_clear_round_trip()
     assert(decoded.pending == 1, "uart rx should be pending")
     assert(decoded.buffered_len == #payload, "uart buffered length should match loopback bytes")
 
-    local read = run_cmd_with_reset(ctx, proto.CMD_UART_RX_READ, proto.UART_PORT_LOOPBACK, ((proto.UART_PAYLOAD_OFFSET & 0xFFFF) << 16) | #payload, 0, false)
+    local read = run_payload_with_reset(ctx,
+        proto.pack_uart_io_cmd(proto.CMD_UART_RX_READ, proto.UART_PORT_LOOPBACK,
+            proto.UART_PAYLOAD_OFFSET, #payload),
+        false)
     assert(read.status == proto.STATUS_OK, "uart rx read should succeed")
     local bytes = ndk.getData(ctx, #payload, proto.UART_PAYLOAD_OFFSET)
     assert(bytes == payload, "uart rx read should copy loopback bytes")
