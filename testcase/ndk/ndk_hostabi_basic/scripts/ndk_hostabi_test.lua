@@ -344,7 +344,7 @@ function tests.test_gpio_write_host_failure_does_not_claim_pin()
 end
 
 -- ---------------------------------------------------------------------------
--- UART v1 tests (failing: host does not yet implement UART commands)
+-- UART v1 tests
 -- ---------------------------------------------------------------------------
 
 function tests.test_uart_query_meta_advertises_uart_feature()
@@ -407,6 +407,17 @@ function tests.test_uart_rx_state_read_clear_round_trip()
 
     local clr = run_cmd_with_reset(ctx, proto.CMD_UART_RX_CLEAR, proto.UART_PORT_LOOPBACK, 0, 0, false)
     assert(clr.status == proto.STATUS_OK, "uart rx clear should succeed")
+end
+
+function tests.test_uart_config_bad_port_returns_error()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    -- Port 0xFF is not a valid UART port; host must return BAD_PORT
+    local cmd, cfg = proto.pack_uart_config_cmd(0xFF, 115200, 8, 1, 0, false)
+    local pad = string.rep("\0", proto.UART_CFG_OFFSET - #cmd)
+    local result = run_payload_with_reset(ctx, cmd .. pad .. cfg, true)
+    assert(result.status == proto.STATUS_UART_BAD_PORT,
+        string.format("expected STATUS_UART_BAD_PORT (%d), got %d", proto.STATUS_UART_BAD_PORT, result.status))
 end
 
 function tests.test_uart_context_isolation_holds()
