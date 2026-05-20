@@ -81,13 +81,20 @@ typedef struct luat_audio_data_codec_opts {
      * @param codec 编解码器上下文指针
      * @param input_buffer 输入缓冲区指针
      * @param now_file_pos 当前文件位置，单位字节
-     * @param jump_offset_bytes 跳过偏移量指针，单位字节
-     * @param need_bytes 需要长度指针
+     * @param jump_offset_bytes 跳过偏移量指针，单位字节，当获取播放信息完整时，这里偏移指针需要指向真正数据的开头位置
+     * @param need_bytes 需要再次输入的长度，当获取播放信息完整时，这里需要输入的长度为0
      * @param info 指向存储播放信息的结构，如果信息不够，返回的sample_rate为0
      * @return int 成功返回 LUAT_ERROR_NONE，失败返回负值错误码
      */
     int (*get_play_info)(struct luat_audio_data_codec *codec, luat_buffer_t *input_buffer, uint32_t now_file_pos, uint32_t *jump_offset_bytes, uint32_t *need_bytes, luat_audio_common_param_t *info);
 
+    /**
+     * @brief 预解码音频数据，获取解码后的帧大小（字节），只有decode_min_input_len为0时才需要调用此函数，说明数据帧长度是需要解析出来的，目前只有amr需要
+     * @param codec 编解码器上下文指针
+     * @param input 输入编码数据缓冲区
+     * @param input_size 输入数据大小（字节）,不大于decode_min_input_len
+     * @param frame_size_bytes 指向存储解码后的帧大小的指针，单位字节
+     */
     void (*pre_decode)(struct luat_audio_data_codec* codec, const uint8_t *input, uint32_t input_size, uint32_t *frame_size_bytes);
     /**
      * @brief 解码音频数据
