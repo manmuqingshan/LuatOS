@@ -119,7 +119,6 @@ static int png_read_ihdr(const char *path, uint16_t *width, uint16_t *height)
 static lv_result_t airui_luatos_png_decoder_info(lv_image_decoder_t *decoder, lv_image_decoder_dsc_t *dsc,
                                                   lv_image_header_t *header)
 {
-    luat_lcd_conf_t *lcd_conf;
     uint16_t width = 0, height = 0;
 
     LV_UNUSED(decoder);
@@ -129,11 +128,6 @@ static lv_result_t airui_luatos_png_decoder_info(lv_image_decoder_t *decoder, lv
     }
 
     if (!airui_luatos_is_png_path((const char *)dsc->src)) {
-        return LV_RESULT_INVALID;
-    }
-
-    lcd_conf = luat_lcd_get_default();
-    if (lcd_conf == NULL || (lcd_conf->acc_hw & 0x02) == 0) {
         return LV_RESULT_INVALID;
     }
 
@@ -150,7 +144,6 @@ static lv_result_t airui_luatos_png_decoder_info(lv_image_decoder_t *decoder, lv
 
 static lv_result_t airui_luatos_png_decoder_open(lv_image_decoder_t *decoder, lv_image_decoder_dsc_t *dsc)
 {
-    luat_lcd_conf_t *lcd_conf;
     luat_img_conf_t img_conf;
     luat_img_info_t img_info;
     uint8_t *file_buf = NULL;
@@ -166,11 +159,6 @@ static lv_result_t airui_luatos_png_decoder_open(lv_image_decoder_t *decoder, lv
     }
 
     if (!airui_luatos_is_png_path((const char *)dsc->src)) {
-        return LV_RESULT_INVALID;
-    }
-
-    lcd_conf = luat_lcd_get_default();
-    if (lcd_conf == NULL || (lcd_conf->acc_hw & 0x02) == 0) {
         return LV_RESULT_INVALID;
     }
 
