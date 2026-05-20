@@ -19,6 +19,7 @@
 #endif
 
 #define LUAT_NDK_EXCHANGE_ALIGN 4
+#define LUAT_NDK_GPIO_TRACK_BYTES 32
 
 struct MiniRV32IMAState;
 typedef struct MiniRV32IMAState MiniRV32IMAState;
@@ -68,6 +69,7 @@ typedef struct luat_ndk {
     uint16_t event_head;
     uint16_t event_tail;
     uint8_t event_enabled;
+    uint8_t gpio_tracked[LUAT_NDK_GPIO_TRACK_BYTES];
 } luat_ndk_t;
 
 int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exchange_size);

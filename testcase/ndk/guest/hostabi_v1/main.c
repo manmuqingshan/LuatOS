@@ -30,6 +30,7 @@ static int hostabi_is_gpio_status(unsigned int value) {
     case HOSTABI_STATUS_BAD_PULL:
     case HOSTABI_STATUS_BAD_IRQ_MODE:
     case HOSTABI_STATUS_UNSUPPORTED:
+    case HOSTABI_STATUS_HOST_ERROR:
         return 1;
     default:
         return 0;

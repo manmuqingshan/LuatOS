@@ -1,10 +1,13 @@
 /* ndk_stubs.c - Stub implementations for NDK host API functions */
 
+#include "protocol.h"
+
 /* These are placeholder implementations until the actual host ABI is implemented */
 
 #define HOSTABI_TEST_GPIO_IRQ_PACKED_PIN   0xA55Au
 #define HOSTABI_TEST_GPIO_IRQ_PACKED_STATE (((unsigned int)3u << 24) | (1u << 16) | HOSTABI_TEST_GPIO_IRQ_PACKED_PIN)
 #define HOSTABI_TEST_GPIO_READ_INVALID_PIN 0xB55Bu
+#define HOSTABI_TEST_GPIO_HOST_ERROR_PIN   0xC55Cu
 
 unsigned int ndk_exchange_base(void) {
     /* This stub returns the exchange base address.
@@ -48,6 +51,14 @@ unsigned int ndk_host_features(void) {
 }
 
 unsigned int ndk_last_error(void) {
+    if (ndk_exchange_base()) {
+        unsigned int opcode = *(volatile unsigned int*)ndk_exchange_base();
+        unsigned int arg0 = *(volatile unsigned int*)(ndk_exchange_base() + 4);
+        if ((opcode == HOSTABI_CMD_GPIO_READ || opcode == HOSTABI_CMD_GPIO_IRQ_STATE) &&
+            (arg0 == HOSTABI_TEST_GPIO_HOST_ERROR_PIN)) {
+            return HOSTABI_STATUS_HOST_ERROR;
+        }
+    }
     /* Reads last error from CSR 0x13F.
      * The .option norvc directive ensures 32-bit instruction encoding. */
     unsigned int error;
@@ -73,6 +84,9 @@ unsigned int ndk_gpio_read_v2(unsigned int pin) {
     if ((pin & 0xFFFFu) == HOSTABI_TEST_GPIO_READ_INVALID_PIN) {
         return 2u;
     }
+    if ((pin & 0xFFFFu) == HOSTABI_TEST_GPIO_HOST_ERROR_PIN) {
+        return HOSTABI_STATUS_HOST_ERROR;
+    }
     register unsigned int a0 __asm__("a0") = pin & 0xFFFFu;
     __asm__ volatile(".option norvc\ncsrrw a0, 0x212, a0" : "+r"(a0));
     return a0;
@@ -83,6 +97,9 @@ unsigned int ndk_gpio_irq_state(unsigned int pin) {
      * coverage still comes from the CSR-backed cases above. */
     if ((pin & 0xFFFFu) == HOSTABI_TEST_GPIO_IRQ_PACKED_PIN) {
         return HOSTABI_TEST_GPIO_IRQ_PACKED_STATE;
+    }
+    if ((pin & 0xFFFFu) == HOSTABI_TEST_GPIO_HOST_ERROR_PIN) {
+        return HOSTABI_STATUS_HOST_ERROR;
     }
     register unsigned int a0 __asm__("a0") = pin & 0xFFFFu;
     __asm__ volatile(".option norvc\ncsrrw a0, 0x213, a0" : "+r"(a0));

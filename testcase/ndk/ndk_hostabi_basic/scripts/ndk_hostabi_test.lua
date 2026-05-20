@@ -118,6 +118,18 @@ function tests.test_gpio_write_then_read_round_trip()
     assert(rd.value0 == 1, "gpio read should report written level")
 end
 
+function tests.test_gpio_reset_clears_written_level()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local cfg = run_cmd(ctx, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    assert(cfg.status == proto.STATUS_OK, "gpio config should succeed")
+    local wr = run_cmd_with_reset(ctx, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
+    assert(wr.status == proto.STATUS_OK, "gpio write should succeed")
+    local rd = run_cmd(ctx, proto.CMD_GPIO_READ, 7, 0, 0)
+    assert(rd.status == proto.STATUS_OK, "gpio read after reset should succeed")
+    assert(rd.value0 == 0, "ndk reset should clear prior gpio output level")
+end
+
 function tests.test_gpio_read_invalid_nonboolean_result_surfaces_as_error()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
@@ -126,11 +138,21 @@ function tests.test_gpio_read_invalid_nonboolean_result_surfaces_as_error()
     assert(rd.value0 == 0, "invalid gpio read should not leak bogus level")
 end
 
+function tests.test_gpio_host_error_status_is_preserved()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local rd = run_cmd(ctx, proto.CMD_GPIO_READ, 0xC55C, 0, 0)
+    assert(rd.status == proto.STATUS_HOST_ERROR, "gpio host error should surface as host error")
+    assert(rd.value0 == 0, "gpio host error should not leak bogus level")
+end
+
 function tests.test_gpio_irq_state_unpacks_future_packed_shape()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
     local unsupported = run_cmd(ctx, proto.CMD_GPIO_IRQ_STATE, 9, 0, 0)
     assert(unsupported.status == proto.STATUS_UNSUPPORTED, "current gpio irq state should still surface unsupported")
+    local host_error = run_cmd(ctx, proto.CMD_GPIO_IRQ_STATE, 0xC55C, 0, 0)
+    assert(host_error.status == proto.STATUS_HOST_ERROR, "gpio irq state host error should surface as host error")
     local state = run_cmd(ctx, proto.CMD_GPIO_IRQ_STATE, 0xA55A, 0, 0)
     assert(state.status == proto.STATUS_OK, "packed gpio irq state should decode as success")
     assert(state.value0 == 1, "packed gpio irq state should expose pending flag")
