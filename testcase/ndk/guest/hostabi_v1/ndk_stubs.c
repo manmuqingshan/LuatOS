@@ -20,17 +20,33 @@ unsigned int ndk_memory_size(void) {
 }
 
 unsigned int ndk_host_magic(void) {
-    return 0x4E444B31;  /* "NDK1" */
+    /* Reads host magic from CSR 0x13C.
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    unsigned int magic;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x13C" : "=r"(magic));
+    return magic;
 }
 
 unsigned int ndk_host_version(void) {
-    return 0x00010000;  /* 1.0.0 */
+    /* Reads host version from CSR 0x13D.
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    unsigned int version;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x13D" : "=r"(version));
+    return version;
 }
 
 unsigned int ndk_host_features(void) {
-    return 0x00000000;  /* No features yet */
+    /* Reads host features from CSR 0x13E.
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    unsigned int features;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x13E" : "=r"(features));
+    return features;
 }
 
 unsigned int ndk_last_error(void) {
-    return 0;  /* No error */
+    /* Reads last error from CSR 0x13F.
+     * The .option norvc directive ensures 32-bit instruction encoding. */
+    unsigned int error;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x13F" : "=r"(error));
+    return error;
 }
