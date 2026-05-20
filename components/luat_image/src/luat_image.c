@@ -15,9 +15,11 @@ static const luat_img_decoder_opts_t* const decoder_opts_table[] = {
 #ifdef LUAT_USE_PNG
 #ifdef LUAT_USE_LODEPNG
     [LUAT_IMG_DECODER_KEY(LUAT_IMG_FMT_PNG, LUAT_IMG_DECODE_SW)] = &png_sw_decoder_opts,
-#endif
+#endif 
+#ifdef LUAT_USE_PNG_HW
     [LUAT_IMG_DECODER_KEY(LUAT_IMG_FMT_PNG, LUAT_IMG_DECODE_HW)] = &png_hw_decoder_opts,
-#endif
+#endif /* LUAT_USE_PNG_HW */
+#endif /* LUAT_USE_PNG */
 #ifdef LUAT_USE_WEBP
     [LUAT_IMG_DECODER_KEY(LUAT_IMG_FMT_WEBP, LUAT_IMG_DECODE_SW)] = &webp_sw_decoder_opts,
     [LUAT_IMG_DECODER_KEY(LUAT_IMG_FMT_WEBP, LUAT_IMG_DECODE_HW)] = &webp_hw_decoder_opts,

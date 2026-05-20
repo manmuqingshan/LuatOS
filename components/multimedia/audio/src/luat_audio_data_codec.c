@@ -35,6 +35,10 @@ int luat_audio_data_codec_bind(luat_audio_data_codec_t *codec, const luat_audio_
             LLOGC(luat_audio_debug_flag, "bind hardware data codec %d, now device is busy", opts->type);
         }
     }
+    if (codec->input_buffer) {
+        luat_heap_free(codec->input_buffer);
+        codec->input_buffer = NULL;
+    }
     codec->input_buffer = luat_heap_malloc(opts->decode_max_output_len > opts->encode_min_input_len ? opts->encode_min_input_len : opts->decode_max_output_len);
     if (!codec->input_buffer) {
         return -LUAT_ERROR_NO_MEMORY;
@@ -78,8 +82,8 @@ int luat_audio_data_codec_decode_once(luat_audio_data_codec_t *codec, luat_fifo_
     uint32_t input_data_len = 0;
     uint32_t out_len, used_len;
     int ret;
-    LLOGC(luat_audio_debug_flag, "start decode input fifo %d bytes, output buffer %d bytes",
-            luat_fifo_check_used_space(input_data_fifo), output_data_buffer->pos);
+    // LLOGC(luat_audio_debug_flag, "start decode input fifo %d bytes, output buffer %d bytes",
+    //         luat_fifo_check_used_space(input_data_fifo), output_data_buffer->pos);
 
     while ((output_data_buffer->pos + codec->opts->decode_max_output_len) <= output_data_buffer->max_len) {
         if (codec->opts->decode_min_input_len) {
@@ -115,8 +119,8 @@ int luat_audio_data_codec_decode_once(luat_audio_data_codec_t *codec, luat_fifo_
         if (!ret) {
             output_data_buffer->pos += out_len;
         }
-        LLOGC(luat_audio_debug_flag, "decode used %d bytes, output %d bytes, input fifo %d bytes, output buffer %d bytes", used_len, out_len,
-            luat_fifo_check_used_space(input_data_fifo), output_data_buffer->pos);
+        // LLOGC(luat_audio_debug_flag, "decode used %d bytes, output %d bytes, input fifo %d bytes, output buffer %d bytes", used_len, out_len,
+        //     luat_fifo_check_used_space(input_data_fifo), output_data_buffer->pos);
     }
     return LUAT_ERROR_NONE;
 }

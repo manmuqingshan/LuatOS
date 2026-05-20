@@ -1,4 +1,5 @@
 #include "luat_audio_channel.h"
+#include "luat_audio_define.h"
 #include "luat_common_api.h"
 #include "luat_rtos.h"
 #include "luat_rtos_legacy.h"
@@ -45,16 +46,16 @@ int luat_audio_channel_play(luat_audio_channel_t *channel, uint8_t is_play)
     if (!channel) {
         return -LUAT_ERROR_PARAM_INVALID;
     }
-    channel->play_state = is_play;
+    channel->user_play_stop = !is_play;
     return LUAT_ERROR_NONE;
 }
 
-int luat_audio_channel_record(luat_audio_channel_t *channel, uint8_t record_state)
+int luat_audio_channel_record(luat_audio_channel_t *channel, uint8_t is_record)
 {
     if (!channel) {
         return -LUAT_ERROR_PARAM_INVALID;
     }
-    channel->record_state = record_state;
+    channel->user_record_stop = !is_record;
     return LUAT_ERROR_NONE;
 }
 
@@ -112,7 +113,7 @@ int luat_audio_channel_write_data(luat_audio_channel_t *channel, void *data, uin
     // }
     luat_data_union_t data_union;
     data_union.p = data;
-
+    // LLOGC(luat_audio_debug_flag,"write data to channel len_bytes %u, is_signed %u, data_align %u, channel_nums %u", len_bytes, is_signed, data_align, channel_nums);
     if (channel->soft_vol && channel->soft_vol != 100) {     // 音量软件调节
         switch (data_align) {
             case 2:
@@ -474,7 +475,6 @@ int luat_audio_channel_write_data(luat_audio_channel_t *channel, void *data, uin
         luat_fifo_write(channel->play_fifo, new_data_union.p, new_data_bytes);
         luat_heap_free(new_data_union.p8);
     } else {
-        
         LLOGE("data_align not match and channel_nums not match, can not deal with data");
         return -LUAT_ERROR_PARAM_INVALID;
     }

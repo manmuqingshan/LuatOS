@@ -83,12 +83,14 @@ struct luat_audio_request_block {
     luat_audio_channel_t *data_channel;      /**< 关联的音频通道 */
     uint8_t driver_work_mode;                /**< 驱动工作模式，见LUAT_AUDIO_DRIVER_MODE_xxx */
     uint8_t priority;                        /**< 请求优先级 (0-255)，数值越大优先级越高 */
+    uint8_t play_blank_data_cnt;                        /**< 播放空白数据计数 */
     uint8_t is_stream:1;                       /**< 是否为流式请求 */
     uint8_t is_tts:1;                          /**< 是否为文本转语音请求 */
     uint8_t is_stream_end:1;                   /**< 是否为流式请求结束 */
     uint8_t is_user_stop:1;                       /**< 用户是否请求停止 */
     uint8_t is_error_stop:1;                   /**< 是否为错误停止 */
     uint8_t is_file_end:1;                   /**< 是否为文件结束请求 */
+    uint8_t is_wait_play_end:1;                   /**< 是否等待播放结束 */
 };
 
 typedef struct luat_audio_request_block luat_audio_request_block_t;
