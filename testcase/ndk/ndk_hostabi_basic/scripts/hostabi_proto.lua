@@ -151,20 +151,17 @@ function M.pack_uart_io_cmd(opcode, port, offset, length)
 end
 
 -- Decode CMD_UART_RX_STATE result fields.
-function M.decode_uart_rx_state(result)
-    return {
-        pending      = result.value0,
-        buffered_len = result.value1,
-        reason       = result.value2,
-    }
-end
-
 function M.decode_uart_rx_state_result(result)
     return {
         pending = result.value0,
         buffered_len = result.value1,
         reason = result.value2,
     }
+end
+
+-- Compatibility wrapper; delegates to decode_uart_rx_state_result.
+function M.decode_uart_rx_state(result)
+    return M.decode_uart_rx_state_result(result)
 end
 
 -- Decode an UART_RX_READY event payload.
