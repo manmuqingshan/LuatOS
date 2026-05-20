@@ -256,5 +256,6 @@ Current PC simulator regression uses a deterministic context-local loopback mode
 - `UART_TX` copies bytes from exchange buffer into the host loopback backend
 - RX-ready data is surfaced through `UART_RX_READY` plus `UART_RX_STATE`
 - `UART_RX_READ` copies bytes back into the exchange buffer
+- `UART_RX_CLEAR` discards all bytes currently held in the loopback RX buffer
 
 If `bsp\pc\luat_uart_i686.dll` is available and a CH340 loopback is connected on `COM14`, that path may be used for a manual smoke check, but automated regression still relies on the deterministic host-backed loopback above.
