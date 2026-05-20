@@ -4,6 +4,7 @@
 
 #define HOSTABI_TEST_GPIO_IRQ_PACKED_PIN   0xA55Au
 #define HOSTABI_TEST_GPIO_IRQ_PACKED_STATE (((unsigned int)3u << 24) | (1u << 16) | HOSTABI_TEST_GPIO_IRQ_PACKED_PIN)
+#define HOSTABI_TEST_GPIO_READ_INVALID_PIN 0xB55Bu
 
 unsigned int ndk_exchange_base(void) {
     /* This stub returns the exchange base address.
@@ -68,6 +69,10 @@ unsigned int ndk_gpio_write_v2(unsigned int pin, unsigned int level) {
 }
 
 unsigned int ndk_gpio_read_v2(unsigned int pin) {
+    /* Decoder-only fixture path for validating guest-side read decoding. */
+    if ((pin & 0xFFFFu) == HOSTABI_TEST_GPIO_READ_INVALID_PIN) {
+        return 2u;
+    }
     register unsigned int a0 __asm__("a0") = pin & 0xFFFFu;
     __asm__ volatile(".option norvc\ncsrrw a0, 0x212, a0" : "+r"(a0));
     return a0;

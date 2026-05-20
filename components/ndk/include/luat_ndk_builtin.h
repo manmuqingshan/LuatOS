@@ -86,6 +86,8 @@ static inline uint32_t ndk_host_last_error(void) {
     return ndk_last_error();
 }
 
+/* GPIO v2 uses csrrw a0, csr, a0 on purpose: the host resolves these CSRs
+ * from the CSR read path and inspects the guest's current a0 payload. */
 static inline uint32_t ndk_gpio_config(uint32_t pin, uint32_t mode, uint32_t pull, uint32_t irq_mode) {
     register uint32_t a0 __asm__("a0") =
         ((irq_mode & 0xFFu) << 24) | ((pull & 0xFFu) << 16) | ((mode & 0xFFu) << 8) | (pin & 0xFFu);

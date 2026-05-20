@@ -2,16 +2,6 @@
 
 #include "luat_gpio.h"
 
-enum {
-    LUAT_NDK_GPIO_STATUS_HOST_ERROR = 15u,
-    LUAT_NDK_GPIO_STATUS_OK = 0u,
-    LUAT_NDK_GPIO_STATUS_BAD_PIN = 10u,
-    LUAT_NDK_GPIO_STATUS_BAD_MODE = 11u,
-    LUAT_NDK_GPIO_STATUS_BAD_PULL = 12u,
-    LUAT_NDK_GPIO_STATUS_BAD_IRQ_MODE = 13u,
-    LUAT_NDK_GPIO_STATUS_UNSUPPORTED = 14u
-};
-
 static uint32_t ndk_gpio_status_to_error(uint32_t status) {
     switch (status) {
     case LUAT_NDK_GPIO_STATUS_OK:

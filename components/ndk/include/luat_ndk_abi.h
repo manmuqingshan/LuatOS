@@ -75,6 +75,16 @@ typedef enum {
     LUAT_NDK_GPIO_IRQ_LOW = 4
 } luat_ndk_gpio_irq_mode_t;
 
+typedef enum {
+    LUAT_NDK_GPIO_STATUS_OK = 0u,
+    LUAT_NDK_GPIO_STATUS_BAD_PIN = 10u,
+    LUAT_NDK_GPIO_STATUS_BAD_MODE = 11u,
+    LUAT_NDK_GPIO_STATUS_BAD_PULL = 12u,
+    LUAT_NDK_GPIO_STATUS_BAD_IRQ_MODE = 13u,
+    LUAT_NDK_GPIO_STATUS_UNSUPPORTED = 14u,
+    LUAT_NDK_GPIO_STATUS_HOST_ERROR = 15u
+} luat_ndk_gpio_status_t;
+
 // Event header structure (16 bytes)
 typedef struct {
     uint32_t host_write;   // Number of events written by host

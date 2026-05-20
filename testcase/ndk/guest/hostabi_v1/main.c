@@ -102,11 +102,16 @@ int main(void) {
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_WRITE) {
         out->status = ndk_gpio_write_v2(cmd->arg0, cmd->arg1);
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_READ) {
-        out->value0 = ndk_gpio_read_v2(cmd->arg0);
-        if (out->value0 <= 1u) {
+        unsigned int level = ndk_gpio_read_v2(cmd->arg0);
+        unsigned int last_error = ndk_last_error();
+        if (level <= 1u) {
             out->status = HOSTABI_STATUS_OK;
+            out->value0 = level;
+        } else if (hostabi_is_gpio_status(level) && last_error != 0u) {
+            out->status = level;
+            out->value0 = 0;
         } else {
-            out->status = out->value0;
+            out->status = HOSTABI_STATUS_UNSUPPORTED;
             out->value0 = 0;
         }
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_IRQ_STATE) {

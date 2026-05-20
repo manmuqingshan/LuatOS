@@ -3,6 +3,7 @@
 #define HOSTABI_PROTOCOL_H
 
 #include <stdint.h>
+#include "../../../../components/ndk/include/luat_ndk_abi.h"
 
 /* Command opcodes */
 #define HOSTABI_CMD_QUERY_META  0x01
@@ -17,12 +18,12 @@
 #define HOSTABI_CMD_GPIO_IRQ_CLEAR  0x14
 
 /* Status codes */
-#define HOSTABI_STATUS_OK           0u
-#define HOSTABI_STATUS_BAD_PIN      10u
-#define HOSTABI_STATUS_BAD_MODE     11u
-#define HOSTABI_STATUS_BAD_PULL     12u
-#define HOSTABI_STATUS_BAD_IRQ_MODE 13u
-#define HOSTABI_STATUS_UNSUPPORTED  14u
+#define HOSTABI_STATUS_OK           LUAT_NDK_GPIO_STATUS_OK
+#define HOSTABI_STATUS_BAD_PIN      LUAT_NDK_GPIO_STATUS_BAD_PIN
+#define HOSTABI_STATUS_BAD_MODE     LUAT_NDK_GPIO_STATUS_BAD_MODE
+#define HOSTABI_STATUS_BAD_PULL     LUAT_NDK_GPIO_STATUS_BAD_PULL
+#define HOSTABI_STATUS_BAD_IRQ_MODE LUAT_NDK_GPIO_STATUS_BAD_IRQ_MODE
+#define HOSTABI_STATUS_UNSUPPORTED  LUAT_NDK_GPIO_STATUS_UNSUPPORTED
 
 /* Command structure (16 bytes) */
 typedef struct {

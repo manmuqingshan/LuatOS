@@ -118,6 +118,14 @@ function tests.test_gpio_write_then_read_round_trip()
     assert(rd.value0 == 1, "gpio read should report written level")
 end
 
+function tests.test_gpio_read_invalid_nonboolean_result_surfaces_as_error()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local rd = run_cmd(ctx, proto.CMD_GPIO_READ, 0xB55B, 0, 0)
+    assert(rd.status == proto.STATUS_UNSUPPORTED, "invalid gpio read result should map to unsupported")
+    assert(rd.value0 == 0, "invalid gpio read should not leak bogus level")
+end
+
 function tests.test_gpio_irq_state_unpacks_future_packed_shape()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
