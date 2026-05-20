@@ -29,11 +29,19 @@
 #define NDK_CSR_GPIO_IRQ_STATE  0x213
 #define NDK_CSR_GPIO_IRQ_CLEAR  0x214
 
+// UART v1 CSR addresses
+#define NDK_CSR_UART_CONFIG    0x220
+#define NDK_CSR_UART_TX        0x221
+#define NDK_CSR_UART_RX_STATE  0x222
+#define NDK_CSR_UART_RX_READ   0x223
+#define NDK_CSR_UART_RX_CLEAR  0x224
+
 // Feature flags
 #define LUAT_NDK_FEATURE_META   (1u << 0)
 #define LUAT_NDK_FEATURE_TIME   (1u << 1)
 #define LUAT_NDK_FEATURE_EVENT  (1u << 2)
 #define LUAT_NDK_FEATURE_GPIO   (1u << 3)
+#define LUAT_NDK_FEATURE_UART   (1u << 4)
 
 // Host error codes
 typedef enum {
@@ -55,6 +63,7 @@ typedef enum {
 #define LUAT_NDK_EVENT_NONE     0u
 #define LUAT_NDK_EVENT_TIMER    1u
 #define LUAT_NDK_EVENT_GPIO_IRQ 2u
+#define LUAT_NDK_EVENT_UART_RX_READY 3u
 
 typedef enum {
     LUAT_NDK_GPIO_MODE_INPUT = 0,
@@ -120,3 +129,49 @@ typedef struct {
     uint16_t source;       // Event source identifier
     uint32_t data;         // Event-specific data
 } luat_ndk_event_t;
+
+// ---------------------------------------------------------------------------
+// UART v1 ABI definitions
+// ---------------------------------------------------------------------------
+
+typedef enum {
+    LUAT_NDK_UART_STATUS_OK           = 0u,
+    LUAT_NDK_UART_STATUS_BAD_PORT     = 20u,
+    LUAT_NDK_UART_STATUS_BAD_CONFIG   = 21u,
+    LUAT_NDK_UART_STATUS_BAD_LENGTH   = 22u,
+    LUAT_NDK_UART_STATUS_BUSY         = 23u,
+    LUAT_NDK_UART_STATUS_OVERFLOW     = 24u,
+    LUAT_NDK_UART_STATUS_UNSUPPORTED  = 25u,
+    LUAT_NDK_UART_STATUS_HOST_ERROR   = 26u
+} luat_ndk_uart_status_t;
+
+typedef struct {
+    uint32_t baud;
+    uint8_t  data_bits;
+    uint8_t  stop_bits;
+    uint8_t  parity;
+    uint8_t  rx_enable;
+} luat_ndk_uart_cfg_t;
+
+// NDK_CSR_UART_CONFIG value: (cfg_offset << 8) | port
+#define LUAT_NDK_UART_PTR_PACK(port, offset)   ((((uint32_t)(offset)) << 8) | ((uint32_t)(port) & 0xFFu))
+#define LUAT_NDK_UART_PTR_PORT(value)           ((uint32_t)((value) & 0xFFu))
+#define LUAT_NDK_UART_PTR_OFFSET(value)         ((uint32_t)(((value) >> 8) & 0x00FFFFFFu))
+
+// NDK_CSR_UART_TX / NDK_CSR_UART_RX_READ value: (offset[11:0] << 20) | (length[11:0] << 8) | port
+#define LUAT_NDK_UART_IO_PACK(port, offset, length) \
+    ((((uint32_t)(offset)  & 0x0FFFu) << 20) | \
+     (((uint32_t)(length)  & 0x0FFFu) <<  8) | \
+     ((uint32_t)(port)     & 0xFFu))
+#define LUAT_NDK_UART_IO_PORT(value)    ((uint32_t)((value) & 0xFFu))
+#define LUAT_NDK_UART_IO_LENGTH(value)  ((uint32_t)(((value) >>  8) & 0x0FFFu))
+#define LUAT_NDK_UART_IO_OFFSET(value)  ((uint32_t)(((value) >> 20) & 0x0FFFu))
+
+// NDK_CSR_UART_RX_STATE return value: (buffered_len[15:0] << 16) | (reason << 8) | pending
+#define LUAT_NDK_UART_RX_STATE_PACK(pending, buffered_len, reason) \
+    ((((uint32_t)(buffered_len) & 0xFFFFu) << 16) | \
+     (((uint32_t)(reason)       & 0xFFu)   <<  8) | \
+     ((uint32_t)(pending)       & 0x1u))
+#define LUAT_NDK_UART_RX_STATE_PENDING(value) ((uint32_t)((value) & 0x1u))
+#define LUAT_NDK_UART_RX_STATE_REASON(value)  ((uint32_t)(((value) >>  8) & 0xFFu))
+#define LUAT_NDK_UART_RX_STATE_LENGTH(value)  ((uint32_t)(((value) >> 16) & 0xFFFFu))

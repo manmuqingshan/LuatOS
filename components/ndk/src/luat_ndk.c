@@ -114,7 +114,7 @@ static void ndk_reset_abi_state(luat_ndk_t *ndk) {
     size_t event_bytes = 0;
     size_t slot_count = 0;
 
-    ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT | LUAT_NDK_FEATURE_GPIO;
+    ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT | LUAT_NDK_FEATURE_GPIO | LUAT_NDK_FEATURE_UART;
     ndk->last_error = LUAT_NDK_HOST_ERR_NONE;
 
     event_bytes = (ndk->exchange_size > (LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE))
@@ -129,6 +129,7 @@ static void ndk_reset_abi_state(luat_ndk_t *ndk) {
     ndk->event_tail = 0;
     ndk->event_enabled = 0;
     luat_ndk_gpio_reset(ndk);
+    luat_ndk_uart_reset(ndk);
 
     if (ndk->ram && ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE <= ndk->ram_size) {
         luat_ndk_event_header_t *hdr = (luat_ndk_event_header_t*)(ndk->ram + ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET);
@@ -312,6 +313,7 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
 
     if (!ndk->lock) {
         luat_ndk_gpio_reset(ndk);
+        luat_ndk_uart_reset(ndk);
         if (ndk->ram) {
             luat_heap_free(ndk->ram);
             ndk->ram = NULL;
@@ -343,6 +345,7 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
 
     if (ndk_lock(ndk) != 0) return;
     luat_ndk_gpio_reset(ndk);
+    luat_ndk_uart_reset(ndk);
     uint8_t *ram = ndk->ram;
     MiniRV32IMAState *core = ndk->core;
     char *image_path = ndk->image_path;

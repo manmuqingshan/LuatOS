@@ -16,6 +16,9 @@ extern unsigned int ndk_gpio_write_v2_host_fail(unsigned int pin, unsigned int l
 extern unsigned int ndk_gpio_read_v2(unsigned int pin);
 extern unsigned int ndk_gpio_irq_state(unsigned int pin);
 extern unsigned int ndk_gpio_irq_clear(unsigned int pin);
+extern unsigned int ndk_uart_config(unsigned int port, unsigned int cfg_offset);
+extern unsigned int ndk_uart_tx(unsigned int port, unsigned int data_offset, unsigned int length);
+extern unsigned int ndk_uart_rx_state(unsigned int port);
 
 /* NDK builtin host API (implemented in ndk_stubs.c) */
 unsigned int ndk_host_magic(void);
@@ -149,6 +152,16 @@ int main(void) {
         }
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_IRQ_CLEAR) {
         out->status = ndk_gpio_irq_clear(cmd->arg0);
+    } else if (cmd->opcode == HOSTABI_CMD_UART_CONFIG) {
+        out->status = ndk_uart_config(cmd->arg0, cmd->arg1);
+    } else if (cmd->opcode == HOSTABI_CMD_UART_TX) {
+        out->status = ndk_uart_tx(cmd->arg0, (cmd->arg1 >> 16) & 0xFFFFu, cmd->arg1 & 0xFFFFu);
+    } else if (cmd->opcode == HOSTABI_CMD_UART_RX_STATE) {
+        uint32_t packed = ndk_uart_rx_state(cmd->arg0);
+        out->status = HOSTABI_STATUS_OK;
+        out->value0 = LUAT_NDK_UART_RX_STATE_PENDING(packed);
+        out->value1 = LUAT_NDK_UART_RX_STATE_LENGTH(packed);
+        out->value2 = LUAT_NDK_UART_RX_STATE_REASON(packed);
     } else {
         out->status = 1;
         out->value0 = ndk_last_error();

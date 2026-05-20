@@ -63,6 +63,14 @@ void luat_ndk_host_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t valu
         // in ctx->core->regs[10] when luat_ndk_host_othercsr_read() runs.
         // Leave the write hook as a no-op to avoid double-applying GPIO side effects.
         break;
+    case NDK_CSR_UART_CONFIG:
+    case NDK_CSR_UART_TX:
+    case NDK_CSR_UART_RX_STATE:
+    case NDK_CSR_UART_RX_READ:
+    case NDK_CSR_UART_RX_CLEAR:
+        // Same csrrw pattern as GPIO v2: authoritative result is produced in the
+        // read hook from ctx->core->regs[10]. Leave write hook as a no-op.
+        break;
     case NDK_CSR_GPIO_SET: {
         uint32_t pin = value & 0xFFFF;
         uint32_t level = (value >> 16) & 0x1;
@@ -132,6 +140,13 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
         // GPIO v2 uses csrrw, but the authoritative return value is produced here
         // from the guest's current a0 payload before the CSR writeback completes.
         *value = luat_ndk_gpio_csr_write(ctx, csrno, ctx->core ? ctx->core->regs[10] : 0);
+        break;
+    case NDK_CSR_UART_CONFIG:
+    case NDK_CSR_UART_TX:
+    case NDK_CSR_UART_RX_STATE:
+    case NDK_CSR_UART_RX_READ:
+    case NDK_CSR_UART_RX_CLEAR:
+        *value = luat_ndk_uart_csr_write(ctx, csrno, ctx->core ? ctx->core->regs[10] : 0);
         break;
     case NDK_CSR_GPIO_GET:
         tmp = (*value) & 0xFFFF;

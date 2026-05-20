@@ -19,3 +19,7 @@ void luat_ndk_event_push_timer(luat_ndk_t *ctx, uint32_t delay_us);
 // GPIO CSR handling
 uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value);
 void luat_ndk_gpio_reset(luat_ndk_t *ctx);
+
+// UART CSR handling
+uint32_t luat_ndk_uart_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value);
+void luat_ndk_uart_reset(luat_ndk_t *ctx);

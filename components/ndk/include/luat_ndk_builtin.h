@@ -149,3 +149,22 @@ static inline uint32_t ndk_event_pending(void) {
 
 // Provide a familiar alias for the shared buffer base
 #define USERDATA (ndk_exchange_base())
+
+// UART v1 guest CSR wrappers
+static inline uint32_t ndk_uart_config(uint32_t port, uint32_t cfg_offset) {
+    register uint32_t a0 __asm__("a0") = LUAT_NDK_UART_PTR_PACK(port, cfg_offset);
+    __asm__ volatile(".option norvc\ncsrrw a0, %0, a0" :: "i"(NDK_CSR_UART_CONFIG) : "a0");
+    return a0;
+}
+
+static inline uint32_t ndk_uart_tx(uint32_t port, uint32_t data_offset, uint32_t length) {
+    register uint32_t a0 __asm__("a0") = LUAT_NDK_UART_IO_PACK(port, data_offset, length);
+    __asm__ volatile(".option norvc\ncsrrw a0, %0, a0" :: "i"(NDK_CSR_UART_TX) : "a0");
+    return a0;
+}
+
+static inline uint32_t ndk_uart_rx_state(uint32_t port) {
+    register uint32_t a0 __asm__("a0") = port & 0xFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, %0, a0" :: "i"(NDK_CSR_UART_RX_STATE) : "a0");
+    return a0;
+}
