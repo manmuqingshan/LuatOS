@@ -172,3 +172,15 @@ unsigned int ndk_uart_rx_state(unsigned int port) {
     __asm__ volatile(".option norvc\ncsrrw a0, 0x222, a0" : "+r"(a0));
     return a0;
 }
+
+unsigned int ndk_uart_rx_read(unsigned int port, unsigned int data_offset, unsigned int length) {
+    register unsigned int a0 __asm__("a0") = LUAT_NDK_UART_IO_PACK(port, data_offset, length);
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x223, a0" : "+r"(a0));
+    return a0;
+}
+
+unsigned int ndk_uart_rx_clear(unsigned int port) {
+    register unsigned int a0 __asm__("a0") = port & 0xFFu;
+    __asm__ volatile(".option norvc\ncsrrw a0, 0x224, a0" : "+r"(a0));
+    return a0;
+}

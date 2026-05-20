@@ -19,6 +19,8 @@ extern unsigned int ndk_gpio_irq_clear(unsigned int pin);
 extern unsigned int ndk_uart_config(unsigned int port, unsigned int cfg_offset);
 extern unsigned int ndk_uart_tx(unsigned int port, unsigned int data_offset, unsigned int length);
 extern unsigned int ndk_uart_rx_state(unsigned int port);
+extern unsigned int ndk_uart_rx_read(unsigned int port, unsigned int data_offset, unsigned int length);
+extern unsigned int ndk_uart_rx_clear(unsigned int port);
 
 /* NDK builtin host API (implemented in ndk_stubs.c) */
 unsigned int ndk_host_magic(void);
@@ -162,6 +164,17 @@ int main(void) {
         out->value0 = LUAT_NDK_UART_RX_STATE_PENDING(packed);
         out->value1 = LUAT_NDK_UART_RX_STATE_LENGTH(packed);
         out->value2 = LUAT_NDK_UART_RX_STATE_REASON(packed);
+    } else if (cmd->opcode == HOSTABI_CMD_UART_RX_READ) {
+        uint32_t copied = ndk_uart_rx_read(cmd->arg0, (cmd->arg1 >> 16) & 0xFFFFu, cmd->arg1 & 0xFFFFu);
+        unsigned int last_error = ndk_last_error();
+        if (last_error != 0u && copied >= HOSTABI_STATUS_UART_BAD_PORT) {
+            out->status = copied;
+        } else {
+            out->status = HOSTABI_STATUS_OK;
+            out->value0 = copied;
+        }
+    } else if (cmd->opcode == HOSTABI_CMD_UART_RX_CLEAR) {
+        out->status = ndk_uart_rx_clear(cmd->arg0);
     } else {
         out->status = 1;
         out->value0 = ndk_last_error();

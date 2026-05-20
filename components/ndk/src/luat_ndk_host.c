@@ -177,7 +177,10 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
 uint32_t luat_ndk_host_control_store(luat_ndk_t *ctx, uint32_t addy, uint32_t value) {
     if (addy == 0x11100000) {
         LLOGD("Control Store: set val to %08X", value);
-        ctx->core->pc = ctx->core->pc + 4;
+        // Reset PC to the firmware entry point so the next do_reset=false exec
+        // cleanly re-enters _start (which recomputes sp) rather than resuming
+        // from a stale/corrupted PC derived from the previous step's SETCSR.
+        ctx->core->pc = MINIRV32_RAM_IMAGE_OFFSET;
         return value;
     }
     LLOGD("Control Store: unknown addy %08X val %08X", addy, value);
