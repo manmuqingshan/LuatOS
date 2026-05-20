@@ -7,13 +7,18 @@ local tests = {}
 local IMAGE = "/luadb/hostabi_v1.bin"
 
 local function run_cmd(ctx, opcode, a0, a1, a2)
+    return run_cmd_with_reset(ctx, opcode, a0, a1, a2, true)
+end
+
+function run_cmd_with_reset(ctx, opcode, a0, a1, a2, do_reset)
     local payload = proto.pack_cmd(opcode, a0, a1, a2)
-    assert(ndk.reset(ctx))
+    if do_reset ~= false then
+        assert(ndk.reset(ctx))
+    end
     assert(ndk.setData(ctx, payload))
     local ok, ret, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
     assert(ok == true, string.format("exec failed ret=%s mcause=%s mtval=%s", tostring(ret), tostring(mcause), tostring(mtval)))
-    -- Result is at offset 16 (after the 16-byte command structure)
-    return proto.unpack_result(assert(ndk.getData(ctx, proto.RESULT_SIZE, 16)))
+    return proto.unpack_result(assert(ndk.getData(ctx, proto.RESULT_SIZE, proto.RESULT_OFFSET)))
 end
 
 function tests.test_guest_fixture_binary_present()
@@ -61,14 +66,9 @@ end
 function tests.test_event_state_command_reports_pending_flag()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))
-    -- First trigger a delay to generate an event
-    local delay_result = run_cmd(ctx, proto.CMD_DELAY_US, 500, 0, 0)
-    assert(delay_result.status == 0, "delay setup should succeed")
-    -- Read event state from exchange buffer without reset
-    local exchange_data = ndk.getData(ctx, 1024, 0)
-    local header = proto.unpack_event_header(exchange_data)
-    assert(header.host_write == 1, "event should be written after delay")
-    assert(header.guest_read == 0, "guest hasn't read event yet")
+    local state = run_cmd(ctx, proto.CMD_EVENT_STATE, 0, 0, 0)
+    assert(state.status == 0, "event state command should succeed")
+    assert(state.value0 == 0, "fresh context should report no pending event")
 end
 
 function tests.test_event_header_reflects_timer_event()
@@ -82,7 +82,7 @@ function tests.test_event_header_reflects_timer_event()
     local header = proto.unpack_event_header(exchange_data)
     assert(header.host_write == 1, "host_write should be 1")
     assert(header.guest_read == 0, "guest_read should be 0")
-    assert(header.slot_count > 0, "slot_count should be > 0")
+    assert(header.slot_count == 8, "slot_count should match configured event slots")
     assert(header.overflow == 0, "overflow should be 0")
 end
 

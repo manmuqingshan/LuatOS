@@ -130,9 +130,8 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
         break;
     }
     case NDK_CSR_EVENT_PENDING: {
-        // Check if host_write != guest_read
-        luat_ndk_event_header_t *hdr = (luat_ndk_event_header_t*)(ctx->ram + ctx->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET);
-        *value = (hdr->host_write != hdr->guest_read) ? 1 : 0;
+        luat_ndk_event_header_t *hdr = luat_ndk_event_header(ctx);
+        *value = (hdr && hdr->host_write != hdr->guest_read) ? 1 : 0;
         break;
     }
     default:

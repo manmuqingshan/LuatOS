@@ -41,18 +41,18 @@ typedef enum {
 #define LUAT_NDK_RESULT_OFFSET   16
 #define LUAT_NDK_RESULT_SIZE     16
 #define LUAT_NDK_EVENT_HDR_OFFSET 32
-#define LUAT_NDK_EVENT_HDR_SIZE  8
+#define LUAT_NDK_EVENT_HDR_SIZE  16
 
 // Event types
 #define LUAT_NDK_EVENT_NONE     0u
 #define LUAT_NDK_EVENT_TIMER    1u
 
-// Event header structure (8 bytes)
+// Event header structure (16 bytes)
 typedef struct {
-    uint16_t host_write;   // Number of events written by host
-    uint16_t guest_read;   // Number of events read by guest
-    uint16_t slot_count;   // Total number of event slots available
-    uint16_t overflow;     // Set to 1 if event was dropped due to full ring
+    uint32_t host_write;   // Number of events written by host
+    uint32_t guest_read;   // Number of events read by guest
+    uint32_t slot_count;   // Total number of event slots available
+    uint32_t overflow;     // Set to 1 if event was dropped due to full ring
 } luat_ndk_event_header_t;
 
 // Event structure (8 bytes)

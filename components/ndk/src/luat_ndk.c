@@ -111,14 +111,24 @@ static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t tra
 }
 
 static void ndk_reset_abi_state(luat_ndk_t *ndk) {
+    size_t event_bytes = 0;
+    size_t slot_count = 0;
+
     ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT;
     ndk->last_error = LUAT_NDK_HOST_ERR_NONE;
-    ndk->event_slots = 8;
+
+    event_bytes = (ndk->exchange_size > (LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE))
+        ? (ndk->exchange_size - (LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE))
+        : 0;
+    slot_count = event_bytes / sizeof(luat_ndk_event_t);
+    if (slot_count > 8) {
+        slot_count = 8;
+    }
+    ndk->event_slots = (uint16_t)slot_count;
     ndk->event_head = 0;
     ndk->event_tail = 0;
     ndk->event_enabled = 0;
-    
-    // Initialize event header in exchange buffer
+
     if (ndk->ram && ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE <= ndk->ram_size) {
         luat_ndk_event_header_t *hdr = (luat_ndk_event_header_t*)(ndk->ram + ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET);
         hdr->host_write = 0;
