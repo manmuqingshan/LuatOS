@@ -3,6 +3,7 @@
 #include "luat_gpio.h"
 
 enum {
+    LUAT_NDK_GPIO_STATUS_HOST_ERROR = 15u,
     LUAT_NDK_GPIO_STATUS_OK = 0u,
     LUAT_NDK_GPIO_STATUS_BAD_PIN = 10u,
     LUAT_NDK_GPIO_STATUS_BAD_MODE = 11u,
@@ -16,6 +17,7 @@ static uint32_t ndk_gpio_status_to_error(uint32_t status) {
     case LUAT_NDK_GPIO_STATUS_OK:
         return LUAT_NDK_HOST_ERR_NONE;
     case LUAT_NDK_GPIO_STATUS_UNSUPPORTED:
+    case LUAT_NDK_GPIO_STATUS_HOST_ERROR:
         return LUAT_NDK_HOST_ERR_UNSUPPORTED;
     default:
         return LUAT_NDK_HOST_ERR_PARAM;
@@ -90,7 +92,7 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
     uint32_t status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
 
     if (!ctx) {
-        return LUAT_NDK_GPIO_STATUS_BAD_PIN;
+        return LUAT_NDK_GPIO_STATUS_HOST_ERROR;
     }
 
     switch (csrno) {
@@ -130,8 +132,7 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
             }
         }
         else {
-            luat_gpio_mode((int)pin, host_mode, host_pull,
-                           (mode == LUAT_NDK_GPIO_MODE_OUTPUT) ? LUAT_GPIO_LOW : LUAT_GPIO_LOW);
+            luat_gpio_mode((int)pin, host_mode, host_pull, LUAT_GPIO_LOW);
         }
         status = LUAT_NDK_GPIO_STATUS_OK;
         break;
@@ -148,12 +149,17 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
     }
     case NDK_CSR_GPIO_READ_V2: {
         uint32_t pin = value & 0xFFFFu;
+        int level = 0;
 
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
-        status = (uint32_t)luat_gpio_get((int)pin);
+        level = luat_gpio_get((int)pin);
+        if (level < 0) {
+            status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
+            break;
+        }
         luat_ndk_event_set_last_error(ctx, LUAT_NDK_HOST_ERR_NONE);
-        return status;
+        return (uint32_t)level;
     }
     case NDK_CSR_GPIO_IRQ_STATE:
     case NDK_CSR_GPIO_IRQ_CLEAR:

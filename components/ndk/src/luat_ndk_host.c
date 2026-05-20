@@ -58,6 +58,10 @@ void luat_ndk_host_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t valu
     case NDK_CSR_GPIO_READ_V2:
     case NDK_CSR_GPIO_IRQ_STATE:
     case NDK_CSR_GPIO_IRQ_CLEAR:
+        // mini-rv32ima delivers CSR return values via the read hook first.
+        // The guest uses csrrw a0, csr, a0, so the operand is still available
+        // in ctx->core->regs[10] when luat_ndk_host_othercsr_read() runs.
+        // Leave the write hook as a no-op to avoid double-applying GPIO side effects.
         break;
     case NDK_CSR_GPIO_SET: {
         uint32_t pin = value & 0xFFFF;
@@ -125,6 +129,8 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
     case NDK_CSR_GPIO_READ_V2:
     case NDK_CSR_GPIO_IRQ_STATE:
     case NDK_CSR_GPIO_IRQ_CLEAR:
+        // GPIO v2 uses csrrw, but the authoritative return value is produced here
+        // from the guest's current a0 payload before the CSR writeback completes.
         *value = luat_ndk_gpio_csr_write(ctx, csrno, ctx->core ? ctx->core->regs[10] : 0);
         break;
     case NDK_CSR_GPIO_GET:

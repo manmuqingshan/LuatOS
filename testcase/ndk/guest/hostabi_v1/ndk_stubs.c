@@ -2,6 +2,9 @@
 
 /* These are placeholder implementations until the actual host ABI is implemented */
 
+#define HOSTABI_TEST_GPIO_IRQ_PACKED_PIN   0xA55Au
+#define HOSTABI_TEST_GPIO_IRQ_PACKED_STATE (((unsigned int)3u << 24) | (1u << 16) | HOSTABI_TEST_GPIO_IRQ_PACKED_PIN)
+
 unsigned int ndk_exchange_base(void) {
     /* This stub returns the exchange base address.
      * In a real implementation, this would read from CSR 0x139.
@@ -71,6 +74,11 @@ unsigned int ndk_gpio_read_v2(unsigned int pin) {
 }
 
 unsigned int ndk_gpio_irq_state(unsigned int pin) {
+    /* Decoder-only fixture path for the Lua regression test. Real host-path
+     * coverage still comes from the CSR-backed cases above. */
+    if ((pin & 0xFFFFu) == HOSTABI_TEST_GPIO_IRQ_PACKED_PIN) {
+        return HOSTABI_TEST_GPIO_IRQ_PACKED_STATE;
+    }
     register unsigned int a0 __asm__("a0") = pin & 0xFFFFu;
     __asm__ volatile(".option norvc\ncsrrw a0, 0x213, a0" : "+r"(a0));
     return a0;

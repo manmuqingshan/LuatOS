@@ -118,6 +118,15 @@ function tests.test_gpio_write_then_read_round_trip()
     assert(rd.value0 == 1, "gpio read should report written level")
 end
 
+function tests.test_gpio_irq_state_unpacks_future_packed_shape()
+    local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+    local state = run_cmd(ctx, proto.CMD_GPIO_IRQ_STATE, 0xA55A, 0, 0)
+    assert(state.status == proto.STATUS_OK, "packed gpio irq state should decode as success")
+    assert(state.value0 == 1, "packed gpio irq state should expose pending flag")
+    assert(state.value1 == proto.GPIO_IRQ_HIGH, "packed gpio irq state should expose irq reason")
+end
+
 function tests.test_gpio_irq_state_reports_pending_after_trigger()
     local ctx, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
     assert(ctx, tostring(err))

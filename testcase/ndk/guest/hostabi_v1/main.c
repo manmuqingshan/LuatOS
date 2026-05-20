@@ -23,6 +23,19 @@ unsigned int ndk_last_error(void);
 /* Forward declaration of main */
 int main(void);
 
+static int hostabi_is_gpio_status(unsigned int value) {
+    switch (value) {
+    case HOSTABI_STATUS_BAD_PIN:
+    case HOSTABI_STATUS_BAD_MODE:
+    case HOSTABI_STATUS_BAD_PULL:
+    case HOSTABI_STATUS_BAD_IRQ_MODE:
+    case HOSTABI_STATUS_UNSUPPORTED:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 /* Memory-mapped control register */
 #define CONTROL_STORE (*(volatile unsigned int*)0x11100000)
 
@@ -97,12 +110,16 @@ int main(void) {
             out->value0 = 0;
         }
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_IRQ_STATE) {
-        out->value0 = ndk_gpio_irq_state(cmd->arg0);
-        if (out->value0 <= 1u) {
-            out->status = HOSTABI_STATUS_OK;
-        } else {
-            out->status = out->value0;
+        unsigned int packed = ndk_gpio_irq_state(cmd->arg0);
+        unsigned int last_error = ndk_last_error();
+        if (hostabi_is_gpio_status(packed) && last_error == packed) {
+            out->status = packed;
             out->value0 = 0;
+            out->value1 = 0;
+        } else {
+            out->status = HOSTABI_STATUS_OK;
+            out->value0 = (packed >> 16) & 0x1u;
+            out->value1 = (packed >> 24) & 0xFFu;
         }
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_IRQ_CLEAR) {
         out->status = ndk_gpio_irq_clear(cmd->arg0);
