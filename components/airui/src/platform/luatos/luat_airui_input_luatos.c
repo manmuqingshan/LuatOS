@@ -312,6 +312,7 @@ static bool luatos_input_read_pointer(airui_ctx_t *ctx, lv_indev_t *indev, lv_in
 
     // 仅在 slot 0 触发一次 Lua 触摸回调（收集所有触点）
     if (slot == 0) {
+        bool had_active = ctx->touch_pressed;
         airui_touch_point_t points[AIRUI_TOUCH_MAX_POINTS];
         uint8_t point_count = 0;
 
@@ -347,8 +348,13 @@ static bool luatos_input_read_pointer(airui_ctx_t *ctx, lv_indev_t *indev, lv_in
             points[point_count].timestamp = tp_data[i].timestamp;
             point_count++;
         }
-
-        airui_luatos_notify_touch_batch(ctx, points, point_count);
+        if (point_count > 0 || had_active) {
+            airui_luatos_notify_touch_batch(ctx, points, point_count);
+        }
+        // 消费后清零，避免残留事件在下一次轮询中重复触发
+        for (uint8_t i = 0; i < LUAT_TP_TOUCH_MAX; i++) {
+            tp_data[i].event = TP_EVENT_TYPE_NONE;
+        }
     }
 
     return pressed;

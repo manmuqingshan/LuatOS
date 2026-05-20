@@ -79,7 +79,7 @@ local uico = false    -- 是否用户主动发起连接
 ]]
 local function upst(status)
     if not status then
-        log.error("wa", "更新WiFi状态时，状态对象为空")
+        log.error("wifi_app", "更新WiFi状态时，状态对象为空")
         return
     end
 
@@ -104,7 +104,7 @@ end
 @param any data - 事件数据
 ]]
 local function hwse(evt, data)
-    log.info("wa", "WiFi STA事件:", evt, data)
+    log.info("wifi_app", "WiFi STA事件:", evt, data)
 
     if evt == "CONNECTED" then
         ws.connected = true
@@ -123,15 +123,15 @@ local function hwse(evt, data)
 
     elseif evt == "DISCONNECTED" then
         if uico then
-            log.info("wa", "用户发起的连接失败，重置状态以允许再次弹窗")
+            log.info("wifi_app", "用户发起的连接失败，重置状态以允许再次弹窗")
             lcs = nil
         elseif lcs == "DISCONNECTED" then
-            log.info("wa", "已断开状态，跳过重复事件")
+            log.info("wifi_app", "已断开状态，跳过重复事件")
             return
         end
 
         if dcr == "config" then
-            log.info("wa", "配置前断开，跳过事件处理")
+            log.info("wifi_app", "配置前断开，跳过事件处理")
             dcr = nil
             return
         end
@@ -156,7 +156,7 @@ local function hwse(evt, data)
         uico = false
 
         if uidc then
-            log.info("wa", "用户主动断开，只进行扫描")
+            log.info("wifi_app", "用户主动断开，只进行扫描")
             uidc = false
             sys.publish("WIFI_SCAN_REQ")
         end
@@ -218,25 +218,25 @@ end
 ]]
 local function ract()
     if not sc.wifi_enabled then
-        log.info("wa", "WiFi开关已关闭，跳过自动连接")
+        log.info("wifi_app", "WiFi开关已关闭，跳过自动连接")
         return
     end
 
     if ws.connected then
-        log.info("wa", "已连接WiFi，刷新列表")
+        log.info("wifi_app", "已连接WiFi，刷新列表")
         sys.publish("WIFI_SCAN_REQ")
         return
     end
 
-    log.info("wa", "开始执行开机自动连接（选择信号最强的已保存网络）")
+    log.info("wifi_app", "开始执行开机自动连接（选择信号最强的已保存网络）")
     local vr = asv()
 
     if vr.verified then
-        log.info("wa", "自动连接到最佳网络:", vr.ssid, "信号:", vr.signal)
+        log.info("wifi_app", "自动连接到最佳网络:", vr.ssid, "信号:", vr.signal)
         sys.publish("WIFI_CONNECT_REQ", { ssid = vr.ssid, password = vr.password, advanced_config = vr.config and { need_ping = vr.config.need_ping, local_network_mode = vr.config.local_network_mode, ping_ip = vr.config.ping_ip, ping_time = vr.config.ping_time, auto_socket_switch = vr.config.auto_socket_switch } })
-        log.info("wa", "自动连接请求发送成功")
+        log.info("wifi_app", "自动连接请求发送成功")
     else
-        log.info("wa", "附近没有已保存网络，等待手动连接")
+        log.info("wifi_app", "附近没有已保存网络，等待手动连接")
     end
 end
 
@@ -247,7 +247,7 @@ end
 ]]
 local function oslr(data)
     sc = data.config
-    log.info("wa", "加载配置完成:", sc.ssid, "enabled:", sc.wifi_enabled)
+    log.info("wifi_app", "加载配置完成:", sc.ssid, "enabled:", sc.wifi_enabled)
     sys.taskInit(ract)
 end
 
@@ -262,7 +262,7 @@ end
 ]]
 local function oenr(data)
     local en = data.enabled
-    log.info("wa", "收到开关请求:", en)
+    log.info("wifi_app", "收到开关请求:", en)
 
     if sc then
         sc.wifi_enabled = en
@@ -281,13 +281,13 @@ local function oenr(data)
             ws.bssid = "--"
             upst(ws)
         else
-            log.info("wa", "正在开启WiFi网卡")
+            log.info("wifi_app", "正在开启WiFi网卡")
             if sc and sc.ssid and sc.ssid ~= "" then
                 if ws.connected then
-                    log.info("wa", "已连接WiFi，只进行扫描")
+                    log.info("wifi_app", "已连接WiFi，只进行扫描")
                     sys.publish("WIFI_SCAN_REQ")
                 else
-                    log.info("wa", "检测到保存的SSID，执行自动连接")
+                    log.info("wifi_app", "检测到保存的SSID，执行自动连接")
                     sys.taskInit(ract)
                 end
             end
@@ -296,7 +296,7 @@ local function oenr(data)
     end
 
     if not en then
-        log.info("wa", "正在关闭WiFi网卡")
+        log.info("wifi_app", "正在关闭WiFi网卡")
         exnetif.close(nil, socket.LWIP_STA)
         ws.connected = false
         ws.ready = false
@@ -309,13 +309,13 @@ local function oenr(data)
         ws.scan_results = {}
         upst(ws)
     else
-        log.info("wa", "正在开启WiFi网卡")
+        log.info("wifi_app", "正在开启WiFi网卡")
         if sc and sc.ssid and sc.ssid ~= "" then
             if ws.connected then
-                log.info("wa", "已连接WiFi，只进行扫描")
+                log.info("wifi_app", "已连接WiFi，只进行扫描")
                 sys.publish("WIFI_SCAN_REQ")
             else
-                log.info("wa", "检测到保存的SSID，执行自动连接")
+                log.info("wifi_app", "检测到保存的SSID，执行自动连接")
                 sys.taskInit(ract)
             end
         end
@@ -327,7 +327,7 @@ end
 @summary 处理WIFI_SCAN_REQ事件（开始扫描）
 ]]
 local function oscr()
-    log.info("wa", "收到扫描请求")
+    log.info("wifi_app", "收到扫描请求")
 
     if _G.model_str:find("PC") then
         sys.publish("WIFI_SCAN_STARTED")
@@ -361,7 +361,7 @@ local function ocnr(data)
     local pw = data.password
     local advc = data.advanced_config
 
-    log.info("wa", "收到连接请求:", sd)
+    log.info("wifi_app", "收到连接请求:", sd)
     uico = true
 
     if not sd or sd == "" then
@@ -374,7 +374,7 @@ local function ocnr(data)
     end
 
     if sc and not sc.wifi_enabled then
-        log.warn("wa", "WiFi已关闭，无法连接")
+        log.warn("wifi_app", "WiFi已关闭，无法连接")
         return
     end
 
@@ -440,9 +440,9 @@ local function ocnr(data)
     local res = exnetif.set_priority_order({ { WIFI = wcfg } })
 
     if res then
-        log.info("wa", "WiFi连接参数配置成功")
+        log.info("wifi_app", "WiFi连接参数配置成功")
     else
-        log.error("wa", "WiFi连接参数配置失败")
+        log.error("wifi_app", "WiFi连接参数配置失败")
         sys.publish("WIFI_DISCONNECTED", "连接参数配置失败", -5)
     end
 end
@@ -452,7 +452,7 @@ end
 @summary 处理WIFI_DISCONNECT_REQ事件（断开连接）
 ]]
 local function odcr()
-    log.info("wa", "收到断开请求")
+    log.info("wifi_app", "收到断开请求")
     uidc = true
 
     if _G.model_str:find("PC") then
@@ -516,7 +516,7 @@ end
 @summary 初始化应用模块，先初始化storage，再继续app初始化
 ]]
 local function init()
-    log.info("wa", "开始初始化")
+    log.info("wifi_app", "开始初始化")
     sys.subscribe("WIFI_STORAGE_INIT_RSP", osir)
     sys.publish("WIFI_STORAGE_INIT_REQ")
 end

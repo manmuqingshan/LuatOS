@@ -387,7 +387,7 @@ local function create_ui()
         on_click = function()
             if window_id then
                 exapp.init()
-                exwin.return_idle()
+                exwin.close(window_id)
             end
         end
     })

@@ -572,6 +572,8 @@ lv_obj_t *airui_shape_create_from_config(void *L, int idx)
     lv_obj_set_style_bg_opa(shape, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_border_width(shape, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_pad_all(shape, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    /* Shape is a draw-only overlay and should not intercept parent clicks. */
+    lv_obj_remove_flag(shape, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(shape, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(shape, LV_OBJ_FLAG_IGNORE_LAYOUT);
 

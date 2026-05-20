@@ -39,16 +39,16 @@ function tp_drv.init()
     local iid = 1
     i2c.setup(iid)
     local r = tp.init("gt911", { port = iid, pin_rst = 3, pin_int = 51, int_type = tp.FALLING })
-    log.info("tp", r)
+    log.info("touch_panel", r)
     if _G.model_str:find("PC") then
-        log.info("pc", "已启用鼠标点击功能")
+        log.info("pc_mode", "已启用鼠标点击功能")
     else
         if not r then
-            log.error("ui", "触摸初始化失败")
+            log.error("touch_ui", "触摸初始化失败")
         else
             -- 绑定触摸设备到AirUI输入设备
             airui.device_bind_touch(r)
-            log.info("dev", "触摸初始化成功")
+            log.info("touch_device", "触摸初始化成功")
         end
     end
 end

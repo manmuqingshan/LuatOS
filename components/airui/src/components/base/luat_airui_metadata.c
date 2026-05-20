@@ -57,6 +57,8 @@ static const char *airui_component_type_name(uint8_t component_type)
             return "spinner";
         case AIRUI_COMPONENT_SHAPE:
             return "shape";
+        case AIRUI_COMPONENT_CHECKBOX:
+            return "checkbox";
         default:
             return "unknown";
     }

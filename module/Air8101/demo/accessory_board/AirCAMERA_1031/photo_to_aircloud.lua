@@ -15,13 +15,16 @@ local httpplus = require "httpplus"
 -- 引入excloud库
 local excloud = require("excloud")
 
+-- 配置excloud参数
+local project_auth_key = "123456"
+
 -- 定义照片保存方式，有三种类型：
 -- 1、ZBUFF保存，输入"ZBUFF"即可，excamera库会自动处理ZBUFF
 -- 2、保存到内存文件系统中，路径名需指向/ram/文件夹
 -- 3、保存到内置FLASH文件系统中
 -- 选择其中一个即可，注释另两个路径变量
--- local save_method = "ZBUFF"
-local save_method = "/ram/test.jpg"
+local save_method = "ZBUFF"
+-- local save_method = "/ram/test.jpg"
 -- local save_method = "/test.jpg"
 
 -- USB摄像头支持多摄像头轮切拍摄
@@ -93,7 +96,7 @@ function excloud_task_func()
     local ok, err_msg = excloud.setup({
         use_getip = true, -- 使用getip服务
         device_type = 2,   -- WIFI设备
-        auth_key = "jqDKVo10JaU82v9h5sEprAWDfdwQEgMa", -- 项目key，根据实际修改
+        auth_key = project_auth_key, -- 项目key，根据实际修改
         transport = "tcp",       -- 使用TCP传输
         auto_reconnect = true,   -- 自动重连
         reconnect_interval = 10, -- 重连间隔(秒)

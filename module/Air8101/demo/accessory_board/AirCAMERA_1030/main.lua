@@ -60,9 +60,15 @@ end
 -- 导入netdrv_wifi模块，连接WIFI
 require "netdrv_wifi"
 
--- 以下录像和拍照演示，只能二选一打开
+-- 因air32.cn后续将不再开放用于拍照测试使用，所以拍照上传业务请参考photo_to_aircloud.lua
+-- 使用take_photo_http_post.lua拍照上传应用DEMO时请将上传服务器的url替换为您自己的服务器地址
+-- 以下录像和拍照演示，只能四选一打开
+
+-- 导入photo_to_aircloud拍照上传应用DEMO
+require "photo_to_aircloud"
+
 -- 导入take_photo_http_post拍照上传应用DEMO
-require "take_photo_http_post"
+-- require "take_photo_http_post"
 
 -- 导入video_http_post视频上传应用DEMO
 -- require "video_http_post"

@@ -46,9 +46,9 @@ local sl = {}
 local function stf()
     local rt = fskv.set(CONFIG_KEY, cfg)
     if rt then
-        log.info("wfst", "配置保存成功")
+        log.info("wifi_storage", "配置保存成功")
     else
-        log.error("wfst", "配置保存失败")
+        log.error("wifi_storage", "配置保存失败")
     end
     return rt
 end
@@ -65,9 +65,9 @@ local function lff()
                 cfg[k] = v
             end
         end
-        log.info("wfst", "配置加载成功:", cfg.ssid)
+        log.info("wifi_storage", "配置加载成功:", cfg.ssid)
     else
-        log.info("wfst", "配置加载失败，使用默认配置")
+        log.info("wifi_storage", "配置加载失败，使用默认配置")
     end
 end
 
@@ -82,10 +82,10 @@ local function sslf()
     if f then
         f:write(dt)
         f:close()
-        log.info("wfst", "已保存网络列表保存成功，数量:", #sl)
+        log.info("wifi_storage", "已保存网络列表保存成功，数量:", #sl)
         return true
     else
-        log.error("wfst", "已保存网络列表保存失败")
+        log.error("wifi_storage", "已保存网络列表保存失败")
         return false
     end
 end
@@ -96,22 +96,22 @@ end
 ]]
 local function lslf()
     local f = io.open(SAVED_LIST_FILE, "r")
-    log.info("wfst", "尝试从已保存网络列表文件加载:", SAVED_LIST_FILE)
+    log.info("wifi_storage", "尝试从已保存网络列表文件加载:", SAVED_LIST_FILE)
     if f then
-        log.info("wfst", "已保存网络列表文件打开成功")
+        log.info("wifi_storage", "已保存网络列表文件打开成功")
         local dt = f:read("*a")
         f:close()
         if dt then
             local od, ls = pcall(json.decode, dt)
             if od and type(ls) == "table" then
                 sl = ls
-                log.info("wfst", "已保存网络列表加载成功，数量:", #sl)
+                log.info("wifi_storage", "已保存网络列表加载成功，数量:", #sl)
                 return
             end
         end
     end
     sl = {}
-    log.info("wfst", "已保存网络列表文件加载失败，使用默认值")
+    log.info("wifi_storage", "已保存网络列表文件加载失败，使用默认值")
 end
 
 --[[
@@ -123,7 +123,7 @@ end
 ]]
 local function asl(sd, pw, ac)
     if not sd or sd == "" then
-        log.error("wfst", "添加已保存网络时，SSID不能为空")
+        log.error("wifi_storage", "添加已保存网络时，SSID不能为空")
         return
     end
     for i, it in ipairs(sl) do
@@ -137,7 +137,7 @@ local function asl(sd, pw, ac)
                 sl[i].auto_socket_switch = ac.auto_socket_switch
             end
             sslf()
-            log.info("wfst", "更新已保存网络:", sd)
+            log.info("wifi_storage", "更新已保存网络:", sd)
             return
         end
     end
@@ -151,7 +151,7 @@ local function asl(sd, pw, ac)
     end
     table.insert(sl, it)
     sslf()
-    log.info("wfst", "添加已保存网络:", sd)
+    log.info("wifi_storage", "添加已保存网络:", sd)
 end
 
 --[[
@@ -159,15 +159,15 @@ end
 @summary 处理 WIFI_STORAGE_INIT_REQ 事件处理
 ]]
 local function oinr()
-    log.info("wfst", "收到初始化请求")
+    log.info("wifi_storage", "收到初始化请求")
     local ok = fskv.init()
     if ok then
-        log.info("wfst", "fskv 初始化成功")
+        log.info("wifi_storage", "fskv 初始化成功")
         lff()
         lslf()
 
         sys.subscribe("WIFI_STORAGE_SAVE_REQ", function(dt)
-            log.info("wfst", "收到保存请求，ssid:", dt.ssid)
+            log.info("wifi_storage", "收到保存请求，ssid:", dt.ssid)
             if dt.ssid ~= nil then
                 cfg.ssid = dt.ssid
             end
@@ -195,7 +195,7 @@ local function oinr()
                 asl(dt.ssid, dt.password, dt.advanced_config)
             end
             local sr = stf()
-            log.info("wfst", "保存结果:", sr, "当前ssid:", cfg.ssid)
+            log.info("wifi_storage", "保存结果:", sr, "当前ssid:", cfg.ssid)
         end)
 
         sys.subscribe("WIFI_STORAGE_LOAD_REQ", function()
@@ -216,12 +216,12 @@ local function oinr()
             sys.publish("WIFI_STORAGE_GET_SAVED_LIST_RSP", {list = sl})
         end)
     else
-        log.error("wfst", "fskv 初始化失败")
+        log.error("wifi_storage", "fskv 初始化失败")
     end
 
     sys.publish("WIFI_STORAGE_INIT_RSP", {success = ok})
-    log.info("wfst", "初始化完成，success:", ok)
+    log.info("wifi_storage", "初始化完成，success:", ok)
 end
 
-log.info("wfst", "等待初始化请求...")
+log.info("wifi_storage", "等待初始化请求...")
 sys.subscribe("WIFI_STORAGE_INIT_REQ", oinr)

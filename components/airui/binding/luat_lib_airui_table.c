@@ -458,6 +458,50 @@ static int l_table_auto_marquee_scroll_control(lua_State *L) {
 }
 
 /**
+ * Table:merge_cells(row, col, colspan[, center])
+ * @api table:merge_cells(row, col, colspan[, center])
+ * @int row 行索引（从 0 开始）
+ * @int col 起始列索引（从 0 开始）
+ * @int colspan 合并的列数（>=2），从 col 开始向右合并 colspan 列
+ * @boolean center(可选，默认 true) 是否将合并后单元格文字居中，默认 true
+ * @return nil
+ * @usage
+ * tbl:merge_cells(0, 1, 2) -- 将第 0 行的第 1~2 列合并，文字自动居中
+ * tbl:merge_cells(0, 1, 2, false) -- 合并但保持原有对齐
+ */
+static int l_table_merge_cells(lua_State *L) {
+    lv_obj_t *table = airui_check_component(L, 1, AIRUI_TABLE_MT);
+    int row = luaL_checkinteger(L, 2);
+    int col = luaL_checkinteger(L, 3);
+    int colspan = luaL_checkinteger(L, 4);
+    bool center = true;
+    if (lua_gettop(L) >= 5 && !lua_isnil(L, 5)) {
+        center = lua_toboolean(L, 5);
+    }
+    airui_table_merge_cells(table, (uint16_t)row, (uint16_t)col, (uint16_t)colspan, center);
+    return 0;
+}
+
+/**
+ * Table:unmerge_cells(row, col, colspan)
+ * @api table:unmerge_cells(row, col, colspan)
+ * @int row 行索引（从 0 开始）
+ * @int col 起始列索引（从 0 开始）
+ * @int colspan 要取消合并的列数（>=2）
+ * @return nil
+ * @usage
+ * tbl:unmerge_cells(0, 1, 2) -- 取消第 0 行第 1~2 列的合并
+ */
+static int l_table_unmerge_cells(lua_State *L) {
+    lv_obj_t *table = airui_check_component(L, 1, AIRUI_TABLE_MT);
+    int row = luaL_checkinteger(L, 2);
+    int col = luaL_checkinteger(L, 3);
+    int colspan = luaL_checkinteger(L, 4);
+    airui_table_unmerge_cells(table, (uint16_t)row, (uint16_t)col, (uint16_t)colspan);
+    return 0;
+}
+
+/**
  * Table:destroy()
  * @api table:destroy()
  * @return nil
@@ -552,6 +596,8 @@ void airui_register_table_meta(lua_State *L) {
         {"auto_marquee_scroll_control", l_table_auto_marquee_scroll_control},
         {"set_on_cell_click", l_table_set_on_cell_click},
         {"scroll_to_row", l_table_scroll_to_row},
+        {"merge_cells", l_table_merge_cells},
+        {"unmerge_cells", l_table_unmerge_cells},
         {"destroy", l_table_destroy},
         {"is_destroyed", airui_component_is_destroyed},
         {NULL, NULL}

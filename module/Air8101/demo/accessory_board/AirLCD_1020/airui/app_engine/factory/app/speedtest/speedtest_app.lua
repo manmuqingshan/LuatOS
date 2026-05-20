@@ -42,12 +42,12 @@ local function mlj()
             if cd == 200 then
                 local rtt = (et - st) * TF
                 table.insert(rt, rtt)
-                log.info("spdt", "RTT sample " .. i .. ": " .. rtt .. " ms")
+                log.info("speedtest_app", "RTT sample " .. i .. ": " .. rtt .. " ms")
             else
-                log.warn("spdt", "Latency request failed, code: " .. tostring(cd))
+                log.warn("speedtest_app", "Latency request failed, code: " .. tostring(cd))
             end
         else
-            log.warn("spdt", "Latency request failed, no result object")
+            log.warn("speedtest_app", "Latency request failed, no result object")
         end
         if i < sc then
             sys.wait(150)
@@ -77,17 +77,17 @@ end
 local function mdl()
     local tb = 32 * 1024
     local url = BU .. "/__down?bytes=" .. tostring(tb) .. "&t=" .. tostring(mcu.ticks())
-    log.info("spdt", "Starting download test, size: 32KB")
+    log.info("speedtest_app", "Starting download test, size: 32KB")
     local st = mcu.ticks()
     local rs = http.request("GET", url, nil, nil, {timeout=15000})
     if not rs or not rs.wait then
-        log.error("spdt", "Download request failed, no result object")
+        log.error("speedtest_app", "Download request failed, no result object")
         return nil
     end
     local cd, hd, bd = rs.wait()
     local et = mcu.ticks()
     if cd ~= 200 or not bd then
-        log.error("spdt", "Download test failed, code: " .. tostring(cd))
+        log.error("speedtest_app", "Download test failed, code: " .. tostring(cd))
         return nil
     end
     local dm = (et - st) * TF
@@ -95,7 +95,7 @@ local function mdl()
     local ds = dm / 1000
     local bt = #bd * 8
     local sm = (bt / ds) / 1000000
-    log.info("spdt", "Download: " .. string.format("%.2f", sm) .. " Mbps, time: " .. dm .. "ms")
+    log.info("speedtest_app", "Download: " .. string.format("%.2f", sm) .. " Mbps, time: " .. dm .. "ms")
     return sm
 end
 
@@ -108,17 +108,17 @@ local function mul()
     local tb = 16 * 1024
     local url = BU .. "/__up"
     local td = string.char(0xAA):rep(tb)
-    log.info("spdt", "Starting upload test, size: 16KB")
+    log.info("speedtest_app", "Starting upload test, size: 16KB")
     local st = mcu.ticks()
     local rs = http.request("POST", url, {["Content-Type"] = "application/octet-stream"}, td, {timeout=15000})
     if not rs or not rs.wait then
-        log.error("spdt", "Upload request failed, no result object")
+        log.error("speedtest_app", "Upload request failed, no result object")
         return nil
     end
     local cd, hd, bd = rs.wait()
     local et = mcu.ticks()
     if cd ~= 200 then
-        log.error("spdt", "Upload test failed, code: " .. tostring(cd))
+        log.error("speedtest_app", "Upload test failed, code: " .. tostring(cd))
         return nil
     end
     local dm = (et - st) * TF
@@ -126,7 +126,7 @@ local function mul()
     local ds = dm / 1000
     local bt = tb * 8
     local sm = (bt / ds) / 1000000
-    log.info("spdt", "Upload: " .. string.format("%.2f", sm) .. " Mbps, time: " .. dm .. "ms")
+    log.info("speedtest_app", "Upload: " .. string.format("%.2f", sm) .. " Mbps, time: " .. dm .. "ms")
     return sm
 end
 
@@ -199,7 +199,7 @@ local function rstt()
     end
     it = false
     sys.publish("SPDTEST_FINISHED")
-    log.info("spdt", "Speed test completed")
+    log.info("speedtest_app", "Speed test completed")
 end
 
 sys.subscribe("SPEEDTEST_START", function()
@@ -208,7 +208,7 @@ end)
 
 sys.subscribe("IP_READY", function()
     nc = true
-    log.info("spdt", "网络已连接")
+    log.info("speedtest_app", "网络已连接")
 end)
 
 sys.subscribe("IP_LOSE", function()
@@ -218,7 +218,7 @@ sys.subscribe("IP_LOSE", function()
         sys.publish("SPDTEST_STATUS", "网络已断开")
         sys.publish("SPDTEST_FINISHED")
     end
-    log.info("spdt", "网络已断开")
+    log.info("speedtest_app", "网络已断开")
 end)
 
 sys.subscribe("SPEEDTEST_CANCEL", function()

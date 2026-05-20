@@ -60,19 +60,19 @@ local function ifk()
     local result = fskv.init()
     if result then
         finit = true
-        log.info("scfg", "fskv初始化成功")
+        log.info("settings_config_app", "fskv初始化成功")
 
         -- 初始化默认值（如果不存在）
         local defn = gdn()
         local val = fskv.get(CK.DEVICE_NAME)
         if val == nil then
             fskv.set(CK.DEVICE_NAME, defn)
-            log.info("scfg", "设置默认值", CK.DEVICE_NAME, defn)
+            log.info("settings_config_app", "设置默认值", CK.DEVICE_NAME, defn)
         end
 
         return true
     else
-        log.error("scfg", "fskv初始化失败")
+        log.error("settings_config_app", "fskv初始化失败")
         return false
     end
 end
@@ -86,7 +86,7 @@ end
 ]]
 local function gc(key, def)
     if not finit then
-        log.warn("scfg", "fskv未初始化，尝试初始化")
+        log.warn("settings_config_app", "fskv未初始化，尝试初始化")
         if not ifk() then
             return def or ""
         end
@@ -108,7 +108,7 @@ end
 ]]
 local function sc(key, val)
     if not finit then
-        log.warn("scfg", "fskv未初始化，尝试初始化")
+        log.warn("settings_config_app", "fskv未初始化，尝试初始化")
         if not ifk() then
             return false
         end
@@ -116,11 +116,11 @@ local function sc(key, val)
 
     local result = fskv.set(key, val)
     if result then
-        log.info("scfg", "配置已保存", key, val)
+        log.info("settings_config_app", "配置已保存", key, val)
         -- 发布配置变更事件
         sys.publish("CONFIG_CHANGED", key, val)
     else
-        log.error("scfg", "配置保存失败", key)
+        log.error("settings_config_app", "配置保存失败", key)
     end
     return result
 end
@@ -152,7 +152,7 @@ end
 sys.subscribe("CONFIG_GET_DEVICE_NAME", function()
     local dn = gdv()
     sys.publish("CONFIG_DEVICE_NAME_VALUE", dn)
-    log.info("scfg", "上报设备名称", dn)
+    log.info("settings_config_app", "上报设备名称", dn)
 end)
 
 -- 订阅设置设备名称事件
@@ -160,7 +160,7 @@ sys.subscribe("CONFIG_SET_DEVICE_NAME", function(name)
     if name and #name > 0 then
         sdv(name)
     else
-        log.warn("scfg", "设置设备名称失败，名称无效")
+        log.warn("settings_config_app", "设置设备名称失败，名称无效")
     end
 end)
 

@@ -61,7 +61,7 @@ local function gsi()
         si.free = fs(fb)
         si.used_percent = pct
 
-        log.info("sstg", "PC模拟器模拟存储数据",
+        log.info("settings_storage_app", "PC模拟器模拟存储数据",
             "used:", si.used,
             "free:", si.free,
             "percent:", pct .. "%"
@@ -74,7 +74,7 @@ local function gsi()
     -- io.fsstat 返回值: success, total_blocks, used_blocks, block_size, fs_type
     local r, ok, tbk, ubk, bsz = pcall(io.fsstat, "/")
 
-    log.info("sstg", "获取存储信息", "ret:", r, "success:", ok, "total_blocks:", tbk, "used_blocks:", ubk, "block_size:", bsz)
+    log.info("settings_storage_app", "获取存储信息", "ret:", r, "success:", ok, "total_blocks:", tbk, "used_blocks:", ubk, "block_size:", bsz)
 
     if r and ok == true and tbk and ubk and bsz then
         local tb = tbk * bsz
@@ -90,7 +90,7 @@ local function gsi()
         si.used = "--"
         si.free = "--"
         si.used_percent = 0
-        log.warn("sstg", "获取存储信息失败")
+        log.warn("settings_storage_app", "获取存储信息失败")
     end
 
     return si
@@ -101,7 +101,7 @@ end
 local function sih()
     local info = gsi()
     sys.publish("STORAGE_INFO", info)
-    log.info("sstg", "上报存储信息", "total:", info.total, "used:", info.used, "free:", info.free, "percent:", info.used_percent)
+    log.info("settings_storage_app", "上报存储信息", "total:", info.total, "used:", info.used, "free:", info.free, "percent:", info.used_percent)
 end
 
 -- 订阅存储信息查询事件

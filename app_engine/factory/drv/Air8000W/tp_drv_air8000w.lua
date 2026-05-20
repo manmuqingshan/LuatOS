@@ -44,9 +44,9 @@ function tp_drv.init()
     -- w: 触摸面板宽度
     -- h: 触摸面板高度
     local r = tp.init("gt911", { port = 0, pin_rst = 26, pin_int = gpio.WAKEUP0 })
-    log.info("tp", r)
+    log.info("touch_panel", r)
     if not r then
-        log.error("ui", "触摸初始化失败")
+        log.error("touch_ui", "触摸初始化失败")
         return r
     else
         -- 绑定触摸设备到AirUI输入设备

@@ -703,6 +703,20 @@ static void airui_table_draw_task_added_event_cb(lv_event_t *e)
         return;
     }
 
+    {
+        lv_table_cell_ctrl_t ctrl = 0;
+        uint32_t cell = row * table_dsc->col_cnt + col;
+        if (table_dsc->cell_data != NULL && table_dsc->cell_data[cell] != NULL) {
+            ctrl = table_dsc->cell_data[cell]->ctrl;
+        }
+        if (ctrl & LV_TABLE_CELL_CTRL_CUSTOM_1) {
+            lv_draw_label_dsc_t *label_dsc = lv_draw_task_get_label_dsc(draw_task);
+            if (label_dsc != NULL) {
+                label_dsc->align = LV_TEXT_ALIGN_CENTER;
+            }
+        }
+    }
+
     if (row == table_dsc->row_act && col == table_dsc->col_act &&
         (table->state & (LV_STATE_PRESSED | LV_STATE_FOCUSED | LV_STATE_FOCUS_KEY | LV_STATE_EDITED))) {
         return;
@@ -735,48 +749,55 @@ static void airui_table_draw_task_added_event_cb(lv_event_t *e)
         }
         has_style = has_style || col_style->has_bg_color || col_style->has_border_color || col_style->has_text_color;
     }
-    if (!has_style) {
-        return;
-    }
 
-    lv_draw_fill_dsc_t *fill_dsc = lv_draw_task_get_fill_dsc(draw_task);
-    lv_draw_border_dsc_t *border_dsc = lv_draw_task_get_border_dsc(draw_task);
-    lv_draw_label_dsc_t *label_dsc = lv_draw_task_get_label_dsc(draw_task);
+    if (has_style) {
+        lv_draw_fill_dsc_t *fill_dsc = lv_draw_task_get_fill_dsc(draw_task);
+        lv_draw_border_dsc_t *border_dsc = lv_draw_task_get_border_dsc(draw_task);
+        lv_draw_label_dsc_t *label_dsc = lv_draw_task_get_label_dsc(draw_task);
 
-    if (fill_dsc != NULL && merged.has_bg_color) {
-        fill_dsc->color = merged.bg_color;
-        fill_dsc->opa = LV_OPA_COVER;
-    }
-    if (border_dsc != NULL && merged.has_border_color) {
-        border_dsc->color = merged.border_color;
-        border_dsc->opa = LV_OPA_COVER;
-    }
-    if (label_dsc != NULL && merged.has_text_color) {
-        label_dsc->color = merged.text_color;
-        label_dsc->opa = LV_OPA_COVER;
-    }
-    if (label_dsc != NULL && data->cell_font_size > 0) {
-        lv_font_t *font = airui_font_hzfont_get_size(data->cell_font_size);
-        if (font != NULL) {
-            label_dsc->font = font;
+        if (fill_dsc != NULL && merged.has_bg_color) {
+            fill_dsc->color = merged.bg_color;
+            fill_dsc->opa = LV_OPA_COVER;
+        }
+        if (border_dsc != NULL && merged.has_border_color) {
+            border_dsc->color = merged.border_color;
+            border_dsc->opa = LV_OPA_COVER;
+        }
+        if (label_dsc != NULL && merged.has_text_color) {
+            label_dsc->color = merged.text_color;
+            label_dsc->opa = LV_OPA_COVER;
         }
     }
 
-    if (draw_task->type == LV_DRAW_TASK_TYPE_LABEL && data->cell_vertical_align == AIRUI_TABLE_CELL_VERTICAL_ALIGN_TOP) {
+    {
+        lv_draw_label_dsc_t *label_dsc = lv_draw_task_get_label_dsc(draw_task);
+        if (label_dsc != NULL && data->cell_font_size > 0) {
+            lv_font_t *font = airui_font_hzfont_get_size(data->cell_font_size);
+            if (font != NULL) {
+                label_dsc->font = font;
+            }
+        }
+
         lv_table_cell_ctrl_t ctrl = 0;
         uint32_t cell = row * table_dsc->col_cnt + col;
         if (table_dsc->cell_data != NULL && table_dsc->cell_data[cell] != NULL) {
             ctrl = table_dsc->cell_data[cell]->ctrl;
         }
 
-        if ((ctrl & LV_TABLE_CELL_CTRL_TEXT_CROP) == 0) {
-            lv_coord_t row_height = table_dsc->row_h[row];
-            lv_coord_t text_height = lv_area_get_height(&draw_task->area);
-            lv_coord_t pad_top = lv_obj_get_style_pad_top(table, LV_PART_ITEMS);
-            lv_coord_t offset = (row_height - text_height) / 2 - pad_top;
-            if (offset > 0) {
-                draw_task->area.y1 -= offset;
-                draw_task->area.y2 -= offset;
+        if ((ctrl & LV_TABLE_CELL_CTRL_CUSTOM_1) && label_dsc != NULL) {
+            label_dsc->align = LV_TEXT_ALIGN_CENTER;
+        }
+
+        if (draw_task->type == LV_DRAW_TASK_TYPE_LABEL && data->cell_vertical_align == AIRUI_TABLE_CELL_VERTICAL_ALIGN_TOP) {
+            if ((ctrl & LV_TABLE_CELL_CTRL_TEXT_CROP) == 0) {
+                lv_coord_t row_height = table_dsc->row_h[row];
+                lv_coord_t text_height = lv_area_get_height(&draw_task->area);
+                lv_coord_t pad_top = lv_obj_get_style_pad_top(table, LV_PART_ITEMS);
+                lv_coord_t offset = (row_height - text_height) / 2 - pad_top;
+                if (offset > 0) {
+                    draw_task->area.y1 -= offset;
+                    draw_task->area.y2 -= offset;
+                }
             }
         }
     }
@@ -1581,4 +1602,65 @@ int airui_table_set_on_cell_click(lv_obj_t *table, int callback_ref)
     }
 
     return airui_component_bind_event(meta, AIRUI_EVENT_VALUE_CHANGED, callback_ref);
+}
+
+/**
+ * 水平合并单元格，center 为 true 时文字自动居中
+ * @param table Table 对象指针
+ * @param row 行索引（从 0 开始）
+ * @param col 起始列索引（从 0 开始）
+ * @param colspan 合并的列数（>=2），从 col 开始向右合并 colspan 列
+ * @param center 是否将合并后单元格文字居中，默认 true
+ * @return 0 成功，<0 失败
+ */
+int airui_table_merge_cells(lv_obj_t *table, uint16_t row, uint16_t col, uint16_t colspan, bool center)
+{
+    if (table == NULL || colspan < 2) {
+        return AIRUI_ERR_INVALID_PARAM;
+    }
+
+    lv_table_t *table_dsc = (lv_table_t *)table;
+    if (row >= table_dsc->row_cnt || (uint32_t)col + colspan > table_dsc->col_cnt) {
+        return AIRUI_ERR_INVALID_PARAM;
+    }
+
+    for (uint16_t i = col; i < col + colspan - 1; i++) {
+        lv_table_set_cell_ctrl(table, row, i, LV_TABLE_CELL_CTRL_MERGE_RIGHT);
+    }
+
+    if (center) {
+        lv_table_set_cell_ctrl(table, row, col, LV_TABLE_CELL_CTRL_CUSTOM_1);
+    }
+
+    lv_obj_invalidate(table);
+    return AIRUI_OK;
+}
+
+/**
+ * 取消水平合并单元格
+ * @param table Table 对象指针
+ * @param row 行索引（从 0 开始）
+ * @param col 起始列索引（从 0 开始）
+ * @param colspan 合并的列数（>=2），从 col 开始向右合并 colspan 列
+ * @return 0 成功，<0 失败
+ */
+int airui_table_unmerge_cells(lv_obj_t *table, uint16_t row, uint16_t col, uint16_t colspan)
+{
+    if (table == NULL || colspan < 2) {
+        return AIRUI_ERR_INVALID_PARAM;
+    }
+
+    lv_table_t *table_dsc = (lv_table_t *)table;
+    if (row >= table_dsc->row_cnt || (uint32_t)col + colspan > table_dsc->col_cnt) {
+        return AIRUI_ERR_INVALID_PARAM;
+    }
+
+    for (uint16_t i = col; i < col + colspan - 1; i++) {
+        lv_table_clear_cell_ctrl(table, row, i, LV_TABLE_CELL_CTRL_MERGE_RIGHT);
+    }
+
+    lv_table_clear_cell_ctrl(table, row, col, LV_TABLE_CELL_CTRL_CUSTOM_1);
+
+    lv_obj_invalidate(table);
+    return AIRUI_OK;
 }

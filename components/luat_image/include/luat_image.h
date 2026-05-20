@@ -60,12 +60,12 @@ int luat_webp_decode_sw_default(uint8_t *in_buf, size_t in_len, luat_img_info_t*
 #endif
 /* HW decode stubs — BSP platforms override these via LUAT_WEAK
  * luat_jpeg_decode_hw: only declared/defined when LUAT_USE_JPG is set
- * luat_png_decode_hw:  only declared/defined when LUAT_USE_PNG is set
+ * luat_png_decode_hw:  only declared/defined when LUAT_USE_PNG_HW is set
  * luat_webp_decode_hw: only declared/defined when LUAT_USE_WEBP is set */
 #ifdef LUAT_USE_JPG
 int luat_jpeg_decode_hw(uint8_t *in_buf, size_t in_len, luat_img_info_t* img_info);
 #endif
-#ifdef LUAT_USE_PNG
+#ifdef LUAT_USE_PNG_HW
 int luat_png_decode_hw(uint8_t *in_buf, size_t in_len, luat_img_info_t* img_info);
 #endif
 #ifdef LUAT_USE_WEBP
