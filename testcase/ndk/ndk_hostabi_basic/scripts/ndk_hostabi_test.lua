@@ -262,9 +262,12 @@ function tests.test_gpio_irq_event_appears_in_event_ring()
     assert(cfg.status == proto.STATUS_OK, "gpio irq config should succeed")
     local exchange_data = ndk.getData(ctx, 1024, 0)
     local event = proto.unpack_event_slot(exchange_data, 0)
+    local irq = proto.decode_gpio_irq_state(event.data)
     -- IRQ event expectation documents simulator-trigger behavior for later tasks.
     assert(event.type == proto.EVENT_TYPE_GPIO_IRQ, "event type should be GPIO_IRQ")
-    assert(event.data ~= 0, "gpio irq event payload should be non-zero")
+    assert(irq.pin == 9, "gpio irq payload should carry the configured pin")
+    assert(irq.pending == 1, "gpio irq payload should report pending state")
+    assert(irq.reason == proto.GPIO_IRQ_RISING, "gpio irq payload should report fixture irq reason")
 end
 
 return tests
