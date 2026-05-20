@@ -46,16 +46,16 @@ int luat_audio_channel_play(luat_audio_channel_t *channel, uint8_t is_play)
     if (!channel) {
         return -LUAT_ERROR_PARAM_INVALID;
     }
-    channel->play_state = is_play;
+    channel->user_play_stop = !is_play;
     return LUAT_ERROR_NONE;
 }
 
-int luat_audio_channel_record(luat_audio_channel_t *channel, uint8_t record_state)
+int luat_audio_channel_record(luat_audio_channel_t *channel, uint8_t is_record)
 {
     if (!channel) {
         return -LUAT_ERROR_PARAM_INVALID;
     }
-    channel->record_state = record_state;
+    channel->user_record_stop = !is_record;
     return LUAT_ERROR_NONE;
 }
 

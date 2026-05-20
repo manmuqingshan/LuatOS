@@ -52,6 +52,8 @@ static luat_audio_ctrl_t _luat_audio;
 #define __LUAT_C_CODE_IN_ISR__
 #endif
 
+extern void soc_printf(char *fmt, ...);
+
 static __LUAT_C_CODE_IN_ISR__ void _audio_play_next_block(struct luat_audio_driver_ctrl *ctrl)
 {
 	volatile uint32_t next_play_cnt;
@@ -59,7 +61,7 @@ static __LUAT_C_CODE_IN_ISR__ void _audio_play_next_block(struct luat_audio_driv
 	ctrl->current_play_cnt = (ctrl->current_play_cnt + 1) & 3;
 	next_play_cnt = (ctrl->current_play_cnt + 1) & 3;
 	uint8_t *next_play_buff = ctrl->play_buff_byte + ctrl->one_play_block_len * next_play_cnt;
-	if (!ctrl->data_channel->play_state) {	// 播放状态为停止，播放空白音
+	if (ctrl->data_channel->user_play_stop) {	// 播放状态为停止，播放空白音
 		ctrl->opts->fill(ctrl, next_play_buff, ctrl->one_play_block_len, ctrl->opts->is_signed, ctrl->data_channel->data_align);
 		return;
 	}
@@ -69,14 +71,10 @@ static __LUAT_C_CODE_IN_ISR__ void _audio_play_next_block(struct luat_audio_driv
 	if (read_len < ctrl->one_play_block_len) { 	// fifo没有完整的1个block
 		ctrl->opts->fill(ctrl, next_play_buff + read_len, ctrl->one_play_block_len - read_len, ctrl->opts->is_signed, ctrl->data_channel->data_align);
 	}
-	if (!read_len) { // fifo没有数据，播放空白音
-		if (ctrl->data_channel->blank_data_cnt < 10) { // 空数据计数
-			ctrl->data_channel->blank_data_cnt++;
-		}
-	} else {
-		ctrl->data_channel->blank_data_cnt = 0;
-	}
 	if (!_luat_audio.current_request_block) {  // 没有请求块，直接返回
+		return;
+	}
+	if (_luat_audio.current_request_block->is_wait_play_end && read_len >= ctrl->one_play_block_len) {
 		return;
 	}
 	if (!_luat_audio.decode_is_running && luat_fifo_check_free_space(ctrl->data_channel->play_fifo) >= ctrl->data_channel->play_fifo_low_level) { // fifo剩余数据不足低水位，需要请求更多数据
@@ -518,7 +516,7 @@ static void _audio_start_request(luat_audio_request_block_t *request_block)
 		if (request_block->is_error_stop || request_block->is_user_stop) {
 			return;
 		}
-		ret = luat_audio_driver_start(request_block->data_channel->driver_ctrl, &request_block->codec.common_param, request_block->play_buff, request_block->one_block_len, request_block->block_nums);
+		ret = luat_audio_driver_start(request_block->data_channel->driver_ctrl, &request_block->codec.common_param, request_block->play_buff, 0, 4);
 		if (ret) {
 			LLOGE("request id %d start driver failed, ret %d", request_block->request_id, ret);
 			request_block->is_error_stop = 1;
@@ -542,6 +540,7 @@ static void luat_audio_common_task(void *param)
 	uint8_t request_change;
 	for(;;) {
 		luat_rtos_event_recv(_luat_audio.common_task_handle, 0, &out_event, NULL, 0);
+		LLOGC(luat_audio_debug_flag, "common task recv event %d", out_event.id);
 		switch (out_event.id) {
 		case LUAT_AUDIO_EV_TX_NEED_DATA:
 			_luat_audio.decode_is_running = 1;
@@ -561,7 +560,20 @@ static void luat_audio_common_task(void *param)
 					luat_mutex_unlock(_luat_audio.tts_wait_sem);
 				} else {
 					//加入解码文件写入fifo
-					_audio_decode_file_to_fifo(request_block);
+					if (request_block->is_wait_play_end) {
+						LLOGC(luat_audio_debug_flag, "wait play end %d", request_block->play_blank_data_cnt);
+						request_block->play_blank_data_cnt++;
+						if (request_block->play_blank_data_cnt >= 3) {	// 播放空白数据超过3次，认为播放结束
+							request_block->is_stream_end = 1;
+							request_block->is_wait_play_end = 0;
+						}
+					} else if (request_block->is_file_end && !luat_fifo_check_used_space(request_block->org_input_data_fifo)) {
+						LLOGC(luat_audio_debug_flag, "file end, fifo empty, stop decode");
+						request_block->is_wait_play_end = 1;
+						request_block->play_blank_data_cnt = 0;
+					} else {
+						_audio_decode_file_to_fifo(request_block);
+					}
 				}
 			}
 			if (_luat_audio.current_request_block->is_error_stop || _luat_audio.current_request_block->is_user_stop || _luat_audio.current_request_block->is_stream_end) {
