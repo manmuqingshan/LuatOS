@@ -7,18 +7,18 @@
 @usage
 本demo演示两种视频播放场景（二选一）：
 
-场景一：从内存播放视频（默认启用）
+场景一：播放本地烧录的视频（默认启用）
 - 从 /luadb/fly_man_80.mjpg 加载并播放
 - 需要将视频文件烧录到固件中
 
-场景二：从服务器下载并播放视频
+场景二：播放从服务器下载的视频
 - 需要插入SIM卡并连接网络
 - 从IOT云平台服务器下载视频后播放
 
 使用说明：
 根据需求启用对应的播放模式，注释掉不需要的模式
-- 启用内存播放：  require "mjpg_player"
-- 启用服务器播放：require "mjpg_player_server"
+- 播放本地烧录的视频：  require "mjpg_player"
+- 播放从服务器下载的视频：require "mjpg_player_server"
 
 更多说明参考本目录下的readme.md文件
 ]]
@@ -63,9 +63,9 @@ log.info("main", PROJECT, VERSION)
 require "lcd_drv"
 
 -- 加载视频播放业务逻辑模块（二选一）
--- 场景一：从内存播放视频（默认启用）
+-- 场景一：播放本地烧录的视频（默认启用）
 require "mjpg_player"
--- 场景二：从服务器下载并播放视频
+-- 场景二：播放从服务器下载的视频
 -- 测试从服务器下载播放功能，取消注释下一行
 -- require "mjpg_player_server"
 
