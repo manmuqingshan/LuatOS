@@ -19,8 +19,8 @@ extern "C" {
 // 组件引用结构体
 typedef struct airui_component_ref {
     lv_obj_t *obj;
-    uint8_t alive;
     uint32_t id;
+    uint8_t alive;
 } airui_component_ref_t;
 
 // 组件 userdata 结构（所有组件共享）
