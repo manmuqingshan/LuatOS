@@ -103,8 +103,7 @@ static void _amr_codec_deinit(luat_audio_data_codec_t* codec) {
         if (16000 == codec->common_param.sample_rate) {
             D_IF_exit(codec->decode_ctx);
         } else {
-            Decoder_Interface_exit(codec->decode_ctx);
-            
+            Decoder_Interface_exit(codec->decode_ctx); 
         }
         codec->decode_ctx = NULL;
     }

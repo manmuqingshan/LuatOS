@@ -35,6 +35,10 @@ int luat_audio_data_codec_bind(luat_audio_data_codec_t *codec, const luat_audio_
             LLOGC(luat_audio_debug_flag, "bind hardware data codec %d, now device is busy", opts->type);
         }
     }
+    if (codec->input_buffer) {
+        luat_heap_free(codec->input_buffer);
+        codec->input_buffer = NULL;
+    }
     codec->input_buffer = luat_heap_malloc(opts->decode_max_output_len > opts->encode_min_input_len ? opts->encode_min_input_len : opts->decode_max_output_len);
     if (!codec->input_buffer) {
         return -LUAT_ERROR_NO_MEMORY;

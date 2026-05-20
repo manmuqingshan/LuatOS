@@ -1,4 +1,5 @@
 #include "luat_audio_channel.h"
+#include "luat_audio_define.h"
 #include "luat_common_api.h"
 #include "luat_rtos.h"
 #include "luat_rtos_legacy.h"
@@ -112,7 +113,7 @@ int luat_audio_channel_write_data(luat_audio_channel_t *channel, void *data, uin
     // }
     luat_data_union_t data_union;
     data_union.p = data;
-
+    LLOGC(luat_audio_debug_flag,"write data to channel len_bytes %u, is_signed %u, data_align %u, channel_nums %u", len_bytes, is_signed, data_align, channel_nums);
     if (channel->soft_vol && channel->soft_vol != 100) {     // 音量软件调节
         switch (data_align) {
             case 2:

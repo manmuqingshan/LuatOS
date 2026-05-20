@@ -150,6 +150,7 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, luat_audio_comm
     if (LUAT_AUDIO_DRIVER_STATE_INITED == ctrl->state) {
         ret = ctrl->opts->activate(ctrl);
         if (ret) {
+            LLOGC(luat_audio_debug_flag, "start activate failed %d", ret);
             return -LUAT_ERROR_OPERATION_FAILED;
         }
         ctrl->state = LUAT_AUDIO_DRIVER_STATE_ACTIVE;
@@ -167,6 +168,7 @@ int luat_audio_driver_start(struct luat_audio_driver_ctrl *ctrl, luat_audio_comm
     }
     ret = ctrl->opts->modify_audio_common_param(ctrl, common_param->sample_rate, common_param->data_align, common_param->channel_nums);
     if (ret) {
+        LLOGC(luat_audio_debug_flag, "start modify common param failed %d", ret);
         return -LUAT_ERROR_OPERATION_FAILED;
     }
     if (LUAT_AUDIO_DRIVER_STATE_ACTIVE == ctrl->state) {
