@@ -11,18 +11,6 @@ local exaudio = require "exaudio"
 
 local audio_drv = {}
 
--- local audio_configs = {
---     model = "es8311",
---     i2c_id = 0,
---     pa_ctrl = 162,
---     dac_ctrl = 164,
---     dac_delay = 6,
---     pa_delay = 100,
---     dac_time_delay = 100,
---     bits_per_sample = 16,
---     pa_on_level = 1
--- }
-
 local audio_configs ={
     model= "es8311",          -- 音频编解码类型,可填入"es8311","es8211"
     i2c_id = 0,          -- i2c_id,可填入0，1 并使用pins 工具配置对应的管脚

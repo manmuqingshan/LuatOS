@@ -41,7 +41,8 @@ local function boot_key_handler()
         g_sip_incoming = false
         return
     end
-    sys.publish("SIP_APP_MAIN_DIAL_REQ", g_tag, "100000")
+
+    sys.publish("SIP_APP_MAIN_DIAL_REQ", g_tag, "100001")
 end
 
 local function dial_rsp(tag, success, reason)
