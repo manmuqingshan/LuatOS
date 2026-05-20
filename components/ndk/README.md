@@ -237,3 +237,24 @@ Set-Location bsp\pc
 cmd /c build_windows_32bit_msvc.bat
 build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_hostabi_basic\scripts\
 ```
+
+## UART v1
+
+UART v1 uses the Host ABI exchange command/result protocol for:
+
+- `UART_CONFIG`
+- `UART_TX`
+- `UART_RX_STATE`
+- `UART_RX_READ`
+- `UART_RX_CLEAR`
+
+Async receive notification is delivered as `UART_RX_READY` in the existing event ring. Event delivery is notification-only; authoritative buffered length and acknowledgement stay on `UART_RX_STATE` / `UART_RX_READ` / `UART_RX_CLEAR`.
+
+Current PC simulator regression uses a deterministic context-local loopback model:
+
+- `UART_CONFIG` enables a loopback-backed UART context
+- `UART_TX` copies bytes from exchange buffer into the host loopback backend
+- RX-ready data is surfaced through `UART_RX_READY` plus `UART_RX_STATE`
+- `UART_RX_READ` copies bytes back into the exchange buffer
+
+If `bsp\pc\luat_uart_i686.dll` is available and a CH340 loopback is connected on `COM14`, that path may be used for a manual smoke check, but automated regression still relies on the deterministic host-backed loopback above.

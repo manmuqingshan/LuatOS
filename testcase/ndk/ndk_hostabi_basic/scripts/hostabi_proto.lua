@@ -159,6 +159,14 @@ function M.decode_uart_rx_state(result)
     }
 end
 
+function M.decode_uart_rx_state_result(result)
+    return {
+        pending = result.value0,
+        buffered_len = result.value1,
+        reason = result.value2,
+    }
+end
+
 -- Decode an UART_RX_READY event payload.
 -- event.source = port, event.data = LUAT_NDK_UART_RX_STATE_PACK(pending, rx_len, reason)
 function M.decode_uart_rx_ready_event(event)
