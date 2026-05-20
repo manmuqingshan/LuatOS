@@ -1299,6 +1299,13 @@ local function sip_task(opts)
                         code = code,
                         auth = www_params
                     })
+                    return
+                end
+
+                if code == 482 then
+                    log.warn("sip", "reg 482 Request Merged, disconnect and retry")
+                    sys.publish(TOPIC_DISCONNECT)
+                    return
                 end
             end
 

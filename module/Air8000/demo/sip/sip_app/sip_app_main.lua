@@ -1,6 +1,7 @@
 local exsip = require "exsip"
 local audio_drv = require "audio_drv"
 local exaudio = require "exaudio"
+local tts_speaker = require "tts_speaker"
 
 local TASK_NAME = "sip_app_main_task"
 --测试账号，根据自己实际情况修改
@@ -8,6 +9,8 @@ local SIP_CONFIG = {
     sip_server_addr = "180.152.6.34",
     sip_server_port = 8910,
     sip_domain = "180.152.6.34",
+    -- sip_username = "100001",
+    -- sip_password = "Mm123..",
     sip_username = "100000",
     sip_password = "Mm123.",
     sip_transport = exsip.TRANSPORT_UDP,
@@ -36,6 +39,7 @@ local g_sip_status = "STATE_IDLE"
 -- "MSG_ERROR"：出现异常
 
 local g_audio_inited = false
+local pending_hangup_reason = nil
 
 local function start()
     log.info("start", "开始初始化 SIP，当前状态:", g_sip_status)
@@ -124,7 +128,7 @@ local function sip_callback(event, arg1, arg2, arg3)
             sys.sendMsg(TASK_NAME, tag, "MSG_CONNECTED")
         elseif sub_event == "ended" then
             log.info("sip_callback", "通话已结束，结束原因为：", data.reason, "通话对象：", data.dialog)
-            sys.sendMsg(TASK_NAME, tag, "MSG_DISCONNECTED")
+            sys.sendMsg(TASK_NAME, tag, "MSG_DISCONNECTED", data.reason)
         end
     elseif event == "media" then
         local sub_event, data = arg1, arg2
@@ -146,6 +150,14 @@ local function sip_callback(event, arg1, arg2, arg3)
         local sub_event, data = arg1, arg2
         if sub_event == "state" then
             log.info("sip_callback", "VoIP状态:", data)
+        if data == "stopped" then
+            tts_speaker.set_voip_running(false)
+            tts_speaker.reset_audio()
+            if pending_hangup_reason then
+                sys.sendMsg(TASK_NAME, tag, "MSG_PLAY_HUNGUP", pending_hangup_reason)
+                pending_hangup_reason = nil
+            end
+        end
         elseif sub_event == "stats" then
             log.info("sip_callback", "VoIP统计 - 发送:", data.tx_packets, "接收:", data.rx_packets, "丢失:", data.rx_lost)
         elseif sub_event == "error" then
@@ -207,11 +219,14 @@ local function sip_app_main_task_func()
 
         while true do
             msg = sys.waitMsg(TASK_NAME)
-            tag, event, para = msg[1], msg[2], msg[3]
+            if type(msg) ~= "table" then
+                log.warn("sip_app_main_task_func", "收到非消息数据，忽略:", msg)
+            else
+                tag, event, para = msg[1], msg[2], msg[3]
+            end
+                log.info("sip_app_main_task_func waitMsg", g_sip_status, tag, event, para)
 
-            log.info("sip_app_main_task_func waitMsg", g_sip_status, tag, event, para)
-
-            if event == "MSG_STOP" then
+                if event == "MSG_STOP" then
                 stop_flag = true
                 break
             elseif event == "MSG_DIAL" then
@@ -221,6 +236,9 @@ local function sip_app_main_task_func()
                         sys.publish("SIP_APP_MAIN_DIAL_RSP", tag, false, "exsip.dial")
                     else
                         g_sip_status = "STATE_DIALING"
+                        sys.taskInit(function()
+                            tts_speaker.speak_dialing(para)
+                        end)
                     end
                 else
                     sys.publish("SIP_APP_MAIN_DIAL_RSP", tag, false, g_sip_status)
@@ -229,14 +247,18 @@ local function sip_app_main_task_func()
                     break
             elseif event == "MSG_READY" then
                 if g_sip_status == "STATE_INITING" then
-                    g_sip_status = "STATE_READY"
                     sys.publish("SIP_APP_MAIN_READY")
-                else
-                    log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
+                    sys.taskInit(function()
+                        tts_speaker.speak_sip_ready_with_network(socket.dft())
+                    end)
                 end
+                g_sip_status = "STATE_READY"
             elseif event == "MSG_INCOMING" then
                 if g_sip_status == "STATE_READY" then
                     g_sip_status = "STATE_INCOMING"
+                    sys.taskInit(function()
+                        tts_speaker.speak_incoming(para)
+                    end)
                     sys.publish("SIP_APP_MAIN_INCOMING", para)
                 else
                     log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
@@ -260,18 +282,38 @@ local function sip_app_main_task_func()
             elseif event == "MSG_CONNECTED" then
                 if g_sip_status == "STATE_DIALING" or g_sip_status == "STATE_INCOMING" then
                     g_sip_status = "STATE_CONNECTED"
+                    tts_speaker.stop()
+                    tts_speaker.set_voip_running(true)
                     sys.publish("SIP_APP_MAIN_CONNECTED")
                 else
                     log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
                 end
+            elseif event == "MSG_PLAY_HUNGUP" then
+                sys.taskInit(function()
+                    sys.wait(300)
+                    tts_speaker.speak_hungup(para)
+                end)
             elseif event == "MSG_DISCONNECTED" then
                 if g_sip_status == "STATE_DIALING" or g_sip_status == "STATE_INCOMING" or g_sip_status == "STATE_CONNECTED" or g_sip_status == "STATE_DISCONNECTING" then
+                    local was_connected = (g_sip_status == "STATE_CONNECTED" or g_sip_status == "STATE_DISCONNECTING")
                     g_sip_status = "STATE_READY"
+                    if was_connected then
+                        pending_hangup_reason = para
+                    else
+                        sys.taskInit(function()
+                            tts_speaker.speak_hungup(para)
+                        end)
+                    end
                     sys.publish("SIP_APP_MAIN_DISCONNECTED")
+                elseif g_sip_status == "STATE_READY" then
+                    -- 已处理过的挂断事件，忽略重复触发
+                    log.info("sip_app_main_task_func", "忽略重复的 MSG_DISCONNECTED")
                 else
+                    sys.taskInit(function()
+                        tts_speaker.speak_hungup(para)
+                    end)
                     log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
                 end
-                exaudio.pm(0, audio.SHUTDOWN)
             else
                 log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
             end
