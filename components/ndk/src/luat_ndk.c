@@ -311,6 +311,7 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
     }
 
     if (!ndk->lock) {
+        luat_ndk_gpio_reset(ndk);
         if (ndk->ram) {
             luat_heap_free(ndk->ram);
             ndk->ram = NULL;
@@ -341,6 +342,7 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
     }
 
     if (ndk_lock(ndk) != 0) return;
+    luat_ndk_gpio_reset(ndk);
     uint8_t *ram = ndk->ram;
     MiniRV32IMAState *core = ndk->core;
     char *image_path = ndk->image_path;

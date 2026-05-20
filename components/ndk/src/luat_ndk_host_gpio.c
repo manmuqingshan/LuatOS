@@ -113,7 +113,6 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
 
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
-        ndk_gpio_track_pin(ctx, pin);
         if (ndk_gpio_mode_from_abi(mode, &host_mode) != 0) {
             status = LUAT_NDK_GPIO_STATUS_BAD_MODE;
             break;
@@ -141,6 +140,7 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
         else {
             luat_gpio_mode((int)pin, host_mode, host_pull, LUAT_GPIO_LOW);
         }
+        ndk_gpio_track_pin(ctx, pin);
         status = LUAT_NDK_GPIO_STATUS_OK;
         break;
     }
@@ -150,8 +150,8 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
 
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
-        ndk_gpio_track_pin(ctx, pin);
         luat_gpio_set((int)pin, (int)level);
+        ndk_gpio_track_pin(ctx, pin);
         status = LUAT_NDK_GPIO_STATUS_OK;
         break;
     }
@@ -161,7 +161,6 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
 
         status = ndk_gpio_validate_pin(pin);
         if (status != LUAT_NDK_GPIO_STATUS_OK) break;
-        ndk_gpio_track_pin(ctx, pin);
         level = luat_gpio_get((int)pin);
         if (level != 0 && level != 1) {
             status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
@@ -172,9 +171,6 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
     }
     case NDK_CSR_GPIO_IRQ_STATE:
     case NDK_CSR_GPIO_IRQ_CLEAR:
-        if (ndk_gpio_validate_pin(value & 0xFFFFu) == LUAT_NDK_GPIO_STATUS_OK) {
-            ndk_gpio_track_pin(ctx, value & 0xFFFFu);
-        }
         status = LUAT_NDK_GPIO_STATUS_UNSUPPORTED;
         break;
     default:

@@ -10,6 +10,13 @@ local function run_cmd(ctx, opcode, a0, a1, a2)
     return run_cmd_with_reset(ctx, opcode, a0, a1, a2, true)
 end
 
+local function release_ctx(ctx)
+    ctx = nil
+    collectgarbage("collect")
+    collectgarbage("collect")
+    return nil
+end
+
 function run_cmd_with_reset(ctx, opcode, a0, a1, a2, do_reset)
     local payload = proto.pack_cmd(opcode, a0, a1, a2)
     if do_reset ~= false then
@@ -128,6 +135,71 @@ function tests.test_gpio_reset_clears_written_level()
     local rd = run_cmd(ctx, proto.CMD_GPIO_READ, 7, 0, 0)
     assert(rd.status == proto.STATUS_OK, "gpio read after reset should succeed")
     assert(rd.value0 == 0, "ndk reset should clear prior gpio output level")
+end
+
+function tests.test_gpio_read_only_peer_reset_does_not_clear_owner_pin()
+    local owner, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(owner, tostring(err))
+    local peer, peer_err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(peer, tostring(peer_err))
+
+    local cfg = run_cmd(owner, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    assert(cfg.status == proto.STATUS_OK, "owner gpio config should succeed")
+    local wr = run_cmd_with_reset(owner, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
+    assert(wr.status == proto.STATUS_OK, "owner gpio write should succeed")
+
+    local peer_rd = run_cmd_with_reset(peer, proto.CMD_GPIO_READ, 7, 0, 0, false)
+    assert(peer_rd.status == proto.STATUS_OK, "peer gpio read should succeed")
+    assert(peer_rd.value0 == 1, "peer should observe owner-written level")
+
+    assert(ndk.reset(peer), "peer reset should succeed")
+
+    local owner_rd = run_cmd_with_reset(owner, proto.CMD_GPIO_READ, 7, 0, 0, false)
+    assert(owner_rd.status == proto.STATUS_OK, "owner gpio read should still succeed")
+    assert(owner_rd.value0 == 1, "peer reset must not clear owner gpio state")
+end
+
+function tests.test_gpio_irq_probe_peer_reset_does_not_clear_owner_pin()
+    local owner, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(owner, tostring(err))
+    local peer, peer_err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(peer, tostring(peer_err))
+
+    local cfg = run_cmd(owner, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+    assert(cfg.status == proto.STATUS_OK, "owner gpio config should succeed")
+    local wr = run_cmd_with_reset(owner, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
+    assert(wr.status == proto.STATUS_OK, "owner gpio write should succeed")
+
+    local probe = run_cmd_with_reset(peer, proto.CMD_GPIO_IRQ_STATE, 7, 0, 0, false)
+    assert(probe.status == proto.STATUS_UNSUPPORTED, "peer irq probe should stay unsupported")
+
+    assert(ndk.reset(peer), "peer reset should succeed")
+
+    local owner_rd = run_cmd_with_reset(owner, proto.CMD_GPIO_READ, 7, 0, 0, false)
+    assert(owner_rd.status == proto.STATUS_OK, "owner gpio read should still succeed")
+    assert(owner_rd.value0 == 1, "unsupported peer irq probe must not claim gpio ownership")
+end
+
+function tests.test_gpio_owner_gc_releases_tracked_pin()
+    do
+        local owner, err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+        assert(owner, tostring(err))
+
+        local cfg = run_cmd(owner, proto.CMD_GPIO_CONFIG, 7, proto.GPIO_MODE_OUTPUT, proto.GPIO_PULL_DEFAULT)
+        assert(cfg.status == proto.STATUS_OK, "owner gpio config should succeed")
+        local wr = run_cmd_with_reset(owner, proto.CMD_GPIO_WRITE, 7, 1, 0, false)
+        assert(wr.status == proto.STATUS_OK, "owner gpio write should succeed")
+
+        owner = release_ctx(owner)
+    end
+    collectgarbage("collect")
+    collectgarbage("collect")
+
+    local reader, reader_err = ndk.rv32i(IMAGE, 32 * 1024, 1024)
+    assert(reader, tostring(reader_err))
+    local rd = run_cmd(reader, proto.CMD_GPIO_READ, 7, 0, 0)
+    assert(rd.status == proto.STATUS_OK, "reader gpio read should succeed")
+    assert(rd.value0 == 0, "owner gc should release tracked gpio state")
 end
 
 function tests.test_gpio_read_invalid_nonboolean_result_surfaces_as_error()
