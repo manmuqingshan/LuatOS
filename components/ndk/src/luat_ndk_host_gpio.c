@@ -95,7 +95,7 @@ static int ndk_gpio_is_tracked(const luat_ndk_t *ctx, uint32_t pin) {
 }
 
 static uint32_t ndk_gpio_irq_pack_state(uint32_t pin, uint32_t pending, uint32_t reason) {
-    return (pin & 0xFFFFu) | ((pending & 0x1u) << 16) | ((reason & 0xFFu) << 24);
+    return LUAT_NDK_GPIO_IRQ_STATE_PACK(pin, pending, reason);
 }
 
 static void ndk_gpio_irq_set_bit(uint8_t *bits, uint32_t pin, int enabled) {
@@ -191,6 +191,9 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
             }
             ndk_gpio_track_pin(ctx, pin);
             ndk_gpio_irq_mark_pending(ctx, pin, irq_mode);
+            // Task 3 intentionally synthesizes a deterministic simulator IRQ as soon
+            // as IRQ mode is configured so the hostabi regression suite has a stable
+            // trigger path. Unlike timer events, this is not gated by event_enabled.
             luat_ndk_event_push(ctx, LUAT_NDK_EVENT_GPIO_IRQ, (uint16_t)pin, ndk_gpio_irq_state_value(ctx, pin));
         }
         else {
@@ -241,6 +244,8 @@ uint32_t luat_ndk_gpio_csr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t value
             return ndk_gpio_irq_state_value(ctx, pin);
         }
         ndk_gpio_irq_set_bit(ctx->gpio_irq_pending, pin, 0);
+        // Acknowledge clears both the pending flag and the stored reason so the
+        // next IRQ state read reflects only newly-synthesized activity.
         ctx->gpio_irq_reason[pin] = 0;
         status = LUAT_NDK_GPIO_STATUS_OK;
         break;

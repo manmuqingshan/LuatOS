@@ -1,5 +1,6 @@
 /* main.c - NDK Host ABI Test Fixture */
 #include "protocol.h"
+#include "../../../../components/ndk/include/luat_ndk_abi.h"
 
 /* NDK builtin APIs from luat_ndk_builtin.h */
 extern unsigned int ndk_exchange_base(void);
@@ -124,8 +125,8 @@ int main(void) {
             out->value1 = 0;
         } else {
             out->status = HOSTABI_STATUS_OK;
-            out->value0 = (packed >> 16) & 0x1u;
-            out->value1 = (packed >> 24) & 0xFFu;
+            out->value0 = LUAT_NDK_GPIO_IRQ_STATE_PENDING(packed);
+            out->value1 = LUAT_NDK_GPIO_IRQ_STATE_REASON(packed);
         }
     } else if (cmd->opcode == HOSTABI_CMD_GPIO_IRQ_CLEAR) {
         out->status = ndk_gpio_irq_clear(cmd->arg0);

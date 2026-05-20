@@ -85,6 +85,26 @@ typedef enum {
     LUAT_NDK_GPIO_STATUS_HOST_ERROR = 15u
 } luat_ndk_gpio_status_t;
 
+// Packed GPIO IRQ state/event payload layout
+#define LUAT_NDK_GPIO_IRQ_STATE_PIN_SHIFT      0u
+#define LUAT_NDK_GPIO_IRQ_STATE_PIN_MASK       0x0000FFFFu
+#define LUAT_NDK_GPIO_IRQ_STATE_PENDING_SHIFT  16u
+#define LUAT_NDK_GPIO_IRQ_STATE_PENDING_MASK   0x00010000u
+#define LUAT_NDK_GPIO_IRQ_STATE_REASON_SHIFT   24u
+#define LUAT_NDK_GPIO_IRQ_STATE_REASON_MASK    0xFF000000u
+
+#define LUAT_NDK_GPIO_IRQ_STATE_PACK(pin, pending, reason) \
+    ((((uint32_t)(pin)) << LUAT_NDK_GPIO_IRQ_STATE_PIN_SHIFT) & LUAT_NDK_GPIO_IRQ_STATE_PIN_MASK | \
+     (((uint32_t)(pending)) << LUAT_NDK_GPIO_IRQ_STATE_PENDING_SHIFT) & LUAT_NDK_GPIO_IRQ_STATE_PENDING_MASK | \
+     (((uint32_t)(reason)) << LUAT_NDK_GPIO_IRQ_STATE_REASON_SHIFT) & LUAT_NDK_GPIO_IRQ_STATE_REASON_MASK)
+
+#define LUAT_NDK_GPIO_IRQ_STATE_PIN(value) \
+    ((((uint32_t)(value)) & LUAT_NDK_GPIO_IRQ_STATE_PIN_MASK) >> LUAT_NDK_GPIO_IRQ_STATE_PIN_SHIFT)
+#define LUAT_NDK_GPIO_IRQ_STATE_PENDING(value) \
+    ((((uint32_t)(value)) & LUAT_NDK_GPIO_IRQ_STATE_PENDING_MASK) >> LUAT_NDK_GPIO_IRQ_STATE_PENDING_SHIFT)
+#define LUAT_NDK_GPIO_IRQ_STATE_REASON(value) \
+    ((((uint32_t)(value)) & LUAT_NDK_GPIO_IRQ_STATE_REASON_MASK) >> LUAT_NDK_GPIO_IRQ_STATE_REASON_SHIFT)
+
 // Event header structure (16 bytes)
 typedef struct {
     uint32_t host_write;   // Number of events written by host
