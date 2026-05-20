@@ -13,6 +13,13 @@ M.CMD_GPIO_READ = 0x12
 M.CMD_GPIO_IRQ_STATE = 0x13
 M.CMD_GPIO_IRQ_CLEAR = 0x14
 
+-- UART v1 command opcodes
+M.CMD_UART_CONFIG    = 0x20
+M.CMD_UART_TX        = 0x21
+M.CMD_UART_RX_STATE  = 0x22
+M.CMD_UART_RX_READ   = 0x23
+M.CMD_UART_RX_CLEAR  = 0x24
+
 -- Status codes
 M.STATUS_OK = 0
 M.STATUS_BAD_PIN = 10
@@ -22,6 +29,13 @@ M.STATUS_BAD_IRQ_MODE = 13
 M.STATUS_UNSUPPORTED = 14
 M.STATUS_HOST_ERROR = 15
 
+-- UART v1 status codes
+M.STATUS_UART_BAD_PORT   = 20
+M.STATUS_UART_BAD_CONFIG = 21
+M.STATUS_UART_BAD_LENGTH = 22
+M.STATUS_UART_BUSY       = 23
+M.STATUS_UART_OVERFLOW   = 24
+
 -- Protocol constants
 M.HOST_MAGIC = 0x4E444B31  -- "NDK1"
 M.HOST_VERSION = 0x00010000  -- 1.0.0
@@ -29,8 +43,14 @@ M.FEATURE_META = 1 << 0
 M.FEATURE_TIME = 1 << 1
 M.FEATURE_EVENT = 1 << 2
 M.FEATURE_GPIO = 1 << 3
+M.FEATURE_UART = 1 << 4
 M.RESULT_OFFSET = 16
 M.RESULT_SIZE = 16
+
+-- UART v1 buffer offsets and port constants
+M.UART_CFG_OFFSET     = 128
+M.UART_PAYLOAD_OFFSET = 256
+M.UART_PORT_LOOPBACK  = 0x20
 
 -- Event constants
 M.EVENT_HEADER_OFFSET = 32  -- Event header starts at offset 32 (after command + result)
@@ -38,6 +58,7 @@ M.EVENT_HEADER_SIZE = 16    -- Event header is 4 uint32_t values
 M.EVENT_SLOT_SIZE = 8       -- Each event slot is 8 bytes (uint16_t type, uint16_t source, uint32_t data)
 M.EVENT_TYPE_TIMER = 1      -- Timer event type
 M.EVENT_TYPE_GPIO_IRQ = 2   -- GPIO IRQ event type
+M.EVENT_TYPE_UART_RX_READY = 3  -- UART RX ready event type
 
 -- GPIO constants
 M.GPIO_MODE_INPUT = 0
@@ -110,6 +131,31 @@ function M.decode_gpio_irq_state(packed)
         pin = packed & M.GPIO_IRQ_STATE_PIN_MASK,
         pending = (packed & M.GPIO_IRQ_STATE_PENDING_MASK) >> M.GPIO_IRQ_STATE_PENDING_SHIFT,
         reason = (packed & M.GPIO_IRQ_STATE_REASON_MASK) >> M.GPIO_IRQ_STATE_REASON_SHIFT,
+    }
+end
+
+-- UART v1 helpers
+
+-- Build a CMD_UART_CONFIG command header plus config payload.
+-- Returns: cmd_bytes, cfg_payload
+function M.pack_uart_config_cmd(port, baud, data_bits, stop_bits, parity, rx_enable)
+    local payload = string.pack("<I4BBBB", baud, data_bits, stop_bits, parity, rx_enable and 1 or 0)
+    return M.pack_cmd(M.CMD_UART_CONFIG, port, M.UART_CFG_OFFSET, #payload), payload
+end
+
+-- Build a generic UART IO command (TX / RX_READ).
+-- offset and length are packed into arg1 as (offset<<16)|length.
+function M.pack_uart_io_cmd(opcode, port, offset, length)
+    local arg1 = ((offset & 0xFFFF) << 16) | (length & 0xFFFF)
+    return M.pack_cmd(opcode, port, arg1, 0)
+end
+
+-- Decode CMD_UART_RX_STATE result fields.
+function M.decode_uart_rx_state(result)
+    return {
+        pending      = result.value0,
+        buffered_len = result.value1,
+        reason       = result.value2,
     }
 end
 
