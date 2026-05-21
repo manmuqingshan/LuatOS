@@ -389,7 +389,7 @@ local function iot_gen_device_uid()
     if device_uid then return device_uid end
     local model = rtos.bsp()
     if model:find("Air1601") or model:find("Air1602")  or model:find("PC") then
-        device_uid = mcu.unique_id()
+        device_uid = mcu.unique_id() or "PC"
     elseif model:find("Air8101") or model:find("Air6205") then
         -- WiFi MAC 
         device_uid = wlan.getMac()
@@ -1373,11 +1373,55 @@ local function app_task(app_path)
     -- fota 库
     -- 禁止应用使用固件升级功能，替换为错误提示
     my_env.fota = {
+        init = function(...)
+            my_env.log.error("fota", "沙箱环境不允许FOTA升级操作")
+            return -1
+        end,
+        run = function(...)
+            my_env.log.error("fota", "沙箱环境不允许FOTA升级操作")
+            return -1
+        end,
         file = function(...)
             my_env.log.error("fota", "沙箱环境不允许FOTA升级操作")
             return -1
         end,
     }
+
+    -- libfota 库
+    -- 禁止应用使用固件升级功能，替换为错误提示
+    local libfota_lib = safe_global("libfota")
+    my_env.libfota = setmetatable({}, { __index = libfota_lib })
+    my_env.libfota.request = function(...)
+        my_env.log.error("libfota", "沙箱环境不允许FOTA升级操作")
+        return -1
+    end
+
+    -- libfota2 库
+    -- 禁止应用使用固件升级功能，替换为错误提示
+    local libfota2_lib = safe_global("libfota2")
+    my_env.libfota2 = setmetatable({}, { __index = libfota2_lib })
+    my_env.libfota2.request = function(...)
+        my_env.log.error("libfota2", "沙箱环境不允许FOTA升级操作")
+        return -1
+    end
+
+    -- pm 库
+    -- 禁止应用控制系统电源管理，替换为错误提示
+    local pm_lib = safe_global("pm")
+    my_env.pm = setmetatable({}, { __index = pm_lib })
+    my_env.pm.reboot = function(...)
+        my_env.log.error("pm", "沙箱环境不允许系统重启操作")
+        return -1
+    end
+
+    -- rtos 库
+    -- 禁止应用控制系统重启，替换为错误提示
+    local rtos_lib = safe_global("rtos")
+    my_env.rtos = setmetatable({}, { __index = rtos_lib })
+    my_env.rtos.reboot = function(...)
+        my_env.log.error("rtos", "沙箱环境不允许系统重启操作")
+        return -1
+    end
 
     -- ymodem 库
     -- 功能：包装 ymodem.create，支持路径转换
@@ -1438,6 +1482,30 @@ local function app_task(app_path)
     -- install_component(组件名)：对每个 airui 组件类型应用三阶段管道
     local ui = safe_global("airui")
     my_env.airui = setmetatable({}, { __index = ui })
+
+    -- 禁止应用调用 airui.init 重新初始化 UI 系统
+    my_env.airui.init = function(...)
+        my_env.log.error("airui", "沙箱环境不允许重新初始化UI系统")
+        return -1
+    end
+
+    -- lcd 库
+    -- 禁止应用重新初始化 LCD，其他 lcd 接口正常透传
+    local lcd_lib = safe_global("lcd")
+    my_env.lcd = setmetatable({}, { __index = lcd_lib })
+    my_env.lcd.init = function(...)
+        my_env.log.error("lcd", "沙箱环境不允许重新初始化LCD")
+        return -1
+    end
+
+    -- tp 库
+    -- 禁止应用重新初始化触摸面板，其他 tp 接口正常透传
+    local tp_lib = safe_global("tp")
+    my_env.tp = setmetatable({}, { __index = tp_lib })
+    my_env.tp.init = function(...)
+        my_env.log.error("tp", "沙箱环境不允许重新初始化触摸面板")
+        return -1
+    end
 
     -- excloud 库
     -- 功能：包装 excloud.upload_image 和 excloud.upload_audio，支持路径转换
@@ -2135,6 +2203,12 @@ local function app_task(app_path)
     end
 
     my_env.fskv = setmetatable({}, { __index = _G.fskv })
+
+    -- 禁止应用调用 fskv.init 重新初始化存储系统
+    my_env.fskv.init = function(...)
+        my_env.log.error("fskv", "沙箱环境不允许重新初始化存储系统")
+        return -1
+    end
 
     -- 设置键值对，键名自动添加前缀
     my_env.fskv.set = function(key, value, ...)
