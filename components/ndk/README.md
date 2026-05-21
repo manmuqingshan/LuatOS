@@ -4,6 +4,14 @@
 
 本文档既是**运行时 API 参考**，也是**从零重建与验证指南**。
 
+## RV32F 当前支持说明（阶段性）
+
+- 通过 `ndk.rv32i(..., { isa = "rv32imf" })` 启用单精度浮点扩展。
+- 当前已覆盖常见编译器发射路径：`FLW/FSW`、`FMV.*`、`FADD/FSUB/FMUL/FDIV/FSQRT.S/FMADD.S/FMSUB.S/FNMSUB.S/FNMADD.S`、`FMIN/FMAX.S`、`FEQ/FLT/FLE.S`、`FCLASS.S`、`FCVT.S.W/WU`、`FCVT.W/WU.S`。
+- 当前 host-backed rounding 支持 `RNE/RTZ/RDN/RUP`（`rm/frm = 0..3`）。
+- `RMM`（`rm/frm = 4`）**当前仍未支持**，遇到该 rounding mode 会按非法指令路径处理（阶段性限制，后续再扩展）。
+- 已补充 `RMM` 限制回归：`baremetal_fadd_rmm_static.bin`（`rm=4`）与 `baremetal_fadd_rmm_dynamic.bin`（`frm=4 + rm=dyn`）在 `rv32imf` 模式下都应触发非法指令 trap。
+
 ---
 
 ## 目录
@@ -39,7 +47,7 @@ cmd /c build_windows_32bit_msvc.bat
 build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_basic\scripts\
 ```
 
-期望输出：`Total: 5 passed, 0 failed`
+期望输出：`Total: N passed, 0 failed`（当前基线：`ndk_basic` 为 `42 passed, 0 failed`）
 
 ---
 
@@ -240,7 +248,7 @@ build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_b
 ### 成功输出示例
 
 ```
-[I]/testcase/ndk/ndk_basic/scripts/main.lua:15 ndk test result Total: 5 passed, 0 failed
+[I]/testcase/ndk/ndk_basic/scripts/main.lua:15 ndk test result Total: N passed, 0 failed
 ```
 
 ### 关键日志（调试级别）
