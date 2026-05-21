@@ -20,6 +20,9 @@ static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t tra
 #define MINIRV32_OTHERCSR_READ(csrno, value) luat_ndk_host_othercsr_read(ctx, csrno, &value)
 #define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( luat_ndk_host_control_store(ctx, addy, val ) ) return val;
 #define MINIRV32_STEPPROTO static int32_t MiniRV32IMAStep(luat_ndk_t *ctx, struct MiniRV32IMAState *state, uint8_t *image, uint32_t vProcAddress, uint32_t elapsedUs, int count)
+// LuatOS-local mini-rv32ima delta: enable RV32C-safe fetch/decompression support.
+// Keep this marker when syncing vendor mini-rv32ima.h so the compressed-instruction patch stays easy to find.
+#define MINIRV32_LUATOS_RV32C_PATCH 1
 #define MINIRV32_IMPLEMENTATION
 #include "mini-rv32ima.h"
 
