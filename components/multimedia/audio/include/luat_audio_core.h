@@ -88,6 +88,12 @@ int luat_audio_get_play_info_from_file(luat_audio_data_codec_t *codec, luat_audi
  * @param ctrl 音频驱动控制器指针
  */
 void luat_audio_driver_event_callback(uint32_t event, uint8_t *rx_data, uint32_t param, luat_audio_driver_ctrl_t *ctrl);
+
+
+#ifdef __LUATOS__
+void l_audio_init(void);
+#endif
+
 #endif
 
 /** @} */
