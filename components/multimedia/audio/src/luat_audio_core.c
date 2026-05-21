@@ -354,19 +354,21 @@ static void _audio_decode_current_request_play_info(luat_audio_request_block_t *
 				LLOGE("no play info found for file %d", request_block->file_done_cnt);
 				error = 1;
 			}
-			
-			if (luat_audio_data_codec_bind(&request_block->codec, luat_audio_data_codec_find(codec_type), request_block)) {
-				LLOGE("bind codec %d failed", codec_type);
-				error = 1;
-			} else {
-				if (request_block->codec.opts->init(&request_block->codec, 0)) {
-					LLOGE("init codec %d failed", codec_type);
-					luat_audio_data_codec_deinit(&request_block->codec);
-					luat_audio_data_codec_unbind(&request_block->codec);
+			if (!error) {
+				// 绑定解码器
+				if (!luat_audio_data_codec_bind(&request_block->codec, luat_audio_data_codec_find(codec_type), request_block)) {
+					LLOGE("bind codec %d failed", codec_type);
 					error = 1;
 				} else {
-					request_block->codec.common_param = codec.common_param;
-					LLOGC(luat_audio_debug_flag, "find codec %d, play info %u,%u,%u", codec_type, request_block->codec.common_param.sample_rate, request_block->codec.common_param.data_align, request_block->codec.common_param.channel_nums);
+					if (request_block->codec.opts->init(&request_block->codec, 0)) {
+						LLOGE("init codec %d failed", codec_type);
+						luat_audio_data_codec_deinit(&request_block->codec);
+						luat_audio_data_codec_unbind(&request_block->codec);
+						error = 1;
+					} else {
+						request_block->codec.common_param = codec.common_param;
+						LLOGC(luat_audio_debug_flag, "find codec %d, play info %u,%u,%u", codec_type, request_block->codec.common_param.sample_rate, request_block->codec.common_param.data_align, request_block->codec.common_param.channel_nums);
+					}
 				}
 			}
 		}
@@ -511,7 +513,7 @@ static void _audio_decode_file_to_fifo(luat_audio_request_block_t *request_block
 static void _audio_start_request(luat_audio_request_block_t *request_block)
 {
 	int ret;
-	request_block->cb(LUAT_AUDIO_REQUEST_EVENT_START, NULL, 0, request_block->user_data);
+	request_block->cb(LUAT_AUDIO_REQUEST_EVENT_START, NULL, 0, request_block);
 	// 最后根据请求块的模式做不同的解码操作
 	if (request_block->is_tts) {	//TTS模式发送给tts_task处理
 		luat_rtos_event_send(_luat_audio.tts_task_handle, LUAT_AUDIO_EV_TTS_RUN, (uint32_t)request_block, 0, 0, 0);
@@ -620,6 +622,7 @@ static void luat_audio_common_task(void *param)
 			}
 			if (request_change) {
 				// 请求块有变化，需要重新播放
+				luat_rtos_task_sleep(1);	// 让低优先级的task能返回结果
 				_audio_start_request(_luat_audio.current_request_block);
 				if (_luat_audio.current_request_block->is_error_stop || _luat_audio.current_request_block->is_user_stop || _luat_audio.current_request_block->is_stream_end) {	// 启动请求块失败，将当前工作请求块设置为NULL，并且重新触发一下请求事件
 					_audio_request_finish();
@@ -636,7 +639,7 @@ static void luat_audio_common_task(void *param)
 				_audio_request_finish();
 			} else {
 				luat_audio_request_deinit(request_block);
-				request_block->cb(LUAT_AUDIO_REQUEST_EVENT_END, NULL, 0, request_block->user_data);
+				request_block->cb(LUAT_AUDIO_REQUEST_EVENT_END, NULL, 0, request_block);
 			}
 			luat_mutex_unlock((void *)out_event.param2);
 			break;
