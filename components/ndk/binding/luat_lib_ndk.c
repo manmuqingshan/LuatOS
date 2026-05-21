@@ -12,7 +12,7 @@ if not ctx then
     return
 end
 local info = ndk.info(ctx)
-log.info("ndk", "mem", info.mem, "exchange", info.exchange)
+log.info("ndk", "mem", info.mem, "exchange", info.exchange, "abi", info.abi_version, "features", info.features, "last_error", info.last_error)
 ndk.setData(ctx, "ping")
 local ok, ret, mcause, mtval = ndk.exec(ctx, {steps = 100000, elapsed = 500})
 if not ok then
@@ -30,6 +30,7 @@ collectgarbage("collect")
 #include "luat_mem.h"
 #include "luat_log.h"
 #include "luat_ndk.h"
+#include "luat_ndk_abi.h"
 #include "luat_zbuff.h"
 #include <string.h>
 
@@ -296,7 +297,7 @@ static int l_ndk_stop(lua_State *L) {
 获取当前运行状态
 @api ndk.info(ctx)
 @userdata ctx ndk.rv32i 返回的上下文
-@return table 包含 mem/exchange/exchange_addr/image/running/mcause/mtval，便于判断生命周期状态
+@return table 包含 mem/exchange/exchange_addr/image/running/mcause/mtval/abi_magic/abi_version/features/last_error/event_slots，便于判断生命周期状态和ABI能力
 */
 static int l_ndk_info(lua_State *L) {
     luat_ndk_t *ndk = ndk_check(L, 1);
@@ -315,6 +316,16 @@ static int l_ndk_info(lua_State *L) {
     lua_setfield(L, -2, "mcause");
     lua_pushinteger(L, ndk->last_mtval);
     lua_setfield(L, -2, "mtval");
+    lua_pushinteger(L, LUAT_NDK_HOST_MAGIC);
+    lua_setfield(L, -2, "abi_magic");
+    lua_pushinteger(L, LUAT_NDK_HOST_VERSION);
+    lua_setfield(L, -2, "abi_version");
+    lua_pushinteger(L, ndk->abi_features);
+    lua_setfield(L, -2, "features");
+    lua_pushinteger(L, ndk->last_error);
+    lua_setfield(L, -2, "last_error");
+    lua_pushinteger(L, ndk->event_slots);
+    lua_setfield(L, -2, "event_slots");
     return 1;
 }
 

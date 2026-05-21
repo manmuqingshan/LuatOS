@@ -1,9 +1,14 @@
 local ndk_tests = {}
 
 local IMAGE_PATH = "/luadb/baremetal.bin"
+local IMAGE_PATH_RVC = "/luadb/baremetal_rvc.bin"
 local MEM_SIZE = 32 * 1024
 local EXCHANGE_SIZE = 1024
 local INVALID_IMAGE_PATH = "/luadb/not-exists.bin"
+local ILLEGAL_RVC_IMAGE_PATH = "/illegal_rvc_halfword.bin"
+local NDK_FEATURE_GPIO = 1 << 3
+local RVC_SMOKE_SIGNATURE = 0xC01A
+local MISA_EXT_C = 1 << 2
 
 local function wait_until(predicate, timeout_ms)
     local waited = 0
@@ -24,6 +29,12 @@ local function assert_info_fields(info)
     end
 end
 
+local function write_binary(path, data)
+    local fd = assert(io.open(path, "wb"))
+    assert(fd:write(data))
+    fd:close()
+end
+
 function ndk_tests.test_ndk_lifecycle_regression()
     assert(io.exists(IMAGE_PATH), "missing baremetal.bin in testcase directory: " .. IMAGE_PATH)
 
@@ -35,6 +46,7 @@ function ndk_tests.test_ndk_lifecycle_regression()
     assert_info_fields(info)
     assert(info.mem == MEM_SIZE, "unexpected mem size: " .. tostring(info.mem))
     assert(info.exchange == EXCHANGE_SIZE, "unexpected exchange size: " .. tostring(info.exchange))
+    assert((info.features & NDK_FEATURE_GPIO) ~= 0, "ndk.info should expose GPIO feature bit")
 
     local ok, ret_or_err, mcause, mtval = ndk.exec(ctx, { steps = 100000, elapsed = 500 })
     assert(ok == true, string.format("ndk.exec failed: %s mcause=%s mtval=%s", tostring(ret_or_err), tostring(mcause), tostring(mtval)))
@@ -153,6 +165,55 @@ function ndk_tests.test_ndk_gc_during_active_worker_safe()
     assert(ok_exec == true, "ndk.exec after gc/worker cleanup failed: " .. tostring(ret_or_err))
     local stop_ok, stop_err = ndk.stop(ctx2, 1000)
     assert(stop_ok == true, "ndk.stop after gc/worker cleanup failed: " .. tostring(stop_err))
+end
+
+function ndk_tests.test_rv32c_compressed_binary_exists()
+    assert(io.exists(IMAGE_PATH_RVC), "missing baremetal_rvc.bin in testcase directory: " .. IMAGE_PATH_RVC)
+end
+
+function ndk_tests.test_rv32c_compressed_binary_executes()
+    local ctx, err = ndk.rv32i(IMAGE_PATH_RVC, MEM_SIZE, EXCHANGE_SIZE)
+    assert(ctx, "ndk.rv32i failed for rv32c guest: " .. tostring(err))
+
+    local ok, ret_or_err, mcause, mtval = ndk.exec(ctx, { steps = 100000, elapsed = 500 })
+    assert(ok == true, string.format("rv32c guest failed: %s mcause=%s mtval=%s", tostring(ret_or_err), tostring(mcause), tostring(mtval)))
+    assert(type(ret_or_err) == "number", "rv32c guest should return numeric retval")
+
+    local stop_ok, stop_err = ndk.stop(ctx, 1000)
+    assert(stop_ok == true, "ndk.stop after rv32c guest failed: " .. tostring(stop_err))
+end
+
+function ndk_tests.test_rv32c_compressed_binary_reports_smoke_signature_and_misa_c()
+    local ctx, err = ndk.rv32i(IMAGE_PATH_RVC, MEM_SIZE, EXCHANGE_SIZE)
+    assert(ctx, "ndk.rv32i failed for rv32c guest: " .. tostring(err))
+
+    local ok, ret_or_err, mcause, mtval = ndk.exec(ctx, { steps = 100000, elapsed = 500 })
+    assert(ok == true, string.format("rv32c guest failed: %s mcause=%s mtval=%s", tostring(ret_or_err), tostring(mcause), tostring(mtval)))
+
+    local smoke_signature, misa = string.unpack("<I4I4", assert(ndk.getData(ctx, 8, 0)))
+    assert(smoke_signature == RVC_SMOKE_SIGNATURE,
+        string.format("expected compressed smoke signature 0x%X, got 0x%X", RVC_SMOKE_SIGNATURE, smoke_signature))
+    assert((misa & MISA_EXT_C) ~= 0, string.format("misa should advertise C extension, got 0x%X", misa))
+
+    local stop_ok, stop_err = ndk.stop(ctx, 1000)
+    assert(stop_ok == true, "ndk.stop after rv32c guest failed: " .. tostring(stop_err))
+end
+
+function ndk_tests.test_rv32c_illegal_halfword_traps_with_illegal_instruction()
+    write_binary(ILLEGAL_RVC_IMAGE_PATH, string.pack("<I2", 0))
+
+    local ctx, err = ndk.rv32i(ILLEGAL_RVC_IMAGE_PATH, MEM_SIZE, EXCHANGE_SIZE)
+    assert(ctx, "ndk.rv32i failed for illegal rv32c image: " .. tostring(err))
+
+    local ok, ret_or_err, mcause, mtval = ndk.exec(ctx, { steps = 32, elapsed = 1 })
+    assert(ok == false, "illegal compressed halfword should trap")
+    assert(ret_or_err == "trap", "illegal compressed halfword should surface trap")
+    assert(mcause == 2, string.format("illegal compressed halfword should raise illegal instruction, got mcause=%s", tostring(mcause)))
+    assert(mtval == 0x80000000, string.format("illegal compressed halfword should report faulting PC, got mtval=0x%X", mtval or 0))
+
+    local stop_ok, stop_err = ndk.stop(ctx, 1000)
+    assert(stop_ok == true, "ndk.stop after illegal rv32c image failed: " .. tostring(stop_err))
+    pcall(os.remove, ILLEGAL_RVC_IMAGE_PATH)
 end
 
 return ndk_tests

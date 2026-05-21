@@ -165,3 +165,14 @@ $bytes = [System.IO.File]::ReadAllBytes("$env:TEMP\check.bin")
 - Don't send state-machine events (e.g., `EV_NW_SOCKET_CLOSE_OK`) if the handler will access uninitialized state
 - **Never memcpy** `uv_tcp_t` or other handles — they have internal linked-list pointers
 - `uv_close` is async — the handle must remain valid until the close callback fires
+
+### NDK RV32C / Host ABI Pitfalls
+- **Host ABI guest fixture must use `zicsr` in `-march`** — `testcase\ndk\guest\build_hostabi_v1.ps1` should use `rv32ima_zicsr` / `rv32imac_zicsr` for both GNU and LLVM paths because the fixture emits `csrr/csrrw`. Plain `rv32ima` / `rv32imac` is not robust on post-split ISA toolchains.
+
+- **`-march=rv32imac` alone is not proof that compressed instructions are present** — keep an explicit `rvc_smoke.S`, disassemble with `objdump -d -M no-aliases`, and assert the output contains `c.` mnemonics before accepting the generated RV32C binary.
+
+- **Keep `.option norvc` local to CSR helper inline asm** — in `components/ndk/include/luat_ndk_builtin.h` and `testcase/ndk/guest/hostabi_v1/ndk_stubs.c`, `norvc` is an intentional fixed-width CSR boundary. Do not remove it just because the guest now supports RV32C, and do not expand it to file-global scope.
+
+- **RV32C support in mini-rv32ima must use low-halfword-first fetch** — read the low 16 bits, decide 16/32-bit length from `ir16 & 0x3`, enforce 2-byte PC alignment, and trap on unsupported/all-zero compressed halfwords instead of treating them as no-ops.
+
+- **Preferred regression chain for NDK RV32C changes** — run `testcase\ndk\guest\build_hostabi_v1.ps1`, then `testcase\ndk\ndk_basic\guest\build.ps1`, rebuild `bsp\pc` with `build_windows_32bit_msvc.bat`, then execute both `ndk_basic` and `ndk_hostabi_basic` script suites on the PC simulator.

@@ -19,9 +19,28 @@
 #endif
 
 #define LUAT_NDK_EXCHANGE_ALIGN 4
+#define LUAT_NDK_GPIO_TRACK_BYTES 32
+#define LUAT_NDK_UART_RX_CAPACITY 256
 
 struct MiniRV32IMAState;
 typedef struct MiniRV32IMAState MiniRV32IMAState;
+
+typedef struct {
+    uint8_t  configured;
+    uint8_t  rx_enable;
+    uint8_t  pending;
+    uint8_t  reason;
+    uint8_t  owner;
+    uint32_t port_id;
+    uint32_t baud;
+    uint16_t rx_head;
+    uint16_t rx_tail;
+    uint16_t rx_len;
+    uint8_t  data_bits;
+    uint8_t  stop_bits;
+    uint8_t  parity;
+    uint8_t  rx_buf[LUAT_NDK_UART_RX_CAPACITY];
+} luat_ndk_uart_port_t;
 
 typedef enum {
     LUAT_NDK_OK = 0,
@@ -61,6 +80,18 @@ typedef struct luat_ndk {
     luat_rtos_task_handle worker;
     uint32_t thread_id;
     char *image_path;
+    // ABI state
+    uint32_t abi_features;
+    uint32_t last_error;
+    uint16_t event_slots;
+    uint16_t event_head;
+    uint16_t event_tail;
+    uint8_t event_enabled;
+    uint8_t gpio_tracked[LUAT_NDK_GPIO_TRACK_BYTES];
+    uint8_t gpio_irq_enabled[LUAT_NDK_GPIO_TRACK_BYTES];
+    uint8_t gpio_irq_pending[LUAT_NDK_GPIO_TRACK_BYTES];
+    uint8_t gpio_irq_reason[LUAT_NDK_GPIO_TRACK_BYTES * 8];
+    luat_ndk_uart_port_t uart_ports[1];
 } luat_ndk_t;
 
 int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exchange_size);

@@ -115,6 +115,224 @@ MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint
 #define REGSET( x, val ) { state->regs[x] = val; }
 #endif
 
+#ifdef MINIRV32_LUATOS_RV32C_PATCH
+// === LuatOS local patch begin: RV32C fetch/alignment/decompression support ===
+static inline int32_t MiniRV32_SignExtend(uint32_t value, uint32_t bits)
+{
+	return ((int32_t)(value << (32 - bits))) >> (32 - bits);
+}
+
+static inline uint32_t MiniRV32_RType(uint32_t funct7, uint32_t rs2, uint32_t rs1, uint32_t funct3, uint32_t rd, uint32_t opcode)
+{
+	return (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
+}
+
+static inline uint32_t MiniRV32_IType(int32_t imm, uint32_t rs1, uint32_t funct3, uint32_t rd, uint32_t opcode)
+{
+	return (((uint32_t)imm & 0xfff) << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
+}
+
+static inline uint32_t MiniRV32_SType(int32_t imm, uint32_t rs1, uint32_t rs2, uint32_t funct3, uint32_t opcode)
+{
+	uint32_t uimm = (uint32_t)imm;
+	return (((uimm >> 5) & 0x7f) << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | ((uimm & 0x1f) << 7) | opcode;
+}
+
+static inline uint32_t MiniRV32_BType(int32_t imm, uint32_t rs1, uint32_t rs2, uint32_t funct3, uint32_t opcode)
+{
+	uint32_t uimm = (uint32_t)imm;
+	return (((uimm >> 12) & 0x1) << 31) | (((uimm >> 5) & 0x3f) << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) |
+		(((uimm >> 1) & 0xf) << 8) | (((uimm >> 11) & 0x1) << 7) | opcode;
+}
+
+static inline uint32_t MiniRV32_UType(int32_t imm, uint32_t rd, uint32_t opcode)
+{
+	return ((uint32_t)imm & 0xfffff000) | (rd << 7) | opcode;
+}
+
+static inline uint32_t MiniRV32_JType(int32_t imm, uint32_t rd, uint32_t opcode)
+{
+	uint32_t uimm = (uint32_t)imm;
+	return (((uimm >> 20) & 0x1) << 31) | (((uimm >> 1) & 0x3ff) << 21) | (((uimm >> 11) & 0x1) << 20) |
+		(((uimm >> 12) & 0xff) << 12) | (rd << 7) | opcode;
+}
+
+static inline int MiniRV32_DecompressC(uint16_t ir, uint32_t *out_ir)
+{
+	uint32_t quadrant = ir & 0x3;
+	uint32_t funct3 = ir >> 13;
+	uint32_t rd = (ir >> 7) & 0x1f;
+	uint32_t rs2 = (ir >> 2) & 0x1f;
+	uint32_t rdp = 8 + ((ir >> 2) & 0x7);
+	uint32_t rs1p = 8 + ((ir >> 7) & 0x7);
+	int32_t imm = 0;
+
+	if( ir == 0 )
+		return 0;
+
+	switch( quadrant )
+	{
+		case 0:
+			switch( funct3 )
+			{
+				case 0: // C.ADDI4SPN
+					imm = (((ir >> 6) & 0x1) << 2) | (((ir >> 5) & 0x1) << 3) | (((ir >> 11) & 0x3) << 4) | (((ir >> 7) & 0xf) << 6);
+					if( imm == 0 ) return 0;
+					*out_ir = MiniRV32_IType( imm, 2, 0, rdp, 0x13 );
+					return 1;
+				case 2: // C.LW
+					imm = (((ir >> 6) & 0x1) << 2) | (((ir >> 10) & 0x7) << 3) | (((ir >> 5) & 0x1) << 6);
+					*out_ir = MiniRV32_IType( imm, rs1p, 2, rdp, 0x03 );
+					return 1;
+				case 6: // C.SW
+					imm = (((ir >> 6) & 0x1) << 2) | (((ir >> 10) & 0x7) << 3) | (((ir >> 5) & 0x1) << 6);
+					*out_ir = MiniRV32_SType( imm, rs1p, rdp, 2, 0x23 );
+					return 1;
+				default:
+					return 0;
+			}
+		case 1:
+			switch( funct3 )
+			{
+				case 0: // C.ADDI / C.NOP
+					imm = MiniRV32_SignExtend( ((ir >> 2) & 0x1f) | (((ir >> 12) & 0x1) << 5), 6 );
+					if( rd == 0 )
+					{
+						if( imm != 0 ) return 0;
+						*out_ir = MiniRV32_IType( 0, 0, 0, 0, 0x13 );
+					}
+					else
+						*out_ir = MiniRV32_IType( imm, rd, 0, rd, 0x13 );
+					return 1;
+				case 1: // C.JAL (RV32C only)
+				case 5: // C.J
+					imm = (((ir >> 3) & 0x7) << 1) | (((ir >> 11) & 0x1) << 4) | (((ir >> 2) & 0x1) << 5) |
+						(((ir >> 7) & 0x1) << 6) | (((ir >> 6) & 0x1) << 7) | (((ir >> 9) & 0x3) << 8) |
+						(((ir >> 8) & 0x1) << 10) | (((ir >> 12) & 0x1) << 11);
+					imm = MiniRV32_SignExtend( imm, 12 );
+					*out_ir = MiniRV32_JType( imm, (funct3 == 1) ? 1 : 0, 0x6f );
+					return 1;
+				case 2: // C.LI
+					if( rd == 0 ) return 0;
+					imm = MiniRV32_SignExtend( ((ir >> 2) & 0x1f) | (((ir >> 12) & 0x1) << 5), 6 );
+					*out_ir = MiniRV32_IType( imm, 0, 0, rd, 0x13 );
+					return 1;
+				case 3: // C.ADDI16SP / C.LUI
+					if( rd == 2 )
+					{
+						imm = (((ir >> 6) & 0x1) << 4) | (((ir >> 2) & 0x1) << 5) | (((ir >> 5) & 0x1) << 6) |
+							(((ir >> 3) & 0x3) << 7) | (((ir >> 12) & 0x1) << 9);
+						imm = MiniRV32_SignExtend( imm, 10 );
+						if( imm == 0 ) return 0;
+						*out_ir = MiniRV32_IType( imm, 2, 0, 2, 0x13 );
+					}
+					else
+					{
+						if( rd == 0 ) return 0;
+						imm = MiniRV32_SignExtend( ((ir >> 2) & 0x1f) | (((ir >> 12) & 0x1) << 5), 6 ) << 12;
+						if( imm == 0 ) return 0;
+						*out_ir = MiniRV32_UType( imm, rd, 0x37 );
+					}
+					return 1;
+				case 4: // C.SRLI / C.SRAI / C.ANDI / C.SUB/XOR/OR/AND
+				{
+					uint32_t subop = (ir >> 10) & 0x3;
+					uint32_t rs2p = 8 + ((ir >> 2) & 0x7);
+					uint32_t shamt = ((ir >> 2) & 0x1f) | (((ir >> 12) & 0x1) << 5);
+					if( shamt & 0x20 ) return 0;
+					switch( subop )
+					{
+						case 0:
+							*out_ir = MiniRV32_IType( shamt, rs1p, 5, rs1p, 0x13 );
+							return 1;
+						case 1:
+							*out_ir = MiniRV32_IType( 0x400 | shamt, rs1p, 5, rs1p, 0x13 );
+							return 1;
+						case 2:
+							imm = MiniRV32_SignExtend( ((ir >> 2) & 0x1f) | (((ir >> 12) & 0x1) << 5), 6 );
+							*out_ir = MiniRV32_IType( imm, rs1p, 7, rs1p, 0x13 );
+							return 1;
+						case 3:
+							if( ir & 0x1000 ) return 0;
+							switch( ( ir >> 5 ) & 0x3 )
+							{
+								case 0: *out_ir = MiniRV32_RType( 0x20, rs2p, rs1p, 0, rs1p, 0x33 ); return 1;
+								case 1: *out_ir = MiniRV32_RType( 0x00, rs2p, rs1p, 4, rs1p, 0x33 ); return 1;
+								case 2: *out_ir = MiniRV32_RType( 0x00, rs2p, rs1p, 6, rs1p, 0x33 ); return 1;
+								case 3: *out_ir = MiniRV32_RType( 0x00, rs2p, rs1p, 7, rs1p, 0x33 ); return 1;
+							}
+					}
+					return 0;
+				}
+				case 6: // C.BEQZ
+				case 7: // C.BNEZ
+					imm = (((ir >> 3) & 0x3) << 1) | (((ir >> 10) & 0x3) << 3) | (((ir >> 2) & 0x1) << 5) |
+						(((ir >> 5) & 0x3) << 6) | (((ir >> 12) & 0x1) << 8);
+					imm = MiniRV32_SignExtend( imm, 9 );
+					*out_ir = MiniRV32_BType( imm, rs1p, 0, (funct3 == 6) ? 0 : 1, 0x63 );
+					return 1;
+				default:
+					return 0;
+			}
+		case 2:
+			switch( funct3 )
+			{
+				case 0: // C.SLLI
+				{
+					uint32_t shamt = ((ir >> 2) & 0x1f) | (((ir >> 12) & 0x1) << 5);
+					if( rd == 0 || ( shamt & 0x20 ) ) return 0;
+					*out_ir = MiniRV32_IType( shamt, rd, 1, rd, 0x13 );
+					return 1;
+				}
+				case 2: // C.LWSP
+					if( rd == 0 ) return 0;
+					imm = (((ir >> 4) & 0x7) << 2) | (((ir >> 12) & 0x1) << 5) | (((ir >> 2) & 0x3) << 6);
+					*out_ir = MiniRV32_IType( imm, 2, 2, rd, 0x03 );
+					return 1;
+				case 4:
+					if( !( ir & 0x1000 ) )
+					{
+						if( rs2 == 0 )
+						{
+							if( rd == 0 ) return 0;
+							*out_ir = MiniRV32_IType( 0, rd, 0, 0, 0x67 );
+						}
+						else
+						{
+							if( rd == 0 ) return 0;
+							*out_ir = MiniRV32_RType( 0x00, rs2, 0, 0, rd, 0x33 );
+						}
+					}
+					else
+					{
+						if( rs2 == 0 )
+						{
+							if( rd == 0 )
+								*out_ir = 0x00100073; // EBREAK
+							else
+								*out_ir = MiniRV32_IType( 0, rd, 0, 1, 0x67 );
+						}
+						else
+						{
+							if( rd == 0 ) return 0;
+							*out_ir = MiniRV32_RType( 0x00, rs2, rd, 0, rd, 0x33 );
+						}
+					}
+					return 1;
+				case 6: // C.SWSP
+					imm = (((ir >> 9) & 0xf) << 2) | (((ir >> 7) & 0x3) << 6);
+					*out_ir = MiniRV32_SType( imm, 2, rs2, 2, 0x23 );
+					return 1;
+				default:
+					return 0;
+			}
+		default:
+			return 0;
+	}
+}
+// === LuatOS local patch end: RV32C fetch/alignment/decompression support ===
+#endif
+
 #ifndef MINIRV32_STEPPROTO
 MINIRV32_DECORATE int32_t MiniRV32IMAStep( struct MiniRV32IMAState * state, uint8_t * image, uint32_t vProcAddress, uint32_t elapsedUs, int count )
 #else
@@ -142,12 +360,13 @@ MINIRV32_STEPPROTO
 	uint32_t rval = 0;
 	uint32_t pc = CSR( pc );
 	uint32_t cycle = CSR( cyclel );
+	uint32_t inst_len = 4;
 
 	if( ( CSR( mip ) & (1<<7) ) && ( CSR( mie ) & (1<<7) /*mtie*/ ) && ( CSR( mstatus ) & 0x8 /*mie*/) )
 	{
 		// Timer interrupt.
 		trap = 0x80000007;
-		pc -= 4;
+		pc -= inst_len;
 	}
 	else // No timer interrupt?  Execute a bunch of instructions.
 	for( int icount = 0; icount < count; icount++ )
@@ -157,19 +376,49 @@ MINIRV32_STEPPROTO
 		cycle++;
 		uint32_t ofs_pc = pc - MINIRV32_RAM_IMAGE_OFFSET;
 
-		if( ofs_pc >= MINI_RV32_RAM_SIZE )
+		if( ofs_pc >= MINI_RV32_RAM_SIZE || ( MINI_RV32_RAM_SIZE - ofs_pc ) < 2 )
 		{
 			trap = 1 + 1;  // Handle access violation on instruction read.
 			break;
 		}
-		else if( ofs_pc & 3 )
+		else if( ofs_pc & 1 )
 		{
 			trap = 1 + 0;  //Handle PC-misaligned access
 			break;
 		}
 		else
 		{
-			ir = MINIRV32_LOAD4( ofs_pc );
+			uint16_t ir16 = MINIRV32_LOAD2( ofs_pc );
+#ifdef MINIRV32_LUATOS_RV32C_PATCH
+			if( ( ir16 & 0x3 ) == 0x3 )
+			{
+				if( ( MINI_RV32_RAM_SIZE - ofs_pc ) < 4 )
+				{
+					trap = 1 + 1;
+					break;
+				}
+				ir = ir16 | ( MINIRV32_LOAD2( ofs_pc + 2 ) << 16 );
+				inst_len = 4;
+			}
+			else
+			{
+				inst_len = 2;
+				ir = ir16;
+				if( !MiniRV32_DecompressC( ir16, &ir ) )
+				{
+					trap = (2+1);
+					break;
+				}
+			}
+#else
+			if( ( MINI_RV32_RAM_SIZE - ofs_pc ) < 4 )
+			{
+				trap = 1 + 1;
+				break;
+			}
+			ir = ir16 | ( MINIRV32_LOAD2( ofs_pc + 2 ) << 16 );
+			inst_len = 4;
+#endif
 			uint32_t rdid = (ir >> 7) & 0x1f;
 
 			switch( ir & 0x7f )
@@ -184,16 +433,16 @@ MINIRV32_STEPPROTO
 				{
 					int32_t reladdy = ((ir & 0x80000000)>>11) | ((ir & 0x7fe00000)>>20) | ((ir & 0x00100000)>>9) | ((ir&0x000ff000));
 					if( reladdy & 0x00100000 ) reladdy |= 0xffe00000; // Sign extension.
-					rval = pc + 4;
-					pc = pc + reladdy - 4;
+					rval = pc + inst_len;
+					pc = pc + reladdy - inst_len;
 					break;
 				}
 				case 0x67: // JALR (0b1100111)
 				{
 					uint32_t imm = ir >> 20;
 					int32_t imm_se = imm | (( imm & 0x800 )?0xfffff000:0);
-					rval = pc + 4;
-					pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - 4;
+					rval = pc + inst_len;
+					pc = ( (REG( (ir >> 15) & 0x1f ) + imm_se) & ~1) - inst_len;
 					break;
 				}
 				case 0x63: // Branch (0b1100011)
@@ -202,7 +451,7 @@ MINIRV32_STEPPROTO
 					if( immm4 & 0x1000 ) immm4 |= 0xffffe000;
 					int32_t rs1 = REG((ir >> 15) & 0x1f);
 					int32_t rs2 = REG((ir >> 20) & 0x1f);
-					immm4 = pc + immm4 - 4;
+					immm4 = pc + immm4 - inst_len;
 					rdid = 0;
 					switch( ( ir >> 12 ) & 0x7 )
 					{
@@ -358,7 +607,7 @@ MINIRV32_STEPPROTO
 						case 0x342: rval = CSR( mcause ); break;
 						case 0x343: rval = CSR( mtval ); break;
 						case 0xf11: rval = 0xff0ff0ff; break; //mvendorid
-						case 0x301: rval = 0x40401101; break; //misa (XLEN=32, IMA+X)
+						case 0x301: rval = 0x40401105; break; //misa (XLEN=32, IMAC+X)
 						//case 0x3B0: rval = 0; break; //pmpaddr0
 						//case 0x3a0: rval = 0; break; //pmpcfg0
 						//case 0xf12: rval = 0x00000000; break; //marchid
@@ -413,7 +662,7 @@ MINIRV32_STEPPROTO
 							uint32_t startextraflags = CSR( extraflags );
 							SETCSR( mstatus , (( startmstatus & 0x80) >> 4) | ((startextraflags&3) << 11) | 0x80 );
 							SETCSR( extraflags, (startextraflags & ~3) | ((startmstatus >> 11) & 3) );
-							pc = CSR( mepc ) -4;
+							pc = CSR( mepc ) - inst_len;
 						} else {
 							switch (csrno) {
 							case 0:
@@ -424,7 +673,7 @@ MINIRV32_STEPPROTO
 							case 0x105: //WFI (Wait for interrupts)
 								CSR( mstatus ) |= 8;    //Enable interrupts
 								CSR( extraflags ) |= 4; //Infor environment we want to go to sleep.
-								SETCSR( pc, pc + 4 );
+								SETCSR( pc, pc + inst_len );
 								return 1;
 							default:
 								trap = (2+1); break; // Illegal opcode.
@@ -499,7 +748,7 @@ MINIRV32_STEPPROTO
 
 		MINIRV32_POSTEXEC( pc, ir, trap );
 
-		pc += 4;
+		pc += inst_len;
 	}
 
 	// Handle traps and interrupts.
@@ -509,7 +758,7 @@ MINIRV32_STEPPROTO
 		{
 			SETCSR( mcause, trap );
 			SETCSR( mtval, 0 );
-			pc += 4; // PC needs to point to where the PC will return to.
+			pc += inst_len; // PC needs to point to where the PC will return to.
 		}
 		else
 		{
@@ -520,13 +769,13 @@ MINIRV32_STEPPROTO
 		//CSR( mstatus ) & 8 = MIE, & 0x80 = MPIE
 		// On an interrupt, the system moves current MIE into MPIE
 		SETCSR( mstatus, (( CSR( mstatus ) & 0x08) << 4) | (( CSR( extraflags ) & 3 ) << 11) );
-		pc = (CSR( mtvec ) - 4);
+		pc = (CSR( mtvec ) - inst_len);
 
 		// If trapping, always enter machine mode.
 		CSR( extraflags ) |= 3;
 
 		trap = 0;
-		pc += 4;
+		pc += inst_len;
 	}
 
 	if( CSR( cyclel ) > cycle ) CSR( cycleh )++;
@@ -538,5 +787,4 @@ MINIRV32_STEPPROTO
 #endif
 
 #endif
-
 

@@ -6,6 +6,7 @@
 #include "luat_rtos.h"
 #include "luat_ndk.h"
 #include "luat_ndk_host.h"
+#include "luat_ndk_abi.h"
 
 #define LUAT_LOG_TAG "ndk"
 #include "luat_log.h"
@@ -19,6 +20,9 @@ static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t tra
 #define MINIRV32_OTHERCSR_READ(csrno, value) luat_ndk_host_othercsr_read(ctx, csrno, &value)
 #define MINIRV32_HANDLE_MEM_STORE_CONTROL( addy, val ) if( luat_ndk_host_control_store(ctx, addy, val ) ) return val;
 #define MINIRV32_STEPPROTO static int32_t MiniRV32IMAStep(luat_ndk_t *ctx, struct MiniRV32IMAState *state, uint8_t *image, uint32_t vProcAddress, uint32_t elapsedUs, int count)
+// LuatOS-local mini-rv32ima delta: enable RV32C-safe fetch/decompression support.
+// Keep this marker when syncing vendor mini-rv32ima.h so the compressed-instruction patch stays easy to find.
+#define MINIRV32_LUATOS_RV32C_PATCH 1
 #define MINIRV32_IMPLEMENTATION
 #include "mini-rv32ima.h"
 
@@ -109,6 +113,36 @@ static void ndk_postexec(luat_ndk_t *ctx, uint32_t pc, uint32_t ir, uint32_t tra
     ctx->last_trap = trap;
 }
 
+static void ndk_reset_abi_state(luat_ndk_t *ndk) {
+    size_t event_bytes = 0;
+    size_t slot_count = 0;
+
+    ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT | LUAT_NDK_FEATURE_GPIO | LUAT_NDK_FEATURE_UART;
+    ndk->last_error = LUAT_NDK_HOST_ERR_NONE;
+
+    event_bytes = (ndk->exchange_size > (LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE))
+        ? (ndk->exchange_size - (LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE))
+        : 0;
+    slot_count = event_bytes / sizeof(luat_ndk_event_t);
+    if (slot_count > 8) {
+        slot_count = 8;
+    }
+    ndk->event_slots = (uint16_t)slot_count;
+    ndk->event_head = 0;
+    ndk->event_tail = 0;
+    ndk->event_enabled = 0;
+    luat_ndk_gpio_reset(ndk);
+    luat_ndk_uart_reset(ndk);
+
+    if (ndk->ram && ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE <= ndk->ram_size) {
+        luat_ndk_event_header_t *hdr = (luat_ndk_event_header_t*)(ndk->ram + ndk->exchange_offset + LUAT_NDK_EVENT_HDR_OFFSET);
+        hdr->host_write = 0;
+        hdr->guest_read = 0;
+        hdr->slot_count = ndk->event_slots;
+        hdr->overflow = 0;
+    }
+}
+
 static void ndk_reset_core(luat_ndk_t *ndk) {
     memset(ndk->core, 0, sizeof(MiniRV32IMAState));
     ndk->core->pc = MINIRV32_RAM_IMAGE_OFFSET;
@@ -119,6 +153,7 @@ static void ndk_reset_core(luat_ndk_t *ndk) {
     ndk->last_mcause = 0;
     ndk->last_mtval = 0;
     ndk->last_trap = 0;
+    ndk_reset_abi_state(ndk);
 }
 
 static int ndk_reload_image(luat_ndk_t *ndk) {
@@ -143,6 +178,7 @@ static int ndk_reload_image(luat_ndk_t *ndk) {
         memset(ndk->ram + ndk->exchange_offset, 0, ndk->exchange_size);
     }
     ndk_reset_core(ndk);
+    luat_ndk_event_reset(ndk);
     return LUAT_NDK_OK;
 }
 
@@ -255,6 +291,7 @@ int luat_ndk_init(luat_ndk_t *ndk, const char *path, size_t mem_size, size_t exc
     }
 
     ndk_reset_core(ndk);
+
     return LUAT_NDK_OK;
 }
 
@@ -278,6 +315,8 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
     }
 
     if (!ndk->lock) {
+        luat_ndk_gpio_reset(ndk);
+        luat_ndk_uart_reset(ndk);
         if (ndk->ram) {
             luat_heap_free(ndk->ram);
             ndk->ram = NULL;
@@ -308,6 +347,8 @@ void luat_ndk_deinit(luat_ndk_t *ndk) {
     }
 
     if (ndk_lock(ndk) != 0) return;
+    luat_ndk_gpio_reset(ndk);
+    luat_ndk_uart_reset(ndk);
     uint8_t *ram = ndk->ram;
     MiniRV32IMAState *core = ndk->core;
     char *image_path = ndk->image_path;
