@@ -193,6 +193,7 @@ static int l_container_destroy(lua_State *L) {
  */
 void airui_register_container_meta(lua_State *L) {
     luaL_newmetatable(L, AIRUI_CONTAINER_MT);
+    airui_component_set_metatable_gc(L);
     // lua_pushcfunction(L, l_container_gc);
     // lua_setfield(L, -2, "__gc");
 

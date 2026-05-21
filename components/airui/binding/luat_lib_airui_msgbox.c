@@ -166,6 +166,7 @@ static int l_msgbox_destroy(lua_State *L)
 void airui_register_msgbox_meta(lua_State *L)
 {
     luaL_newmetatable(L, AIRUI_MSGBOX_MT);
+    airui_component_set_metatable_gc(L);
 
     static const luaL_Reg methods[] = {
         {"show", l_msgbox_show},

@@ -235,6 +235,7 @@ static int l_button_destroy(lua_State *L) {
  */
 void airui_register_button_meta(lua_State *L) {
     luaL_newmetatable(L, AIRUI_BUTTON_MT);
+    airui_component_set_metatable_gc(L);
     // 设置方法表
     static const luaL_Reg methods[] = {
         {"set_text", l_button_set_text},

@@ -216,6 +216,7 @@ static int l_image_destroy(lua_State *L) {
  */
 void airui_register_image_meta(lua_State *L) {
     luaL_newmetatable(L, AIRUI_IMAGE_MT);
+    airui_component_set_metatable_gc(L);
     
     // 设置方法表
     static const luaL_Reg methods[] = {

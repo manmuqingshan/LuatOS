@@ -240,6 +240,7 @@ static int l_label_destroy(lua_State *L) {
  */
 void airui_register_label_meta(lua_State *L) {
     luaL_newmetatable(L, AIRUI_LABEL_MT);
+    airui_component_set_metatable_gc(L);
     
     // 设置方法表
     static const luaL_Reg methods[] = {
