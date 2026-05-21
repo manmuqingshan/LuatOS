@@ -150,7 +150,7 @@ static int _audio_tts_output_callback(void *data, uint32_t param, void *user_dat
 	luat_audio_request_block_t *request_block = (luat_audio_request_block_t *)user_data;
 	int ret;
 	if (data) {
-		while(!request_block->is_user_stop && luat_fifo_check_free_space(request_block->data_channel->play_fifo) >= request_block->codec.opts->decode_max_output_len * ((request_block->data_channel->driver_ctrl->common_param.data_align == 3)?4:request_block->data_channel->driver_ctrl->common_param.data_align))
+		while(!request_block->is_user_stop && (luat_fifo_check_free_space(request_block->data_channel->play_fifo) >= request_block->data_channel->play_fifo_high_level))
 		{
 			LLOGC(luat_audio_debug_flag, "tts wait fifo space %d", luat_fifo_check_free_space(request_block->data_channel->play_fifo));
 			if (luat_rtos_semaphore_take(_luat_audio.tts_wait_sem, 1000)) {
@@ -162,7 +162,7 @@ static int _audio_tts_output_callback(void *data, uint32_t param, void *user_dat
 			LLOGC(luat_audio_debug_flag, "tts user stop, stop");
 			return -1;
 		}
-		uint32_t written_bytes = 0;
+		uint32_t written_bytes;
 		ret = luat_audio_channel_write_data(request_block->data_channel, data, param, &written_bytes, request_block->codec.common_param.is_signed, request_block->codec.common_param.data_align, request_block->codec.common_param.channel_nums);		
 		if (ret) {
 			request_block->is_error_stop = 1;
@@ -405,7 +405,7 @@ static void _audio_decode_file_start(luat_audio_request_block_t *request_block)
 	if (request_block->is_error_stop || request_block->is_user_stop) {
 		return;
 	}
-	luat_buffer_reinit(&request_block->out_buffer, request_block->codec.opts->decode_max_output_len * 4);
+	luat_buffer_reinit(&request_block->out_buffer, request_block->codec.opts->decode_max_output_len * 3);
 	if (!request_block->out_buffer.data) {
 		LLOGE("create out buffer failed, no memory");
 		request_block->is_error_stop = 1;
@@ -422,8 +422,8 @@ static void _audio_decode_stream_to_fifo(luat_audio_request_block_t *request_blo
 				&request_block->out_buffer, 
 				request_block->is_stream_end);
 			if (request_block->out_buffer.pos) {
-				uint32_t written_bytes = 0;
-				int ret = luat_audio_channel_write_data(request_block->data_channel, request_block->out_buffer.data, request_block->out_buffer.pos, &written_bytes, request_block->codec.common_param.is_signed, request_block->codec.common_param.data_align, request_block->codec.common_param.channel_nums);
+				uint32_t written_bytes;
+				int ret = luat_audio_channel_write_data(request_block->data_channel, request_block->out_buffer.data, request_block->out_buffer.pos, &written_bytes, request_block->codec.common_param.is_signed, request_block->codec.common_param.data_align, request_block->codec.common_param.channel_nums);	
 				if (ret) {
 					request_block->is_error_stop = 1;
 					LLOGE("write data failed ret %d", ret);
@@ -488,8 +488,8 @@ static void _audio_decode_file_to_fifo(luat_audio_request_block_t *request_block
 				&request_block->out_buffer, 
 				request_block->is_file_end || is_file_end);
 			if (request_block->out_buffer.pos) {
-				uint32_t written_bytes = 0;
-				int ret = luat_audio_channel_write_data(request_block->data_channel, request_block->out_buffer.data, request_block->out_buffer.pos, &written_bytes, request_block->codec.common_param.is_signed, request_block->codec.common_param.data_align, request_block->codec.common_param.channel_nums);
+				uint32_t written_bytes;
+				int ret = luat_audio_channel_write_data(request_block->data_channel, request_block->out_buffer.data, request_block->out_buffer.pos, &written_bytes, request_block->codec.common_param.is_signed, request_block->codec.common_param.data_align, request_block->codec.common_param.channel_nums);	
 				if (ret) {
 					request_block->is_error_stop = 1;
 					LLOGE("write data failed ret %d", ret);
@@ -667,8 +667,8 @@ int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, struct luat
 			_luat_audio.channel[i].play_lock_mutex = luat_mutex_create();
 			_luat_audio.channel[i].soft_vol = 100;
 			_luat_audio.channel[i].play_fifo = luat_fifo_create(LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER);
-    		_luat_audio.channel[i].play_fifo_low_level = 1 << 15;
-    		_luat_audio.channel[i].play_fifo_high_level = _luat_audio.channel[i].play_fifo->size - (1 << 14);
+    		_luat_audio.channel[i].play_fifo_low_level = 32 * 1024;
+    		_luat_audio.channel[i].play_fifo_high_level = _luat_audio.channel[i].play_fifo->size - 16 * 1024;
 			_luat_audio.all_driver_nums++;
 			LLOGC(luat_audio_debug_flag, "probe_id: %x driver register success index: %d", probe.probe_id, i);
 			return LUAT_ERROR_NONE;
