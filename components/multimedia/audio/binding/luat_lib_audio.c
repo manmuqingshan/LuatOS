@@ -315,7 +315,7 @@ log.info(all_nums, default_driver_index)
 static int l_audio_get_driver_info(lua_State *L) {
     uint8_t all_nums = 0;
     uint8_t default_driver_index;
-    luat_audio_driver_get_probe_info(&all_nums, &default_driver_index);
+    luat_audio_driver_get_ctrl_info(&all_nums, &default_driver_index);
     lua_pushinteger(L, all_nums);
     lua_pushinteger(L, default_driver_index);
     return 2;
@@ -336,12 +336,12 @@ static int l_audio_get_driver_id(lua_State *L) {
     uint8_t index = luaL_optinteger(L, 1, 0);
     uint8_t all_nums = 0;
     uint8_t default_driver_index;
-    luat_audio_driver_probe_t *probe_table =luat_audio_driver_get_probe_info(&all_nums, &default_driver_index);
+    luat_audio_driver_ctrl_t *ctrl_table =luat_audio_driver_get_ctrl_info(&all_nums, &default_driver_index);
     if (index >= all_nums) {
         lua_pushinteger(L, 0);
         return 1;
     } else {
-        lua_pushinteger(L, probe_table[index].probe_id);
+        lua_pushinteger(L, ctrl_table[index].probe.probe_id);
         return 1;
     }
 }
