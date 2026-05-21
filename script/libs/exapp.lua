@@ -1806,6 +1806,49 @@ local function app_task(app_path)
         return new_config
     end
 
+    -- Shape 图元坐标缩放：递归处理 items 数组中每个图元的坐标字段
+    local function scale_shape_items(items)
+        if type(items) ~= "table" then return items end
+        local out = {}
+        for i, item in ipairs(items) do
+            if type(item) ~= "table" then
+                out[i] = item
+            else
+                local scaled = cp(item)
+                local item_type = scaled.type
+                -- 公共字段：线宽
+                if type(scaled.width) == "number" then
+                    scaled.width = scale_min_fn(scaled.width)
+                end
+                if item_type == "line" then
+                    if type(scaled.x1) == "number" then scaled.x1 = scale_x_fn(scaled.x1) end
+                    if type(scaled.y1) == "number" then scaled.y1 = scale_y_fn(scaled.y1) end
+                    if type(scaled.x2) == "number" then scaled.x2 = scale_x_fn(scaled.x2) end
+                    if type(scaled.y2) == "number" then scaled.y2 = scale_y_fn(scaled.y2) end
+                    if type(scaled.dash_width) == "number" then scaled.dash_width = scale_min_fn(scaled.dash_width) end
+                    if type(scaled.dash_gap) == "number" then scaled.dash_gap = scale_min_fn(scaled.dash_gap) end
+                elseif item_type == "circle" then
+                    if type(scaled.cx) == "number" then scaled.cx = scale_x_fn(scaled.cx) end
+                    if type(scaled.cy) == "number" then scaled.cy = scale_y_fn(scaled.cy) end
+                    if type(scaled.r) == "number" then scaled.r = scale_min_fn(scaled.r) end
+                elseif item_type == "ellipse" then
+                    if type(scaled.cx) == "number" then scaled.cx = scale_x_fn(scaled.cx) end
+                    if type(scaled.cy) == "number" then scaled.cy = scale_y_fn(scaled.cy) end
+                    if type(scaled.rx) == "number" then scaled.rx = scale_x_fn(scaled.rx) end
+                    if type(scaled.ry) == "number" then scaled.ry = scale_y_fn(scaled.ry) end
+                elseif item_type == "rect" then
+                    if type(scaled.x) == "number" then scaled.x = scale_x_fn(scaled.x) end
+                    if type(scaled.y) == "number" then scaled.y = scale_y_fn(scaled.y) end
+                    if type(scaled.w) == "number" then scaled.w = scale_x_fn(scaled.w) end
+                    if type(scaled.h) == "number" then scaled.h = scale_y_fn(scaled.h) end
+                    if type(scaled.radius) == "number" then scaled.radius = scale_min_fn(scaled.radius) end
+                end
+                out[i] = scaled
+            end
+        end
+        return out
+    end
+
     local function adapt_config(component_name, config)
         if type(config) ~= "table" then return config end
         local new_config = cp(config)
@@ -1876,49 +1919,6 @@ local function app_task(app_path)
         end
         -- 其他参数暂不处理
         return new_config
-    end
-
-    -- Shape 图元坐标缩放：递归处理 items 数组中每个图元的坐标字段
-    local function scale_shape_items(items)
-        if type(items) ~= "table" then return items end
-        local out = {}
-        for i, item in ipairs(items) do
-            if type(item) ~= "table" then
-                out[i] = item
-            else
-                local scaled = cp(item)
-                local item_type = scaled.type
-                -- 公共字段：线宽
-                if type(scaled.width) == "number" then
-                    scaled.width = scale_min_fn(scaled.width)
-                end
-                if item_type == "line" then
-                    if type(scaled.x1) == "number" then scaled.x1 = scale_x_fn(scaled.x1) end
-                    if type(scaled.y1) == "number" then scaled.y1 = scale_y_fn(scaled.y1) end
-                    if type(scaled.x2) == "number" then scaled.x2 = scale_x_fn(scaled.x2) end
-                    if type(scaled.y2) == "number" then scaled.y2 = scale_y_fn(scaled.y2) end
-                    if type(scaled.dash_width) == "number" then scaled.dash_width = scale_min_fn(scaled.dash_width) end
-                    if type(scaled.dash_gap) == "number" then scaled.dash_gap = scale_min_fn(scaled.dash_gap) end
-                elseif item_type == "circle" then
-                    if type(scaled.cx) == "number" then scaled.cx = scale_x_fn(scaled.cx) end
-                    if type(scaled.cy) == "number" then scaled.cy = scale_y_fn(scaled.cy) end
-                    if type(scaled.r) == "number" then scaled.r = scale_min_fn(scaled.r) end
-                elseif item_type == "ellipse" then
-                    if type(scaled.cx) == "number" then scaled.cx = scale_x_fn(scaled.cx) end
-                    if type(scaled.cy) == "number" then scaled.cy = scale_y_fn(scaled.cy) end
-                    if type(scaled.rx) == "number" then scaled.rx = scale_x_fn(scaled.rx) end
-                    if type(scaled.ry) == "number" then scaled.ry = scale_y_fn(scaled.ry) end
-                elseif item_type == "rect" then
-                    if type(scaled.x) == "number" then scaled.x = scale_x_fn(scaled.x) end
-                    if type(scaled.y) == "number" then scaled.y = scale_y_fn(scaled.y) end
-                    if type(scaled.w) == "number" then scaled.w = scale_x_fn(scaled.w) end
-                    if type(scaled.h) == "number" then scaled.h = scale_y_fn(scaled.h) end
-                    if type(scaled.radius) == "number" then scaled.radius = scale_min_fn(scaled.radius) end
-                end
-                out[i] = scaled
-            end
-        end
-        return out
     end
 
     local function userdata_member(raw_obj, orig_index, key)
