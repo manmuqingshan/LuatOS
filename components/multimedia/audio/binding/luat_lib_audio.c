@@ -394,7 +394,7 @@ audio_v2.config_pa_power_ctrl(true, 12, 1, 100)
 static int l_audio_config_pa_power_ctrl(lua_State *L) {
     luat_audio_driver_ctrl_t *ctrl = NULL;
     luat_audio_driver_probe_t probe;
-    probe.probe_id = luaL_optinteger(L, 1, 0);
+    probe.probe_id = luaL_optinteger(L, 5, 0);
     if (probe.probe_id) {
         ctrl = luat_audio_driver_probe(&probe);
         if (!ctrl) {
@@ -402,10 +402,10 @@ static int l_audio_config_pa_power_ctrl(lua_State *L) {
             return 1;
         }
     }
-    uint8_t pa_power_ctrl_enable = lua_toboolean(L, 2);
-    uint8_t pa_power_pin = luaL_optinteger(L, 3, 0);
-    uint8_t pa_power_on_level = luaL_optinteger(L, 4, 1);
-    uint16_t pa_power_on_delay_time_ms = luaL_optinteger(L, 5, 100);
+    uint8_t pa_power_ctrl_enable = lua_toboolean(L, 1);
+    uint8_t pa_power_pin = luaL_optinteger(L, 2, 0);
+    uint8_t pa_power_on_level = luaL_optinteger(L, 3, 1);
+    uint16_t pa_power_on_delay_time_ms = luaL_optinteger(L, 4, 100);
     int ret = luat_audio_driver_config_pa_power_ctrl(ctrl, pa_power_ctrl_enable, pa_power_pin, pa_power_on_level, pa_power_on_delay_time_ms);
     lua_pushboolean(L, !ret);
     return 1;
@@ -427,7 +427,7 @@ audio_v2.config_codec_power_ctrl(true, 11, 1, 200, 10)
 static int l_audio_config_codec_power_ctrl(lua_State *L) {
     luat_audio_driver_ctrl_t *ctrl = NULL;
     luat_audio_driver_probe_t probe;
-    probe.probe_id = luaL_optinteger(L, 1, 0);
+    probe.probe_id = luaL_optinteger(L, 6, 0);
     if (probe.probe_id) {
         ctrl = luat_audio_driver_probe(&probe);
         if (!ctrl) {
@@ -435,11 +435,11 @@ static int l_audio_config_codec_power_ctrl(lua_State *L) {
             return 1;
         }
     }
-    uint8_t codec_power_ctrl_enable = lua_toboolean(L, 2);
-    uint8_t codec_power_pin = luaL_optinteger(L, 3, 0);
-    uint8_t codec_power_on_level = luaL_optinteger(L, 4, 1);
-    uint32_t codec_ready_after_wakeup_time_ms = luaL_optinteger(L, 5, 200);
-    uint16_t codec_power_off_delay_time_ms = luaL_optinteger(L, 6, 10);
+    uint8_t codec_power_ctrl_enable = lua_toboolean(L, 1);
+    uint8_t codec_power_pin = luaL_optinteger(L, 2, 0);
+    uint8_t codec_power_on_level = luaL_optinteger(L, 3, 1);
+    uint32_t codec_ready_after_wakeup_time_ms = luaL_optinteger(L, 4, 200);
+    uint16_t codec_power_off_delay_time_ms = luaL_optinteger(L, 5, 10);
     int ret = luat_audio_driver_config_codec_power_ctrl(ctrl, codec_power_ctrl_enable, codec_power_pin, codec_power_on_level, codec_ready_after_wakeup_time_ms, codec_power_off_delay_time_ms);
     lua_pushboolean(L, !ret);
     return 1;
@@ -494,7 +494,6 @@ static int l_audio_set_debug(lua_State *L) {
 #include "rotable2.h"
 static const rotable_Reg_t reg_audio_v2[] =
 {
-
 	{ "play",			ROREG_FUNC(l_audio_play)},
     { "tts",			ROREG_FUNC(l_audio_tts)},
     { "stop",			ROREG_FUNC(l_audio_stop)},
