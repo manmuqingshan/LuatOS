@@ -20,7 +20,6 @@ typedef struct airui_component_ref {
     uint32_t id;
     uint8_t alive;
     uint32_t ref_count;
-    uint32_t id;
 } airui_component_ref_t;
 
 typedef struct {
