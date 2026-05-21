@@ -17,7 +17,7 @@
 #include "luat_log.h"
 #include "luat_gpio.h"
 
-unsigned char luat_audio_debug_flag = 1;	// 调试标志位，默认1，开启调试
+unsigned char luat_audio_debug_flag;	// 调试标志位，默认1，开启调试
 enum {
 	LUAT_AUDIO_EV_TX_NEED_DATA = 0x01,	// 放音需要更多数据事件
 	LUAT_AUDIO_EV_TX_NO_DATA,			// 放音数据完成事件
@@ -39,6 +39,7 @@ typedef struct
 	void *tts_wait_sem;	// tts任务等待信号量
 	uint32_t next_request_id;		// 下一个请求id
 	uint8_t default_driver_index;	// 默认驱动索引
+	uint8_t all_driver_nums;				// 已注册的音频驱动匹配结构数量
 	uint8_t decode_is_running:1;			// 解码标志位
 }luat_audio_ctrl_t;
 
@@ -645,7 +646,7 @@ static void luat_audio_common_task(void *param)
 
 int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, struct luat_audio_driver_probe probe, void *driver_data)
 {
-	int i;
+	volatile uint8_t i = _luat_audio.all_driver_nums;
 	for (i = 0; i < LUAT_AUDIO_DRIVER_MAX; i++) {
 		if (_luat_audio.driver_ctrl[i].opts == NULL) {
 			_luat_audio.driver_ctrl[i].opts = opts;
@@ -664,10 +665,12 @@ int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, struct luat
 			_luat_audio.channel[i].play_fifo = luat_fifo_create(LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER);
     		_luat_audio.channel[i].play_fifo_low_level = 1 << 15;
     		_luat_audio.channel[i].play_fifo_high_level = _luat_audio.channel[i].play_fifo->size - (1 << 14);
+			_luat_audio.all_driver_nums++;
+			LLOGC(luat_audio_debug_flag, "probe_id: %x driver register success index: %d", probe.probe_id, i);
 			return LUAT_ERROR_NONE;
 		}
 	}
-	LLOGE("driver register failed, max driver count is %d", LUAT_AUDIO_DRIVER_MAX);
+	LLOGE("driver %x register failed, max driver count is %d", probe.probe_id, LUAT_AUDIO_DRIVER_MAX);
 	return -LUAT_ERROR_ID_INVALID; // 驱动注册失败，超过最大支持数量
 }
 
@@ -692,7 +695,7 @@ luat_audio_driver_ctrl_t *luat_audio_driver_probe(luat_audio_driver_probe_t *pro
 
 int luat_audio_driver_set_default(luat_audio_driver_probe_t *probe)
 {
-	int i;
+	uint8_t i;
 	if (!probe) {
 		return -LUAT_ERROR_PARAM_INVALID;
 	}
@@ -703,6 +706,13 @@ int luat_audio_driver_set_default(luat_audio_driver_probe_t *probe)
 		}
 	}
 	return -LUAT_ERROR_PARAM_INVALID;
+}
+
+luat_audio_driver_probe_t *luat_audio_driver_get_probe_info(uint8_t *all_nums, uint8_t *default_index)
+{
+	*all_nums = _luat_audio.all_driver_nums;
+	*default_index = _luat_audio.default_driver_index;
+	return _luat_audio.driver_ctrl;
 }
 
 int luat_audio_request_init(luat_audio_request_block_t *request_block)
