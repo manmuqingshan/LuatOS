@@ -29,6 +29,7 @@ local MEM_SIZE = 32 * 1024
 local EXCHANGE_SIZE = 1024
 local INVALID_IMAGE_PATH = "/luadb/not-exists.bin"
 local NDK_FEATURE_GPIO = 1 << 3
+local NDK_FEATURE_CRYPTO = 1 << 5
 local GUEST_IMAGE_BASE = 0x80000000
 
 if false then
@@ -109,6 +110,7 @@ function ndk_tests.test_ndk_lifecycle_regression()
     assert(info.mem == MEM_SIZE, "unexpected mem size: " .. tostring(info.mem))
     assert(info.exchange == EXCHANGE_SIZE, "unexpected exchange size: " .. tostring(info.exchange))
     assert((info.features & NDK_FEATURE_GPIO) ~= 0, "ndk.info should expose GPIO feature bit")
+    assert((info.features & NDK_FEATURE_CRYPTO) ~= 0, "ndk.info should expose CRYPTO feature bit")
 
     local ok, ret_or_err, mcause, mtval = ndk.exec(ctx, { steps = 100000, elapsed = 500 })
     assert(ok == true, string.format("ndk.exec failed: %s mcause=%s mtval=%s", tostring(ret_or_err), tostring(mcause), tostring(mtval)))

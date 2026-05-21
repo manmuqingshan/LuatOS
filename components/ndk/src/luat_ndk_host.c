@@ -86,6 +86,10 @@ void luat_ndk_host_othercsr_write(luat_ndk_t *ctx, uint32_t csrno, uint32_t valu
         // Same csrrw pattern as GPIO v2: authoritative result is produced in the
         // read hook from ctx->core->regs[10]. Leave write hook as a no-op.
         break;
+    case NDK_CSR_CRYPTO_MD5:
+    case NDK_CSR_CRYPTO_CRC32:
+        // CRYPTO v1 uses the same csrrw request/response pattern.
+        break;
     case NDK_CSR_GPIO_SET: {
         uint32_t pin = value & 0xFFFF;
         uint32_t level = (value >> 16) & 0x1;
@@ -183,6 +187,12 @@ void luat_ndk_host_othercsr_read(luat_ndk_t *ctx, uint32_t csrno, uint32_t *valu
     case NDK_CSR_UART_RX_READ:
     case NDK_CSR_UART_RX_CLEAR:
         *value = luat_ndk_uart_csr_write(ctx, csrno, ctx->core ? ctx->core->regs[10] : 0);
+        break;
+    case NDK_CSR_CRYPTO_MD5:
+        *value = luat_ndk_crypto_md5_csr_write(ctx, ctx->core ? ctx->core->regs[10] : 0);
+        break;
+    case NDK_CSR_CRYPTO_CRC32:
+        *value = luat_ndk_crypto_crc32_csr_write(ctx, ctx->core ? ctx->core->regs[10] : 0);
         break;
     case NDK_CSR_GPIO_GET:
         tmp = (*value) & 0xFFFF;

@@ -803,7 +803,8 @@ static void ndk_reset_abi_state(luat_ndk_t *ndk) {
     size_t event_bytes = 0;
     size_t slot_count = 0;
 
-    ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT | LUAT_NDK_FEATURE_GPIO | LUAT_NDK_FEATURE_UART;
+    ndk->abi_features = LUAT_NDK_FEATURE_META | LUAT_NDK_FEATURE_TIME | LUAT_NDK_FEATURE_EVENT |
+        LUAT_NDK_FEATURE_GPIO | LUAT_NDK_FEATURE_UART | LUAT_NDK_FEATURE_CRYPTO;
     ndk->last_error = LUAT_NDK_HOST_ERR_NONE;
 
     event_bytes = (ndk->exchange_size > (LUAT_NDK_EVENT_HDR_OFFSET + LUAT_NDK_EVENT_HDR_SIZE))

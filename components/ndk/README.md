@@ -35,19 +35,26 @@
 如果你已经有了可用的构建环境，直接执行：
 
 ```powershell
-# 1. 重建 Guest 镜像（可选，如果二进制已是最新则跳过）
-cd testcase\ndk\ndk_basic\guest
+# 1. 重建 ndk_basic guest 镜像（可选，如果二进制已是最新则跳过）
+cd components\ndk\guest\fixtures\rv32f_regression
 cmd /c build.bat
 
-# 2. 构建 PC 模拟器
+# 2. 重建 hostabi fixture（含 crypto + RV32C 回归镜像）
+cd ..\..\
+.\build_hostabi_v1.ps1
+
+# 3. 构建 PC 模拟器
 cd ..\..\..\..\bsp\pc
 cmd /c build_windows_32bit_msvc.bat
 
-# 3. 运行测试
+# 4. 运行 hostabi 回归（含 crypto 命令链）
+build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_hostabi_basic\scripts\
+
+# 5. 运行 ndk_basic 回归
 build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_basic\scripts\
 ```
 
-期望输出：`Total: N passed, 0 failed`（当前基线：`ndk_basic` 为 `42 passed, 0 failed`）
+期望输出：`Total: N passed, 0 failed`（当前基线：`ndk_hostabi_basic` 为 `39 passed, 0 failed`；`ndk_basic` 为 `42 passed, 0 failed`）
 
 ---
 
@@ -94,12 +101,12 @@ llvm-objcopy --version
 
 ## Guest 镜像重建
 
-**何时需要：** 修改了 `testcase/ndk/ndk_basic/guest/main.c` 或 `link.ld` 后。
+**何时需要：** 修改了 `components/ndk/guest/fixtures/rv32f_regression/main.c` 或 `link.ld` 后。
 
 ### 自动构建（推荐）
 
 ```powershell
-cd testcase\ndk\ndk_basic\guest
+cd components\ndk\guest\fixtures\rv32f_regression
 cmd /c build.bat
 ```
 
@@ -118,12 +125,12 @@ cmd /c build.bat
 | `baremetal.bin` | `guest/build/` | Flat binary（约 315 字节，具体大小会随工具链略有变化） |
 | `baremetal.map` | `guest/build/` | 链接映射表 |
 | ↳ 同步到 | `../scripts/baremetal.bin` | testcase 测试镜像 |
-| ↳ 同步到 | `../../../../bsp/pc/test/113.ndk_simple/baremetal.bin` | PC 快速测试 |
+| ↳ 同步到 | `../../../../../bsp/pc/test/113.ndk_simple/baremetal.bin` | PC 快速测试 |
 
 ### 手动构建（调试用）
 
 ```powershell
-cd testcase\ndk\ndk_basic\guest
+cd components\ndk\guest\fixtures\rv32f_regression
 mkdir build -ErrorAction SilentlyContinue
 
 # GNU 工具链
@@ -137,7 +144,7 @@ riscv64-unknown-elf-objcopy -O binary build\baremetal.elf build\baremetal.bin
 
 # 手动同步
 copy build\baremetal.bin ..\scripts\baremetal.bin
-copy build\baremetal.bin ..\..\..\..\bsp\pc\test\113.ndk_simple\baremetal.bin
+copy build\baremetal.bin ..\..\..\..\..\bsp\pc\test\113.ndk_simple\baremetal.bin
 ```
 
 ---
@@ -205,7 +212,7 @@ cd LuatOS
 ### Step 3: 重建 Guest 镜像
 
 ```powershell
-cd testcase\ndk\ndk_basic\guest
+cd components\ndk\guest\fixtures\rv32f_regression
 cmd /c build.bat
 ```
 
@@ -223,7 +230,20 @@ Using GNU toolchain: riscv64-unknown-elf
 === All done! ===
 ```
 
-### Step 4: 构建 PC 模拟器
+### Step 4: 重建 Host ABI fixture（含 crypto + RV32C）
+
+```powershell
+cd ..\..\
+.\build_hostabi_v1.ps1
+```
+
+期望输出包含：
+```
+[build] Success: hostabi_v1.bin (...)
+[build] Success: hostabi_v1_rvc.bin (...)
+```
+
+### Step 5: 构建 PC 模拟器
 
 ```powershell
 cd ..\..\..\..\bsp\pc
@@ -235,7 +255,13 @@ cmd /c build_windows_32bit_msvc.bat
 [pc-build] Build completed successfully
 ```
 
-### Step 5: 运行测试
+### Step 6: 运行 hostabi suite（含 crypto 命令链）
+
+```powershell
+build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_hostabi_basic\scripts\
+```
+
+### Step 7: 运行 ndk_basic suite
 
 ```powershell
 build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_basic\scripts\
@@ -314,11 +340,11 @@ Control Store: set val to 00005555
 **原因**：`build.bat` 自动同步机制依赖相对路径
 
 **解决**：
-1. 确保在 `testcase/ndk/ndk_basic/guest/` 目录内运行 `build.bat`
+1. 确保在 `components/ndk/guest/fixtures/rv32f_regression/` 目录内运行 `build.bat`（或使用兼容入口 `testcase/ndk/ndk_basic/guest/build.bat`）
 2. 手动验证同步：
    ```powershell
    ls ..\scripts\baremetal.bin
-   ls ..\..\..\..\bsp\pc\test\113.ndk_simple\baremetal.bin
+   ls ..\..\..\..\..\bsp\pc\test\113.ndk_simple\baremetal.bin
    ```
 
 ### Q3: PC 模拟器构建失败（MSVC 错误）
@@ -347,7 +373,7 @@ Control Store: set val to 00005555
 1. 确保 `testcase/ndk/ndk_basic/scripts/baremetal.bin` 存在
 2. 重新运行 guest 构建（会自动同步）：
    ```powershell
-   cd testcase\ndk\ndk_basic\guest
+   cd components\ndk\guest\fixtures\rv32f_regression
    cmd /c build.bat
    ```
 
@@ -358,13 +384,13 @@ Control Store: set val to 00005555
 **完整流程**：
 ```powershell
 # 1. 重建 guest
-cd testcase\ndk\ndk_basic\guest
+cd components\ndk\guest\fixtures\rv32f_regression
 cmd /c build.bat
 
 # 2. 不需要重建 PC（guest 是运行时加载的）
 
 # 3. 直接测试
-cd ..\..\..\..\bsp\pc
+cd ..\..\..\..\..\bsp\pc
 build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\ndk\ndk_basic\scripts\
 ```
 
@@ -590,7 +616,7 @@ asm volatile("csrr %0, 0x139" : "=r"(exchange_addr));
 - 时间/事件核心：`delay_us`、`time_us_lo/hi`、`event_enable`、`event_pending`
 - GPIO v2：`GPIO_CONFIG`、`GPIO_WRITE`、`GPIO_READ`、`GPIO_IRQ_STATE`、`GPIO_IRQ_CLEAR`
 - UART v1：`UART_CONFIG`、`UART_TX`、`UART_RX_STATE`、`UART_RX_READ`、`UART_RX_CLEAR`
-- PC 回归 fixture：`testcase\ndk\guest\hostabi_v1`
+- PC 回归 fixture：`components\ndk\guest\fixtures\hostabi_v1`
 
 交换区布局：
 
@@ -658,7 +684,7 @@ GPIO IRQ 事件语义：
 重建 guest fixture：
 
 ```powershell
-Set-Location testcase\ndk\guest
+Set-Location components\ndk\guest
 .\build_hostabi_v1.ps1
 ```
 
@@ -709,8 +735,10 @@ collectgarbage("collect")
 
 ## 相关文档
 
-- **Guest 源码与构建**：`testcase/ndk/ndk_basic/guest/README.md`
-- **Testcase 说明**：`testcase/ndk/ndk_basic/README.md`
+- **Guest 源码与构建（canonical）**：`components/ndk/guest/fixtures/rv32f_regression/README.md`
+- **Host ABI fixture（canonical）**：`components/ndk/guest/fixtures/hostabi_v1/README.md`
+- **ndk_basic 兼容入口说明**：`testcase/ndk/ndk_basic/guest/README.md`
+- **hostabi 兼容入口说明**：`testcase/ndk/guest/hostabi_v1/README.md`
 - **Runtime 实现**：`components/ndk/src/luat_ndk.c`
 - **CSR 处理器**：`components/ndk/src/luat_ndk_host.c`
 - **mini-rv32ima 上游**：https://github.com/cnlohr/mini-rv32ima
