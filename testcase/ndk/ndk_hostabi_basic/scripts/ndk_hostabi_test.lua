@@ -5,8 +5,12 @@ local proto = require("hostabi_proto")
 
 local tests = {}
 local IMAGE = "/luadb/hostabi_v1.bin"
+local IMAGE_RVC = "/luadb/hostabi_v1_rvc.bin"
 local GPIO_DRIVER_REGRESSION_CONFIG_PIN = 126
 local GPIO_DRIVER_REGRESSION_WRITE_PIN = 127
+local HOSTABI_CMD_QUERY_RVC_STATUS = 0x04
+local RVC_SMOKE_SIGNATURE = 0xC01A
+local MISA_EXT_C = 1 << 2
 
 local function run_payload_with_reset(ctx, payload, do_reset)
     if do_reset ~= false then
@@ -445,6 +449,27 @@ function tests.test_uart_context_isolation_holds()
     assert(run_payload_with_reset(a, txcmd .. txpad .. payload, false).status == proto.STATUS_OK)
     local state_b = run_cmd_with_reset(b, proto.CMD_UART_RX_STATE, proto.UART_PORT_LOOPBACK, 0, 0, false)
     assert(proto.decode_uart_rx_state(state_b).buffered_len == 0, "peer context should not observe foreign uart rx bytes")
+end
+
+function tests.test_rv32c_compressed_binary_exists()
+    assert(io.exists(IMAGE_RVC), "missing hostabi_v1_rvc.bin in testcase directory: " .. IMAGE_RVC)
+end
+
+function tests.test_rv32c_compressed_binary_reports_smoke_and_keeps_hostabi_flow()
+    local ctx, err = ndk.rv32i(IMAGE_RVC, 32 * 1024, 1024)
+    assert(ctx, tostring(err))
+
+    local smoke = run_cmd(ctx, HOSTABI_CMD_QUERY_RVC_STATUS, 0, 0, 0)
+    assert(smoke.status == proto.STATUS_OK, "compressed status command should succeed")
+    assert(smoke.value0 == RVC_SMOKE_SIGNATURE,
+        string.format("expected compressed smoke signature 0x%X, got 0x%X", RVC_SMOKE_SIGNATURE, smoke.value0))
+    assert((smoke.value1 & MISA_EXT_C) ~= 0, string.format("misa should advertise C extension, got 0x%X", smoke.value1))
+
+    local meta = run_cmd(ctx, proto.CMD_QUERY_META, 0, 0, 0)
+    assert(meta.status == proto.STATUS_OK, "query meta should still succeed after compressed smoke check")
+    assert(meta.value0 == proto.HOST_MAGIC, "unexpected magic")
+    assert(meta.value1 == proto.HOST_VERSION, "unexpected version")
+    assert((meta.value2 & proto.FEATURE_GPIO) ~= 0, "query meta should advertise GPIO feature")
 end
 
 return tests

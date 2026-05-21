@@ -6,6 +6,11 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* RVC smoke test - only present in compressed variant */
+#ifdef __riscv_compressed
+extern unsigned int rvc_smoke_test(void);
+#endif
+
 // Control store address - linker provides as symbol
 extern volatile uint32_t SYSCON;
 
@@ -25,8 +30,30 @@ static void nprint( intptr_t num )
 	asm volatile( "csrrw x0, 0x136, %0" : : "r" (num));
 }
 
+static uint32_t ndk_exchange_base(void)
+{
+	uint32_t v = 0;
+	asm volatile( ".option norvc\ncsrr %0, 0x139" : "=r"(v) );
+	return v;
+}
+
+static uint32_t ndk_read_misa(void)
+{
+	uint32_t v = 0;
+	asm volatile( ".option norvc\ncsrr %0, 0x301" : "=r"(v) );
+	return v;
+}
+
 int main()
 {
+#ifdef __riscv_compressed
+	/* Execute RVC smoke test in compressed variant */
+	volatile unsigned int rvc_result = rvc_smoke_test();
+	volatile uint32_t *exchange = (volatile uint32_t *)ndk_exchange_base();
+	exchange[0] = rvc_result;
+	exchange[1] = ndk_read_misa();
+#endif
+
 	// Debug logging block - matches observed test output
 	lprint("\n");
 	lprint("main is at: ");

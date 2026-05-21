@@ -2,6 +2,11 @@
 #include "protocol.h"
 #include "../../../../components/ndk/include/luat_ndk_abi.h"
 
+/* RVC smoke test - only present in compressed variant */
+#ifdef __riscv_compressed
+extern unsigned int rvc_smoke_test(void);
+#endif
+
 /* NDK builtin APIs from luat_ndk_builtin.h */
 extern unsigned int ndk_exchange_base(void);
 extern unsigned int ndk_memory_size(void);
@@ -27,6 +32,12 @@ unsigned int ndk_host_magic(void);
 unsigned int ndk_host_version(void);
 unsigned int ndk_host_features(void);
 unsigned int ndk_last_error(void);
+
+static unsigned int ndk_read_misa(void) {
+    unsigned int misa;
+    __asm__ volatile(".option norvc\ncsrr %0, 0x301" : "=r"(misa));
+    return misa;
+}
 
 /* Forward declaration of main */
 int main(void);
@@ -83,6 +94,13 @@ __attribute__((naked, noreturn)) void _start(void) {
 int main(void) {
     volatile hostabi_cmd_t* cmd = cmd_buf();
     volatile hostabi_result_t* out = result_buf();
+    unsigned int rvc_result = 0;
+    unsigned int misa = ndk_read_misa();
+    
+#ifdef __riscv_compressed
+    /* Execute RVC smoke test in compressed variant */
+    rvc_result = rvc_smoke_test();
+#endif
     
     /* Initialize result to success */
     out->status = 0;
@@ -94,6 +112,10 @@ int main(void) {
     if (cmd->opcode == HOSTABI_CMD_QUERY_META) {
         out->value0 = ndk_host_magic();
         out->value1 = ndk_host_version();
+        out->value2 = ndk_host_features();
+    } else if (cmd->opcode == HOSTABI_CMD_QUERY_RVC_STATUS) {
+        out->value0 = rvc_result;
+        out->value1 = misa;
         out->value2 = ndk_host_features();
     } else if (cmd->opcode == HOSTABI_CMD_DELAY_US) {
         /* Enable events before delay */
