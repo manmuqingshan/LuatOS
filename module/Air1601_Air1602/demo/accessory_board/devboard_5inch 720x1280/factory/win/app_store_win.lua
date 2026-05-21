@@ -588,6 +588,30 @@ local function render_apps(apps, more)
 
     if apps_grid then apps_grid:destroy() end
 
+    -- 空列表时显示提示（避免切换分类后残留旧数据）
+    if #apps == 0 then
+        apps_grid = airui.container({
+            parent = apps_container,
+            x = grid_margin,
+            y = grid_margin,
+            w = apps_grid_w,
+            h = grid_area_h,
+            color = COLOR_BG
+        })
+        local empty_text = (current_category == "已安装") and "暂未安装应用" or "暂无应用"
+        airui.label({
+            parent = apps_grid,
+            x = 0, y = math.floor(grid_area_h / 2) - 30,
+            w = apps_grid_w, h = 60,
+            text = empty_text,
+            font_size = 18,
+            color = COLOR_TEXT_SECONDARY,
+            align = airui.TEXT_ALIGN_CENTER
+        })
+        update_page_display()
+        return
+    end
+
     local rows_needed = math.ceil(#apps / grid_cols)
     local new_grid_h = math.max(grid_area_h, rows_needed * (card_h + grid_margin) + grid_margin + 10)
     apps_grid = airui.container({

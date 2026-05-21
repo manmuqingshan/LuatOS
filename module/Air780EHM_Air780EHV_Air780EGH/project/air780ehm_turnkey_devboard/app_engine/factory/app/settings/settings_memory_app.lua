@@ -50,7 +50,7 @@ end
 local function migh()
     local inf = gmi()
     sys.publish("MEMORY_INFO", inf)
-    log.info("sma", "上报内存信息")
+    log.info("settings_memory_app", "上报内存信息")
 end
 
 -- 订阅内存信息查询事件

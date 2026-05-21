@@ -128,10 +128,10 @@ local function init()
     sys.taskInit(function()
         sys.wait(500)
         airui.touch_subscribe(ot)
-        log.info("sbz", "触摸回调注册完成")
+        log.info("settings_buzz_app", "触摸回调注册完成")
     end)
 
-    log.info("sbz", "初始化完成",
+    log.info("settings_buzz_app", "初始化完成",
         "enabled:", be,
         "duration:", bd,
         "volume:", bv)

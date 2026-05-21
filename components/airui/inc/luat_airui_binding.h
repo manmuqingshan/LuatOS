@@ -17,6 +17,7 @@ extern "C" {
 
 typedef struct airui_component_ref {
     lv_obj_t *obj;
+    uint32_t id;
     uint8_t alive;
     uint32_t ref_count;
     uint32_t id;

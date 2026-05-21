@@ -87,12 +87,12 @@ local function upws()
             sys.publish("STATUS_WIFI_SIGNAL_UPDATED", wsl)
         end
     else
-        log.warn("stpr", "Failed to get WiFi RSSI")
+        log.warn("status_provider_app", "Failed to get WiFi RSSI")
     end
 end
 
 local function stev(ev, dt)
-    log.info("stpr", "WLAN_STA_INC", ev, dt)
+    log.info("status_provider_app", "WLAN_STA_INC", ev, dt)
     if ev == "CONNECTED" then
         wc = true
         wsl = 3
@@ -143,7 +143,7 @@ local function upms()
      local ol = msl
     if not sp then
         msl = -1
-        log.info("stpr", "no sim, set level -1")
+        log.info("status_provider_app", "no sim, set level -1")
     else
         local csq = mobile.csq()
         if csq == 99 or csq <= 5 then
@@ -157,7 +157,7 @@ local function upms()
         else
             msl = 5
         end
-        log.info("stpr", "mapped level =", msl)
+        log.info("status_provider_app", "mapped level =", msl)
     end
     if ol ~= msl then
         sys.publish("STATUS_SIGNAL_UPDATED", msl)
@@ -165,7 +165,7 @@ local function upms()
 end
 
 local function hsim(st, vl)
-    log.info("stpr", "SIM_IND", st, vl or "")
+    log.info("status_provider_app", "SIM_IND", st, vl or "")
     if st == "RDY" then
         sp = true
     elseif st == "NORDY" then

@@ -1,0 +1,13 @@
+{
+  "app_name_cn": "fskv测试工具",
+  "app_name_en": "fskv_test",
+  "version": "1.0.2",
+  "publish_time": "2026-05-13 12:00:00",
+  "category": "工具",
+  "description": "fskv读写删测+多存储文件IO验证",
+  "resolution": "320x480",
+  "zip_size_kb": "7",
+  "origin_size_kb": "16",
+  "display_zoom": "fixed_resolution",
+  "appid": ""
+}

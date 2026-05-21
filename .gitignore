@@ -117,4 +117,4 @@ bsp/pc/fskv.bin
 bsp/pc/otp.bin
 
 .worktree
-.worktrees
+.worktrees/

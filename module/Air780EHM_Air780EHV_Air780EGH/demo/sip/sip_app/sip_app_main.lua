@@ -1,6 +1,7 @@
 local exsip = require "exsip"
 local audio_drv = require "audio_drv"
 local exaudio = require "exaudio"
+local tts_speaker = require "tts_speaker"
 
 local TASK_NAME = "sip_app_main_task"
 --测试账号，根据自己实际情况修改
@@ -8,8 +9,10 @@ local SIP_CONFIG = {
     sip_server_addr = "180.152.6.34",
     sip_server_port = 8910,
     sip_domain = "180.152.6.34",
-    sip_username = "100001",
-    sip_password = "Mm123..",
+    -- sip_username = "100001",
+    -- sip_password = "Mm123..",
+    sip_username = "100000",
+    sip_password = "Mm123.",
     sip_transport = exsip.TRANSPORT_UDP,
     auto_answer = false,
 }
@@ -36,6 +39,11 @@ local g_sip_status = "STATE_IDLE"
 -- "MSG_ERROR"：出现异常
 
 local g_audio_inited = false
+local pending_hangup_reason = nil
+
+-- lifecycle online 频繁触发检测（用于打破 482 重试死循环）
+local lifecycle_online_count = 0
+local lifecycle_online_last_time = 0
 
 local function start()
     log.info("start", "开始初始化 SIP，当前状态:", g_sip_status)
@@ -93,49 +101,6 @@ end
 --通话中出现网络切换
 --sip事件触发顺序：call_ringing -> media_ready -> call_connected -> voip_state:started -> voip_media:stats -> -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_ok-> ready
 
---4g单网卡拨号未接听断网
---sip事件触发顺序：call_ringing -> 拔卡 -> error_net -> lifecycle_stopped ->一直等待网络就绪，重新插卡还是一直在等待网络就绪
-
---4g单网卡拨号接通断网
---sip事件触发顺序：call_ringing -> media_ready -> call_connected -> voip_state:started -> voip_media:stats -> 拔卡(通话维持了一会儿) -> error_net -> lifecycle_stopped ->一直等待网络就绪，重新插卡还是一直在等待网络就绪
-
---wifi和以太网会重连重新建立SIP
---wifi单网卡拨号未接听断网
---sip事件触发顺序：call_ringing -> 断wifi -> error_net -> lifecycle_stopped ->打开wifi -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready
-
---wifi单网卡拨号接通断网
---sip事件触发顺序：call_ringing -> media_ready -> call_connected -> voip_state:started -> voip_media:stats -> 断wifi(通话断开) -> error_net -> lifecycle_stopped -> 打开wifi -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready
-
---单以太网拨号未接听断网
---sip事件触发顺序：call_ringing -> 拔网线 -> error_net -> lifecycle_stopped -> 插网线 -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready
-
---单以太网拨号接通断网  
---sip事件触发顺序：call_ringing -> media_ready -> call_connected -> voip_state:started -> voip_media:stats -> 拔网线(通话断开) -> error_net -> lifecycle_stopped -> 插网线 -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready
-
---多网融合,优先级以太网>wifi>4g,拨号未接听断网
---sip事件触发顺序：call_ringing -> 拔网线 -> 连wifi -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready -> call_ended(timeout)
--- (wifi状态下再拨号)-> call_ringing -> 断wifi -> 切4g -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready -> call_ended(timeout)
-
---多网融合,优先级以太网>4g>wifi,拨号未接听断网
---sip事件触发顺序：call_ringing -> 拔网线 -> 切4g -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready -> call_ended(timeout)
--- (4g状态下再拨号)-> call_ringing -> 拔卡 -> error_net -> lifecycle_stopped -> 切wifi -> （没有error_network_changed）lifecycle_online -> register_challenge -> register_ok-> ready -> call_ended(timeout)
-
---多网融合,优先级>wifi>以太网>4g,拨号未接听断网
---sip事件触发顺序：call_ringing -> 断wifi -> (约30s)连以太网 -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready（没有出现外呼超时30s引起的挂断）
--- (以太网状态下再拨号)-> call_ringing -> 插网线 -> 切4g -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready -> call_ended(timeout)
-
---多网融合,优先级wifi>4g>以太网,拨号未接听断网
---sip事件触发顺序：call_ringing -> 断wifi -> 切4g -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready没有出现外呼超时30s引起的挂断）
---(4g状态下再拨号)-> call_ringing -> 拔卡 -> error_net -> lifecycle_stopped ->（没有error_network_changed）lifecycle_online -> register_challenge -> register_ok-> ready -> call_ended(timeout)
-
---多网融合,优先级4g>wifi>以太网,拨号未接听断网
---sip事件触发顺序：call_ringing -> 拔卡 -> call_ended(timeout) -> error_net -> lifecycle_stopped -> 切wifi -> (没有error_network_changed)lifecycle_online -> register_challenge -> register_ok-> ready
---(wifi状态下再拨号)-> call_ringing -> 断wifi -> 切以太网 -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready(没有call_ended(timeout))
-
---多网融合,优先级4g>以太网>wifi,拨号未接听断网
---sip事件触发顺序：call_ringing -> 拔卡 -> error_net -> lifecycle_stopped -> 连以太网 -> (没有error_network_changed)lifecycle_online -> register_challenge -> register_ok-> ready（没有出现外呼超时30s引起的挂断）
---(以太网状态下再拨号)-> call_ringing -> 断以太网 -> 连wifi -> error_network_changed -> lifecycle_stopped -> lifecycle_online -> register_challenge -> register_ok-> ready -> call_ended(timeout)
-
 local function sip_callback(event, arg1, arg2, arg3)
     local tag = "sip_callback"
 
@@ -158,7 +123,7 @@ local function sip_callback(event, arg1, arg2, arg3)
         local sub_event, data = arg1, arg2
         log.info("sip_callback", "call event sub_event=", sub_event)
         if sub_event == "incoming" then
-            log.info("sip_callback", "来电:", data.from, data.call_id, data.uri, data.headers, data.remote_sdp)
+            log.info("sip_callback", "来电:", data.from, data.uri, data.headers["to"])
             sys.sendMsg(TASK_NAME, tag, "MSG_INCOMING", data.from)
         elseif sub_event == "ringing" then
             log.info("sip_callback", "对方响铃中")
@@ -167,7 +132,7 @@ local function sip_callback(event, arg1, arg2, arg3)
             sys.sendMsg(TASK_NAME, tag, "MSG_CONNECTED")
         elseif sub_event == "ended" then
             log.info("sip_callback", "通话已结束，结束原因为：", data.reason, "通话对象：", data.dialog)
-            sys.sendMsg(TASK_NAME, tag, "MSG_DISCONNECTED")
+            sys.sendMsg(TASK_NAME, tag, "MSG_DISCONNECTED", data.reason)
         end
     elseif event == "media" then
         local sub_event, data = arg1, arg2
@@ -189,6 +154,14 @@ local function sip_callback(event, arg1, arg2, arg3)
         local sub_event, data = arg1, arg2
         if sub_event == "state" then
             log.info("sip_callback", "VoIP状态:", data)
+        if data == "stopped" then
+            tts_speaker.set_voip_running(false)
+            tts_speaker.reset_audio()
+            if pending_hangup_reason then
+                sys.sendMsg(TASK_NAME, tag, "MSG_PLAY_HUNGUP", pending_hangup_reason)
+                pending_hangup_reason = nil
+            end
+        end
         elseif sub_event == "stats" then
             log.info("sip_callback", "VoIP统计 - 发送:", data.tx_packets, "接收:", data.rx_packets, "丢失:", data.rx_lost)
         elseif sub_event == "error" then
@@ -200,6 +173,29 @@ local function sip_callback(event, arg1, arg2, arg3)
         log.info("sip_callback", "lifecycle event:", sub_event)
         if sub_event == "online" then
             log.info("sip_callback", "SIP 服务已在线，本地IP地址为：", data.local_ip)
+
+            -- 若在 STATE_READY 状态下收到 lifecycle online，说明网络发生切换或恢复，
+            -- exsip 正在重新注册，暂时标记为不可用，避免用户在此期间误操作
+            if g_sip_status == "STATE_READY" then
+                g_sip_status = "STATE_INITING"
+                sys.publish("SIP_APP_MAIN_LOSE")
+                log.warn("sip_callback", "网络状态变化，SIP 重新注册中，标记为不可用")
+            end
+
+            -- 频繁触发检测：30 秒内收到 >=3 次 lifecycle online，判定为死循环，主动重启
+            local now = (mcu and mcu.ticks and mcu.ticks()) or (os.time() * 1000)
+            if now - lifecycle_online_last_time > 30000 then
+                lifecycle_online_count = 1
+                lifecycle_online_last_time = now
+            else
+                lifecycle_online_count = lifecycle_online_count + 1
+                if lifecycle_online_count >= 3 then
+                    log.error("sip_callback", "lifecycle online 频繁触发（", lifecycle_online_count, "次/30s），判定为注册死循环，触发重启")
+                    lifecycle_online_count = 0
+                    lifecycle_online_last_time = 0
+                    sys.sendMsg(TASK_NAME, tag, "MSG_ERROR")
+                end
+            end
         else
             sys.sendMsg(TASK_NAME, tag, "MSG_ERROR")
         end
@@ -250,11 +246,14 @@ local function sip_app_main_task_func()
 
         while true do
             msg = sys.waitMsg(TASK_NAME)
-            tag, event, para = msg[1], msg[2], msg[3]
+            if type(msg) ~= "table" then
+                log.warn("sip_app_main_task_func", "收到非消息数据，忽略:", msg)
+            else
+                tag, event, para = msg[1], msg[2], msg[3]
+            end
+                log.info("sip_app_main_task_func waitMsg", g_sip_status, tag, event, para)
 
-            log.info("sip_app_main_task_func waitMsg", g_sip_status, tag, event, para)
-
-            if event == "MSG_STOP" then
+                if event == "MSG_STOP" then
                 stop_flag = true
                 break
             elseif event == "MSG_DIAL" then
@@ -264,6 +263,9 @@ local function sip_app_main_task_func()
                         sys.publish("SIP_APP_MAIN_DIAL_RSP", tag, false, "exsip.dial")
                     else
                         g_sip_status = "STATE_DIALING"
+                        sys.taskInit(function()
+                            tts_speaker.speak_dialing(para)
+                        end)
                     end
                 else
                     sys.publish("SIP_APP_MAIN_DIAL_RSP", tag, false, g_sip_status)
@@ -272,14 +274,18 @@ local function sip_app_main_task_func()
                     break
             elseif event == "MSG_READY" then
                 if g_sip_status == "STATE_INITING" then
-                    g_sip_status = "STATE_READY"
                     sys.publish("SIP_APP_MAIN_READY")
-                else
-                    log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
+                    sys.taskInit(function()
+                        tts_speaker.speak_sip_ready_with_network(socket.dft())
+                    end)
                 end
+                g_sip_status = "STATE_READY"
             elseif event == "MSG_INCOMING" then
                 if g_sip_status == "STATE_READY" then
                     g_sip_status = "STATE_INCOMING"
+                    sys.taskInit(function()
+                        tts_speaker.speak_incoming(para)
+                    end)
                     sys.publish("SIP_APP_MAIN_INCOMING", para)
                 else
                     log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
@@ -303,18 +309,38 @@ local function sip_app_main_task_func()
             elseif event == "MSG_CONNECTED" then
                 if g_sip_status == "STATE_DIALING" or g_sip_status == "STATE_INCOMING" then
                     g_sip_status = "STATE_CONNECTED"
+                    tts_speaker.stop()
+                    tts_speaker.set_voip_running(true)
                     sys.publish("SIP_APP_MAIN_CONNECTED")
                 else
                     log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
                 end
+            elseif event == "MSG_PLAY_HUNGUP" then
+                sys.taskInit(function()
+                    sys.wait(300)
+                    tts_speaker.speak_hungup(para)
+                end)
             elseif event == "MSG_DISCONNECTED" then
                 if g_sip_status == "STATE_DIALING" or g_sip_status == "STATE_INCOMING" or g_sip_status == "STATE_CONNECTED" or g_sip_status == "STATE_DISCONNECTING" then
+                    local was_connected = (g_sip_status == "STATE_CONNECTED" or g_sip_status == "STATE_DISCONNECTING")
                     g_sip_status = "STATE_READY"
+                    if was_connected then
+                        pending_hangup_reason = para
+                    else
+                        sys.taskInit(function()
+                            tts_speaker.speak_hungup(para)
+                        end)
+                    end
                     sys.publish("SIP_APP_MAIN_DISCONNECTED")
+                elseif g_sip_status == "STATE_READY" then
+                    -- 已处理过的挂断事件，忽略重复触发
+                    log.info("sip_app_main_task_func", "忽略重复的 MSG_DISCONNECTED")
                 else
+                    sys.taskInit(function()
+                        tts_speaker.speak_hungup(para)
+                    end)
                     log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
                 end
-                exaudio.pm(0, audio.SHUTDOWN)
             else
                 log.warn("sip_app_main_task_func", g_sip_status, tag, "invalid event", event)
             end

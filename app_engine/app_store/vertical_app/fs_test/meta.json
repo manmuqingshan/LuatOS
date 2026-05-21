@@ -1,0 +1,13 @@
+{
+  "app_name_cn": "文件系统测试",
+  "app_name_en": "fs_test",
+  "version": "1.0.0",
+  "publish_time": "2026-05-13 12:00:00",
+  "category": "工具",
+  "description": "多存储文件IO读写删测试",
+  "resolution": "320x480",
+  "zip_size_kb": "4",
+  "origin_size_kb": "8",
+  "display_zoom": "fixed_resolution",
+  "appid": ""
+}
