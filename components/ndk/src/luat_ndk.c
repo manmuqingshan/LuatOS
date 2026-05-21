@@ -677,8 +677,9 @@ static int ndk_set_isa(luat_ndk_t *ndk, const char *isa) {
 // mini-rv32ima configuration
 #define MINI_RV32_RAM_SIZE (ctx->ram_size)
 #define MINIRV32_POSTEXEC(pc, ir, trap) ndk_postexec(ctx, pc, ir, trap)
+#define MINIRV32_LUATOS_RV32C_PATCH 1
 #define MINIRV32_HAS_F_EXTENSION() (ctx->flen == 32)
-#define MINIRV32_GET_MISA() (0x40401101u | (MINIRV32_HAS_F_EXTENSION() ? 0x20u : 0u))
+#define MINIRV32_GET_MISA() (0x40401105u | (MINIRV32_HAS_F_EXTENSION() ? 0x20u : 0u))
 #define MINIRV32_OTHERCSR_WRITE(csrno, value) luat_ndk_host_othercsr_write(ctx, csrno, value)
 #define MINIRV32_OTHERCSR_READ(csrno, value) luat_ndk_host_othercsr_read(ctx, csrno, &value)
 #define MINIRV32_FADD_S(rs1_bits, rs2_bits, rm, out_bits) ndk_fadd_s(ctx, rs1_bits, rs2_bits, rm, &(out_bits))
