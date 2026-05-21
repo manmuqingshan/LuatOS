@@ -323,7 +323,7 @@ static int _audio_data_seek(luat_audio_play_file_info_t *decode_file, int offset
 static void _audio_decode_current_request_play_info(luat_audio_request_block_t *request_block)
 {
 	uint8_t error = 0;
-	
+	int ret;
 	request_block->codec.common_param.sample_rate = 0;
 	while (!request_block->codec.common_param.sample_rate && !request_block->is_error_stop && !request_block->is_user_stop && request_block->file_done_cnt < request_block->file_info_cnt) {
 		if (request_block->codec.opts) {
@@ -356,8 +356,9 @@ static void _audio_decode_current_request_play_info(luat_audio_request_block_t *
 			}
 			if (!error) {
 				// 绑定解码器
-				if (!luat_audio_data_codec_bind(&request_block->codec, luat_audio_data_codec_find(codec_type), request_block)) {
-					LLOGE("bind codec %d failed", codec_type);
+				ret = luat_audio_data_codec_bind(&request_block->codec, luat_audio_data_codec_find(codec_type), request_block);
+				if (ret) {
+					LLOGE("bind codec %d failed, ret %d", codec_type, ret);
 					error = 1;
 				} else {
 					if (request_block->codec.opts->init(&request_block->codec, 0)) {
