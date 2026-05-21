@@ -708,7 +708,7 @@ int luat_audio_driver_set_default(luat_audio_driver_probe_t *probe)
 	return -LUAT_ERROR_PARAM_INVALID;
 }
 
-luat_audio_driver_ctrl_t *luat_audio_driver_get_probe_info(uint8_t *all_nums, uint8_t *default_index)
+luat_audio_driver_ctrl_t *luat_audio_driver_get_ctrl_info(uint8_t *all_nums, uint8_t *default_index)
 {
 	*all_nums = _luat_audio.all_driver_nums;
 	*default_index = _luat_audio.default_driver_index;
