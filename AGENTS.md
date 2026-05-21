@@ -429,6 +429,18 @@ player SDK 的 `plat_support.c` 通过 `#ifdef __LUATOS__` 将 `ad_fopen/fread/f
 - 无需将 `ad_fopen` 替换为 `fopen` 或 `luat_fs_fopen`
 - 资源文件放在测试脚本目录下，VFS 会自动找到
 
+### NDK RV32C / Host ABI 经验
+
+- **Host ABI guest fixture 既然用了 CSR 指令，就必须带 `zicsr` 编译** —— `testcase/ndk/guest/build_hostabi_v1.ps1` 要统一使用 `-march=rv32ima_zicsr` / `-march=rv32imac_zicsr`（GNU 和 LLVM 路径都一样）。只写 `rv32ima` / `rv32imac` 在新工具链上可能直接拒绝 `csrr/csrrw`。
+
+- **验证 RV32C 不能只看 `-march=rv32imac`** —— 要保留显式 `rvc_smoke.S`，再用反汇编验证真的生成了压缩指令。实践上可用 `objdump -d -M no-aliases` 后检查输出里是否出现 `c.` mnemonic，再决定是否拷贝测试二进制。
+
+- **`.option norvc` 要继续局部保留在 CSR helper 的 inline asm 里** —— `components/ndk/include/luat_ndk_builtin.h` 和 `testcase/ndk/guest/hostabi_v1/ndk_stubs.c` 中的 `norvc` 是刻意的“固定宽度 CSR 编码”边界，不要因为 guest 已支持 RV32C 就删掉，也不要提升成文件级全局指令。
+
+- **mini-rv32ima 做 RV32C 支持时，核心点是“两段式取指 + 2 字节对齐”** —— 先读低 16 bit，再根据 `ir16 & 0x3` 决定是 16 bit 还是 32 bit 指令；PC 对齐从 4 字节降为 2 字节；不支持的压缩编码以及全零半字 `0x0000` 都应该报非法指令 trap，而不是静默当 NOP。
+
+- **当前 NDK RV32C 的标准回归链路**：先跑 `testcase\ndk\guest\build_hostabi_v1.ps1`，再跑 `testcase\ndk\ndk_basic\guest\build.ps1`，然后用 `bsp\pc\build_windows_32bit_msvc.bat` 重建 PC 模拟器，最后分别执行 `testcase\ndk\ndk_basic\scripts\` 和 `testcase\ndk\ndk_hostabi_basic\scripts\`。
+
 ---
 
 - **Official Documentation**: https://docs.openluat.com/
