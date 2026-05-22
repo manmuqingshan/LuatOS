@@ -94,7 +94,6 @@ void l_audio_init(void)
         _l_audio.request_table[i].self_index = i;
         luat_llist_add_tail(&_l_audio.request_table[i].node, &_l_audio.request_free_list);
     }
-    LLOGE("%x,%x", _l_audio.request_free_list.next, _l_audio.request_busy_list.prev);
 }
 
 /*

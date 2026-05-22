@@ -335,6 +335,9 @@ local function show_status_toast(action, app_name)
         msg = "操作完成"
     end
     local toast_msg = airui.msgbox({
+        w = math.floor(screen_w * 0.7),
+        h = math.floor(screen_h * 0.2),
+        style = { text_font_size = button_font_size },
         title = "提示",
         text = msg,
         buttons = { "确定" },
@@ -372,7 +375,14 @@ local function create_ui()
     local tb = airui.container({
         parent = main_container, x = 0, y = 0, w = screen_w, h = top_height, color = COLOR_CARD
     })
-    local tih = math.min(38, math.floor(top_height * 0.82))
+    -- 按钮高度：小屏用 38 上限，大屏按宽度比例放大
+    local tih = math.floor(top_height * 0.82)
+    if screen_w <= 480 then
+        tih = math.min(38, tih)
+    else
+        tih = math.max(math.floor(screen_w * 0.06), tih)
+    end
+    tih = math.min(tih, top_height - 4)
     local tiy = math.floor((top_height - tih) / 2)
     local tir = math.floor(tih / 2)
     airui.button({
@@ -386,13 +396,16 @@ local function create_ui()
         style = { bg_color = COLOR_DIVIDER, pressed_bg_color = COLOR_DIVIDER, text_color = COLOR_TEXT, radius = tir, border_width = 1, border_color = COLOR_DIVIDER, pad = 0 },
         on_click = function()
             if window_id then
-                exapp.init()
                 exwin.close(window_id)
             end
         end
     })
 
     local search_btn_w = math.max(60, math.floor(button_font_size * 2.5))
+    -- 大屏按宽度比例放大搜索按钮
+    if screen_w > 480 then
+        search_btn_w = math.max(search_btn_w, math.floor(screen_w * 0.10))
+    end
     local sbwe = screen_w - tih - 12 - search_btn_w - 8
     local sbhe = math.min(tih, search_box_height)
     local sbg = airui.container({
@@ -468,7 +481,13 @@ local function create_ui()
         h = sort_height,
         color = COLOR_CARD
     })
-    local stbh = math.min(36, math.floor(sort_height * 0.85))
+    local stbh = math.floor(sort_height * 0.85)
+    if screen_w <= 480 then
+        stbh = math.min(36, stbh)
+    else
+        stbh = math.max(math.floor(screen_w * 0.06), stbh)
+    end
+    stbh = math.min(stbh, sort_height - 4)
     local stbr = math.floor(stbh / 2)
     sort_by = math.floor((sort_height - stbh) / 2)
     local sddx = math.floor(12 * _G.density_scale)
@@ -788,6 +807,9 @@ local function render_apps(apps, has_more_pages)
                     style = { bg_color = COLOR_ACCENT, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                     on_click = function()
                         local msg_box = airui.msgbox({
+                            w = math.floor(screen_w * 0.78),
+                            h = math.floor(screen_h * 0.28),
+                            style = { text_font_size = button_font_size },
                             title = "确认更新",
                             text = "是否更新应用 " .. (app.title or app.name) .. "？",
                             buttons = { "确定", "取消" },
@@ -813,6 +835,9 @@ local function render_apps(apps, has_more_pages)
                     style = { bg_color = COLOR_DANGER, pressed_bg_color = COLOR_DANGER, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                     on_click = function()
                         local msg_box = airui.msgbox({
+                            w = math.floor(screen_w * 0.78),
+                            h = math.floor(screen_h * 0.28),
+                            style = { text_font_size = button_font_size },
                             title = "确认卸载",
                             text = "是否卸载应用 " .. (app.title or app.name) .. "？",
                             buttons = { "确定", "取消" },
@@ -839,6 +864,9 @@ local function render_apps(apps, has_more_pages)
                     style = { bg_color = COLOR_DANGER, pressed_bg_color = COLOR_DANGER, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                     on_click = function()
                         local msg_box = airui.msgbox({
+                            w = math.floor(screen_w * 0.78),
+                            h = math.floor(screen_h * 0.28),
+                            style = { text_font_size = button_font_size },
                             title = "确认卸载",
                             text = "是否卸载应用 " .. (app.title or app.name) .. "？",
                             buttons = { "确定", "取消" },
@@ -866,7 +894,10 @@ local function render_apps(apps, has_more_pages)
                 style = { bg_color = COLOR_PRIMARY, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                 on_click = function()
                     local msg_box = airui.msgbox({
-                        title = "确认安装",
+                        w = math.floor(screen_w * 0.78),
+                        h = math.floor(screen_h * 0.28),
+                        style = { text_font_size = button_font_size },
+                        title ="确认安装",
                         text = "是否安装应用 " .. (app.title or app.name) .. "？",
                         buttons = { "确定", "取消" },
                         on_action = function(self, btn_label)
@@ -1063,6 +1094,9 @@ end
 local function on_error(error_msg)
     close_progress_dialog()
     local msg_box = airui.msgbox({
+        w = math.floor(screen_w * 0.78),
+        h = math.floor(screen_h * 0.28),
+        style = { text_font_size = button_font_size },
         title = "错误",
         text = error_msg,
         buttons = { "确定" },
