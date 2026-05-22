@@ -481,7 +481,13 @@ local function create_ui()
         h = sort_height,
         color = COLOR_CARD
     })
-    local stbh = math.min(36, math.floor(sort_height * 0.85))
+    local stbh = math.floor(sort_height * 0.85)
+    if screen_w <= 480 then
+        stbh = math.min(36, stbh)
+    else
+        stbh = math.max(math.floor(screen_w * 0.06), stbh)
+    end
+    stbh = math.min(stbh, sort_height - 4)
     local stbr = math.floor(stbh / 2)
     sort_by = math.floor((sort_height - stbh) / 2)
     local sddx = math.floor(12 * _G.density_scale)

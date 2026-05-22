@@ -140,6 +140,12 @@ local function calc_layout()
     -- 限制每页最多 24 个卡片，避免大屏上控件过密导致滑动卡顿
     if not is_landscape and apps_per_page > 24 then
         apps_per_page = 24
+        -- 卡片变少后，拉高卡片填满剩余空间
+        local target_rows = math.ceil(apps_per_page / grid_columns)
+        card_height = math.floor((ah - grid_margin * (target_rows - 1)) / target_rows)
+        if card_height < math.floor(70 * _G.density_scale) then
+            card_height = math.floor(70 * _G.density_scale)
+        end
     end
 
 end
