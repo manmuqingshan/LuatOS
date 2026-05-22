@@ -254,12 +254,6 @@ local function get_storage_free_kb(mount_point)
     -- io.fsstat 返回值格式(多返回值)：success, total_blocks, used_blocks, block_size, fs_type
     -- 注意：不是 table，是多返回值！settings_storage_app.lua 有同样用法
     local r, success, total_blocks, used_blocks, block_size = pcall(io.fsstat, mount_point)
-    if not r then
-        -- 兜底：little_flash(LFS) 用 fs.fsstat
-        if fs and fs.fsstat then
-            r, success, total_blocks, used_blocks, block_size = pcall(fs.fsstat, mount_point)
-        end
-    end
     if r and success and total_blocks and block_size then
         -- 先除再乘，避免 total_blocks * block_size 溢出 32 位整数
         local total_kb = total_blocks * (block_size / 1024)

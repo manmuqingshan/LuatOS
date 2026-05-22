@@ -127,12 +127,6 @@ local function get_all_storage_info()
         if io.dexist(mp) then
             -- io.fsstat 返回值格式: success, total_blocks, used_blocks, block_size, fs_type
             local r, success, total_blocks, used_blocks, block_size = pcall(io.fsstat, mp)
-            if not r then
-                -- little_flash(LFS) 用 fs.fsstat
-                if fs and fs.fsstat then
-                    r, success, total_blocks, used_blocks, block_size = pcall(fs.fsstat, mp)
-                end
-            end
             log.info("settings_storage", mp, "io.fsstat raw:",
                 "success", success, "total_blk", total_blocks, "used_blk", used_blocks, "blk_sz", block_size)
             if r and success and total_blocks and used_blocks and block_size then
@@ -164,11 +158,8 @@ sys.subscribe("STORAGE_GET_INFO_FAST", function()
         { mount_point = "/sd/",           label = STORAGE_LABELS["/sd/"],           available = false },
         { mount_point = "/little_flash/", label = STORAGE_LABELS["/little_flash/"], available = false },
     }
-    -- 仅查内置文件系统 /，不调 io.fsstat 碰 NAND
+    -- 仅查内置文件系统 /，不碰 NAND
     local r, success, total_blocks, used_blocks, block_size = pcall(io.fsstat, "/")
-    if not r and fs and fs.fsstat then
-        r, success, total_blocks, used_blocks, block_size = pcall(fs.fsstat, "/")
-    end
     if r and success and total_blocks and used_blocks and block_size then
         local total_kb = total_blocks * (block_size / 1024)
         local used_kb = used_blocks * (block_size / 1024)
