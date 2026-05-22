@@ -12,8 +12,8 @@ GPS定位页面
 -- 引入必要的库
 local exgnss = require "exgnss"
 local mapTile = require("mapTile")
--- exwin 由 exapp 沙箱环境自动注入，不需要 require
--- 需要使用exvib库来检测震动
+-- -- exwin 由 exapp 沙箱环境自动注入，不需要 require
+-- -- 需要使用exvib库来检测震动
 local exvib = require "exvib"
 local exmux = require "exmux"
 local intPin=gpio.WAKEUP2   --中断检测脚，内部固定wakeup2
@@ -68,6 +68,33 @@ local gnss_timer
 local location_duration = 0
 local duration_timer = nil
 local is_first_fix = false  -- 首次定位成功标志
+
+-- 屏幕尺寸和密度计算
+local screen_w, screen_h = 480, 320
+
+local function update_screen_size()
+    local rotation = airui.get_rotation()
+    local phys_w, phys_h = lcd.getSize()
+    if rotation == 0 or rotation == 180 then
+        screen_w, screen_h = phys_w, phys_h
+    else
+        screen_w, screen_h = phys_h, phys_w
+    end
+end
+
+-- 密度计算
+local function get_density_scale()
+    -- 以480x320为基准
+    local base_w, base_h = 480, 320
+    local current_w, current_h = screen_w, screen_h
+    
+    -- 计算宽度和高度比例
+    local w_scale = current_w / base_w
+    local h_scale = current_h / base_h
+    
+    -- 使用最小比例以保持一致性
+    return math.min(w_scale, h_scale)
+end
 
 --tick计数器，每秒+1用于存放5次中断的tick值，用于做有效震动对比
 local function tick()
@@ -361,13 +388,42 @@ end
 -- 内部调用，创建GPS定位页面的UI
 ]]
 local function create_ui()
-    main_container = airui.container({ parent = airui.screen, x=0, y=0, w=480, h=320, color=0x0f172a })
+    -- 更新屏幕尺寸
+    update_screen_size()
+    
+    -- 获取密度比例
+    local density = get_density_scale()
+    
+    -- 主容器
+    main_container = airui.container({ 
+        parent = airui.screen, 
+        x=0, 
+        y=0, 
+        w=screen_w, 
+        h=screen_h, 
+        color=0x0f172a 
+    })
 
     -- 顶部返回栏
-    local header = airui.container({ parent = main_container, x=0, y=0, w=480, h=40, color=0x1e293b })
+    local header_h = math.floor(40 * density)
+    local header = airui.container({ 
+        parent = main_container, 
+        x=0, 
+        y=0, 
+        w=screen_w, 
+        h=header_h, 
+        color=0x1e293b 
+    })
     
     -- 返回按钮
-    local back_btn = airui.container({ parent = header, x = 10, y = 5, w = 70, h = 30, color = 0x38bdf8, radius = 5,
+    local back_btn = airui.container({ 
+        parent = header, 
+        x = math.floor(10 * density), 
+        y = math.floor((header_h - 30 * density) / 2), 
+        w = math.floor(70 * density), 
+        h = math.floor(30 * density), 
+        color = 0x38bdf8, 
+        radius = math.floor(5 * density),
         on_click = function() 
             log.info("GPS_WIN", "Return button clicked, win_id:", win_id)
             if win_id then 
@@ -378,49 +434,177 @@ local function create_ui()
             end
         end
     })
-    airui.label({ parent = back_btn, x = 10, y = 5, w = 50, h = 20, text = "返回", font_size = 16, color = 0xfefefe, align = airui.TEXT_ALIGN_CENTER })
+    airui.label({ 
+        parent = back_btn, 
+        x = math.floor(10 * density), 
+        y = math.floor(5 * density), 
+        w = math.floor(50 * density), 
+        h = math.floor(20 * density), 
+        text = "返回", 
+        font_size = math.floor(16 * density), 
+        color = 0xfefefe, 
+        align = airui.TEXT_ALIGN_CENTER 
+    })
 
     -- 标题
-    airui.label({ parent = header, x = 90, y = 4, w = 270, h = 32, align = airui.TEXT_ALIGN_CENTER, text="GNSS定位", font_size=24, color=0x38bdf8 })
+    airui.label({ 
+        parent = header, 
+        x = math.floor(90 * density), 
+        y = math.floor(4 * density), 
+        w = math.floor(270 * density), 
+        h = math.floor(32 * density), 
+        align = airui.TEXT_ALIGN_CENTER, 
+        text="GNSS定位", 
+        font_size=math.floor(24 * density), 
+        color=0x38bdf8 
+    })
 
     -- 地图切换按钮
-    map_toggle_btn = airui.container({ parent = header, x = 370, y = 5, w = 100, h = 30, color = 0x38bdf8, radius = 5,
+    map_toggle_btn = airui.container({ 
+        parent = header, 
+        x = screen_w - math.floor(110 * density), 
+        y = math.floor((header_h - 30 * density) / 2), 
+        w = math.floor(100 * density), 
+        h = math.floor(30 * density), 
+        color = 0x38bdf8, 
+        radius = math.floor(5 * density),
         on_click = toggle_map
     })
-    map_toggle_label = airui.label({ parent = map_toggle_btn, x = 10, y = 5, w = 80, h = 20, text = "地图", font_size = 16, color = 0xfefefe, align = airui.TEXT_ALIGN_CENTER })
+    map_toggle_label = airui.label({ 
+        parent = map_toggle_btn, 
+        x = math.floor(10 * density), 
+        y = math.floor(5 * density), 
+        w = math.floor(80 * density), 
+        h = math.floor(20 * density), 
+        text = "地图", 
+        font_size = math.floor(16 * density), 
+        color = 0xfefefe, 
+        align = airui.TEXT_ALIGN_CENTER 
+    })
 
-    content = airui.container({ parent = main_container, x=0, y=40, w=480, h=280, color=0x1e293b })
+    -- 内容区域
+    local content_h = screen_h - header_h
+    content = airui.container({ 
+        parent = main_container, 
+        x=0, 
+        y=header_h, 
+        w=screen_w, 
+        h=content_h, 
+        color=0x1e293b 
+    })
 
     -- 左侧信息面板
-    local info_panel = airui.container({ parent = content, x=10, y=10, w=200, h=260, color=0x0f172a, radius = 8 })
+    local info_panel_w = math.floor(200 * density)
+    local info_panel_h = content_h - math.floor(20 * density)
+    local info_panel = airui.container({ 
+        parent = content, 
+        x=math.floor(10 * density), 
+        y=math.floor(10 * density), 
+        w=info_panel_w, 
+        h=info_panel_h, 
+        color=0x0f172a, 
+        radius = math.floor(8 * density) 
+    })
 
     -- 位置信息
-    local position_section = airui.container({ parent = info_panel, x=10, y=10, w=180, h=120, color=0x1e293b, radius = 6 })
+    local position_section = airui.container({ 
+        parent = info_panel, 
+        x=math.floor(10 * density), 
+        y=math.floor(10 * density), 
+        w=info_panel_w - math.floor(20 * density), 
+        h=math.floor(120 * density), 
+        color=0x1e293b, 
+        radius = math.floor(6 * density) 
+    })
     
-    airui.label({ parent = position_section, x=10, y=5, w=60, h=20, text="纬度:", font_size=14, color=0x94a3b8 })
-    latitude_label = airui.label({ parent = position_section, x=80, y=5, w=100, h=20, text="--", font_size=14, color=0xe2e8f0, align = airui.TEXT_ALIGN_RIGHT })
+    airui.label({ 
+        parent = position_section, 
+        x=math.floor(10 * density), 
+        y=math.floor(5 * density), 
+        w=math.floor(60 * density), 
+        h=math.floor(20 * density), 
+        text="纬度:", 
+        font_size=math.floor(14 * density), 
+        color=0x94a3b8 
+    })
+    latitude_label = airui.label({ 
+        parent = position_section, 
+        x=math.floor(80 * density), 
+        y=math.floor(5 * density), 
+        w=math.floor(100 * density), 
+        h=math.floor(20 * density), 
+        text="--", 
+        font_size=math.floor(14 * density), 
+        color=0xe2e8f0, 
+        align = airui.TEXT_ALIGN_RIGHT 
+    })
     
-    airui.label({ parent = position_section, x=10, y=30, w=60, h=20, text="经度:", font_size=14, color=0x94a3b8 })
-    longitude_label = airui.label({ parent = position_section, x=80, y=30, w=100, h=20, text="--", font_size=14, color=0xe2e8f0, align = airui.TEXT_ALIGN_RIGHT })
+    airui.label({ 
+        parent = position_section, 
+        x=math.floor(10 * density), 
+        y=math.floor(30 * density), 
+        w=math.floor(60 * density), 
+        h=math.floor(20 * density), 
+        text="经度:", 
+        font_size=math.floor(14 * density), 
+        color=0x94a3b8 
+    })
+    longitude_label = airui.label({ 
+        parent = position_section, 
+        x=math.floor(80 * density), 
+        y=math.floor(30 * density), 
+        w=math.floor(100 * density), 
+        h=math.floor(20 * density), 
+        text="--", 
+        font_size=math.floor(14 * density), 
+        color=0xe2e8f0, 
+        align = airui.TEXT_ALIGN_RIGHT 
+    })
     
-    airui.label({ parent = position_section, x=10, y=55, w=80, h=20, text="位置:", font_size=14, color=0x94a3b8 })
-    address_label = airui.label({ parent = position_section, x=10, y=75, w=160, h=35, text="点击按钮获取", font_size=12, color=0xe2e8f0 })
+    airui.label({ 
+        parent = position_section, 
+        x=math.floor(10 * density), 
+        y=math.floor(55 * density), 
+        w=math.floor(80 * density), 
+        h=math.floor(20 * density), 
+        text="位置:", 
+        font_size=math.floor(14 * density), 
+        color=0x94a3b8 
+    })
+    address_label = airui.label({ 
+        parent = position_section, 
+        x=math.floor(10 * density), 
+        y=math.floor(75 * density), 
+        w=info_panel_w - math.floor(40 * density), 
+        h=math.floor(35 * density), 
+        text="点击按钮获取", 
+        font_size=math.floor(12 * density), 
+        color=0xe2e8f0 
+    })
 
     -- 按钮区域
-    local btn_container = airui.container({ parent = info_panel, x=10, y=140, w=180, h=110, color=0x1e293b, radius = 6 })
+    local btn_container = airui.container({ 
+        parent = info_panel, 
+        x=math.floor(10 * density), 
+        y=math.floor(140 * density), 
+        w=info_panel_w - math.floor(20 * density), 
+        h=math.floor(110 * density), 
+        color=0x1e293b, 
+        radius = math.floor(6 * density) 
+    })
     
     -- 第一行按钮
     locate_btn = airui.button({ 
         parent = btn_container, 
-        x=10, 
-        y=10, 
-        w=75, 
-        h=35, 
+        x=math.floor(10 * density), 
+        y=math.floor(10 * density), 
+        w=math.floor(75 * density), 
+        h=math.floor(35 * density), 
         text="获取位置", 
-        font_size=14, 
+        font_size=math.floor(14 * density), 
         color=0xfefefe, 
         background_color=0x38bdf8,
-        radius = 5,
+        radius = math.floor(5 * density),
         on_click = function(self)
             if not exwin.is_active(win_id) then return end
             
@@ -431,15 +615,15 @@ local function create_ui()
     -- 立即关闭按钮
     stop_btn = airui.button({ 
         parent = btn_container, 
-        x=95, 
-        y=10, 
-        w=75, 
-        h=35, 
+        x=math.floor(95 * density), 
+        y=math.floor(10 * density), 
+        w=math.floor(75 * density), 
+        h=math.floor(35 * density), 
         text=is_gps_enabled and "立即关闭" or "立即开启", 
-        font_size=14, 
+        font_size=math.floor(14 * density), 
         color=0xfefefe, 
         background_color=0x64748b,
-        radius = 5,
+        radius = math.floor(5 * density),
         on_click = function()
             log.info("GPS Button", "Button clicked, is_gps_enabled:", is_gps_enabled)
             
@@ -490,15 +674,15 @@ local function create_ui()
     -- 第二行按钮
     config_btn = airui.button({ 
         parent = btn_container, 
-        x=10, 
-        y=55, 
-        w=75, 
-        h=35, 
+        x=math.floor(10 * density), 
+        y=math.floor(55 * density), 
+        w=math.floor(75 * density), 
+        h=math.floor(35 * density), 
         text="配置", 
-        font_size=14, 
+        font_size=math.floor(14 * density), 
         color=0xfefefe, 
         background_color=0x64748b,
-        radius = 5,
+        radius = math.floor(5 * density),
         on_click = function()
             -- 打开配置页面
             sys.publish("OPEN_CONFIG_WIN")
@@ -507,15 +691,15 @@ local function create_ui()
     
     satellite_btn = airui.button({ 
         parent = btn_container, 
-        x=95, 
-        y=55, 
-        w=75, 
-        h=35, 
+        x=math.floor(95 * density), 
+        y=math.floor(55 * density), 
+        w=math.floor(75 * density), 
+        h=math.floor(35 * density), 
         text="卫星信息", 
-        font_size=14, 
+        font_size=math.floor(14 * density), 
         color=0xfefefe, 
         background_color=0x38bdf8,
-        radius = 5,
+        radius = math.floor(5 * density),
         on_click = function()
             -- 打开卫星信息页面
             sys.publish("OPEN_SATELLITE_WIN")
@@ -523,24 +707,107 @@ local function create_ui()
     })
 
     -- 右侧面板
-    right_panel = airui.container({ parent = content, x=220, y=10, w=250, h=260, color=0x0f172a, radius = 8 })
+    local right_panel_x = info_panel_w + math.floor(20 * density)
+    local right_panel_w = screen_w - right_panel_x - math.floor(10 * density)
+    local right_panel_h = info_panel_h
+    right_panel = airui.container({ 
+        parent = content, 
+        x=right_panel_x, 
+        y=math.floor(10 * density), 
+        w=right_panel_w, 
+        h=right_panel_h, 
+        color=0x0f172a, 
+        radius = math.floor(8 * density) 
+    })
 
     -- 创建右侧四条内容
     -- 可见卫星
-    visible_satellite_label = airui.label({ parent = right_panel, x=10, y=10, w=120, h=25, text="可见卫星", font_size=14, color=0x94a3b8 })
-    satellite_count_label = airui.label({ parent = right_panel, x=140, y=10, w=100, h=25, text="0", font_size=14, color=0xe2e8f0 })
+    visible_satellite_label = airui.label({ 
+        parent = right_panel, 
+        x=math.floor(10 * density), 
+        y=math.floor(10 * density), 
+        w=math.floor(120 * density), 
+        h=math.floor(25 * density), 
+        text="可见卫星", 
+        font_size=math.floor(14 * density), 
+        color=0x94a3b8 
+    })
+    satellite_count_label = airui.label({ 
+        parent = right_panel, 
+        x=math.floor(140 * density), 
+        y=math.floor(10 * density), 
+        w=math.floor(100 * density), 
+        h=math.floor(25 * density), 
+        text="0", 
+        font_size=math.floor(14 * density), 
+        color=0xe2e8f0 
+    })
     
     -- 速度
-    speed_info_label = airui.label({ parent = right_panel, x=10, y=45, w=120, h=25, text="速度", font_size=14, color=0x94a3b8 })
-    speed_label = airui.label({ parent = right_panel, x=140, y=45, w=100, h=25, text="0 km/h", font_size=14, color=0xe2e8f0 })
+    speed_info_label = airui.label({ 
+        parent = right_panel, 
+        x=math.floor(10 * density), 
+        y=math.floor(45 * density), 
+        w=math.floor(120 * density), 
+        h=math.floor(25 * density), 
+        text="速度", 
+        font_size=math.floor(14 * density), 
+        color=0x94a3b8 
+    })
+    speed_label = airui.label({ 
+        parent = right_panel, 
+        x=math.floor(140 * density), 
+        y=math.floor(45 * density), 
+        w=math.floor(100 * density), 
+        h=math.floor(25 * density), 
+        text="0 km/h", 
+        font_size=math.floor(14 * density), 
+        color=0xe2e8f0 
+    })
     
     -- 是否定位成功
-    fix_status_info_label = airui.label({ parent = right_panel, x=10, y=80, w=120, h=25, text="是否定位成功", font_size=14, color=0x94a3b8 })
-    fix_status_label = airui.label({ parent = right_panel, x=140, y=80, w=100, h=25, text="否", font_size=14, color=0xe2e8f0 })
+    fix_status_info_label = airui.label({ 
+        parent = right_panel, 
+        x=math.floor(10 * density), 
+        y=math.floor(80 * density), 
+        w=math.floor(120 * density), 
+        h=math.floor(25 * density), 
+        text="是否定位成功", 
+        font_size=math.floor(14 * density), 
+        color=0x94a3b8 
+    })
+    fix_status_label = airui.label({ 
+        parent = right_panel, 
+        x=math.floor(140 * density), 
+        y=math.floor(80 * density), 
+        w=math.floor(100 * density), 
+        h=math.floor(25 * density), 
+        text="否", 
+        font_size=math.floor(14 * density), 
+        color=0xe2e8f0 
+    })
     
     -- 本次定位成功耗时
-    fix_time_info_label = airui.label({ parent = right_panel, x=10, y=115, w=140, h=25, text="本次定位成功耗时", font_size=14, color=0x94a3b8 })
-    fix_time_label = airui.label({ parent = right_panel, x=150, y=115, w=90, h=25, text="0s", font_size=14, color=0xe2e8f0 })
+    fix_time_info_label = airui.label({ 
+        parent = right_panel, 
+        x=math.floor(10 * density), 
+        y=math.floor(115 * density), 
+        w=math.floor(140 * density), 
+        h=math.floor(25 * density), 
+        text="本次定位成功耗时", 
+        font_size=math.floor(14 * density), 
+        color=0x94a3b8 
+    })
+    fix_time_label = airui.label({ 
+        parent = right_panel, 
+        x=math.floor(150 * density), 
+        y=math.floor(115 * density), 
+        w=math.floor(90 * density), 
+        h=math.floor(25 * density), 
+        text="0s", 
+        font_size=math.floor(14 * density), 
+        color=0xe2e8f0 
+    })
     
     -- 更新卫星状态
     -- update_satellite_status()
@@ -945,8 +1212,6 @@ end
 
 -- 订阅打开GPS页面的消息
 local function open_handler()
-    -- 先分配一个临时值，确保 on_create 函数中的 UI 创建过程不会捕获到 nil 的引用
-    win_id = -1
     win_id = exwin.open({
         on_create = on_create,
         on_destroy = on_destroy,

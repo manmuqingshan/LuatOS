@@ -14,6 +14,33 @@ local main_container, content
 local satellite_table
 local exgnss = require("exgnss")
 
+-- 屏幕尺寸和密度计算
+local screen_w, screen_h = 480, 320
+
+local function update_screen_size()
+    local rotation = airui.get_rotation()
+    local phys_w, phys_h = lcd.getSize()
+    if rotation == 0 or rotation == 180 then
+        screen_w, screen_h = phys_w, phys_h
+    else
+        screen_w, screen_h = phys_h, phys_w
+    end
+end
+
+-- 密度计算
+local function get_density_scale()
+    -- 以480x320为基准
+    local base_w, base_h = 480, 320
+    local current_w, current_h = screen_w, screen_h
+    
+    -- 计算宽度和高度比例
+    local w_scale = current_w / base_w
+    local h_scale = current_h / base_h
+    
+    -- 使用最小比例以保持一致性
+    return math.min(w_scale, h_scale)
+end
+
 --[[
 加载卫星数据
 @local
@@ -70,33 +97,91 @@ end
 -- 内部调用，创建卫星信息页面的UI
 ]]
 local function create_ui()
-    main_container = airui.container({ parent = airui.screen, x=0, y=0, w=480, h=320, color=0x0f172a })
+    -- 更新屏幕尺寸
+    update_screen_size()
+    
+    -- 获取密度比例
+    local density = get_density_scale()
+    
+    -- 主容器
+    main_container = airui.container({ 
+        parent = airui.screen, 
+        x=0, 
+        y=0, 
+        w=screen_w, 
+        h=screen_h, 
+        color=0x0f172a 
+    })
 
     -- 顶部返回栏
-    local header = airui.container({ parent = main_container, x=0, y=0, w=480, h=40, color=0x1e293b })
+    local header_h = math.floor(40 * density)
+    local header = airui.container({ 
+        parent = main_container, 
+        x=0, 
+        y=0, 
+        w=screen_w, 
+        h=header_h, 
+        color=0x1e293b 
+    })
     
     -- 返回按钮
-    local back_btn = airui.container({ parent = header, x = 10, y = 5, w = 70, h = 30, color = 0x38bdf8, radius = 5,
+    local back_btn = airui.container({ 
+        parent = header, 
+        x = math.floor(10 * density), 
+        y = math.floor((header_h - 30 * density) / 2), 
+        w = math.floor(70 * density), 
+        h = math.floor(30 * density), 
+        color = 0x38bdf8, 
+        radius = math.floor(5 * density),
         on_click = function() if win_id then exwin.close(win_id) end end
     })
-    airui.label({ parent = back_btn, x = 10, y = 5, w = 50, h = 20, text = "返回", font_size = 16, color = 0xfefefe, align = airui.TEXT_ALIGN_CENTER })
+    airui.label({ 
+        parent = back_btn, 
+        x = math.floor(10 * density), 
+        y = math.floor(5 * density), 
+        w = math.floor(50 * density), 
+        h = math.floor(20 * density), 
+        text = "返回", 
+        font_size = math.floor(16 * density), 
+        color = 0xfefefe, 
+        align = airui.TEXT_ALIGN_CENTER 
+    })
 
     -- 标题
-    airui.label({ parent = header, x = 90, y = 4, w = 280, h = 32, align = airui.TEXT_ALIGN_CENTER, text="卫星信息", font_size=24, color=0x38bdf8 })
+    airui.label({ 
+        parent = header, 
+        x = math.floor(90 * density), 
+        y = math.floor(4 * density), 
+        w = math.floor(280 * density), 
+        h = math.floor(32 * density), 
+        align = airui.TEXT_ALIGN_CENTER, 
+        text="卫星信息", 
+        font_size=math.floor(24 * density), 
+        color=0x38bdf8 
+    })
 
-    content = airui.container({ parent = main_container, x=0, y=40, w=480, h=280, color=0x1e293b })
+    -- 内容区域
+    local content_h = screen_h - header_h
+    content = airui.container({ 
+        parent = main_container, 
+        x=0, 
+        y=header_h, 
+        w=screen_w, 
+        h=content_h, 
+        color=0x1e293b 
+    })
 
     -- 卫星表格
     satellite_table = airui.table({ 
         parent = content, 
-        x=10, 
-        y=10, 
-        w=460, 
-        h=260, 
+        x=math.floor(10 * density), 
+        y=math.floor(10 * density), 
+        w=screen_w - math.floor(20 * density), 
+        h=content_h - math.floor(20 * density), 
         rows = 9, 
         cols = 5, 
-        col_width = {80, 100, 100, 80, 70}, 
-        font_size = 12,
+        col_width = {math.floor(80 * density), math.floor(100 * density), math.floor(100 * density), math.floor(80 * density), math.floor(70 * density)}, 
+        font_size = math.floor(12 * density),
         border_color = 0x38bdf8,
     })
 end
