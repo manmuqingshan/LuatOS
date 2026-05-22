@@ -139,6 +139,10 @@ extern int airui_shape_create(lua_State *L);
 extern void airui_register_checkbox_meta(lua_State *L);
 extern int airui_checkbox_create(lua_State *L);
 
+// NES 模块声明
+extern void airui_register_nes_meta(lua_State *L);
+extern int airui_nes_create(lua_State *L);
+
 // 模块注册表
 static const rotable_Reg_t reg_airui[] = {
     // 基础设置
@@ -185,6 +189,7 @@ static const rotable_Reg_t reg_airui[] = {
     {"spinner", ROREG_FUNC(airui_spinner_create)},
     {"shape", ROREG_FUNC(airui_shape_create)},
     {"checkbox", ROREG_FUNC(airui_checkbox_create)},
+    {"nes", ROREG_FUNC(airui_nes_create)},
     // 颜色格式常量
     {"COLOR_FORMAT_RGB565", ROREG_INT(AIRUI_COLOR_FORMAT_RGB565)},
     {"COLOR_FORMAT_ARGB8888", ROREG_INT(AIRUI_COLOR_FORMAT_ARGB8888)},
@@ -255,7 +260,7 @@ LUAMOD_API int luaopen_airui(lua_State *L) {
     airui_register_spinner_meta(L);
     airui_register_shape_meta(L);
     airui_register_checkbox_meta(L);
-    
+    airui_register_nes_meta(L);
     // 注册模块函数
     luat_newlib2(L, reg_airui);
     return 1;

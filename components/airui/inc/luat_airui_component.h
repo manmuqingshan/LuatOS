@@ -43,6 +43,7 @@ typedef struct airui_component_ref airui_component_ref_t;
 #define AIRUI_SPINNER_MT "airui.spinner"
 #define AIRUI_SHAPE_MT "airui.shape"
 #define AIRUI_CHECKBOX_MT "airui.checkbox"
+#define AIRUI_NES_MT "airui.nes"
 
 /** 组件类型 */
 typedef enum {
@@ -66,7 +67,8 @@ typedef enum {
     AIRUI_COMPONENT_QRCODE,
     AIRUI_COMPONENT_SPINNER,
     AIRUI_COMPONENT_SHAPE,
-    AIRUI_COMPONENT_CHECKBOX
+    AIRUI_COMPONENT_CHECKBOX,
+    AIRUI_COMPONENT_NES
 } airui_component_type_t;
 
 /** Video 格式 */
@@ -678,6 +680,13 @@ int airui_shape_set_items(lv_obj_t *shape, void *L, int idx);
 int airui_shape_add_item(lv_obj_t *shape, void *L, int idx);
 int airui_shape_clear(lv_obj_t *shape);
 int airui_shape_get_count(lv_obj_t *shape);
+
+/**
+ * NES 组件（NES 模拟器嵌入式播放）
+ */
+lv_obj_t *airui_nes_create_from_config(void *L, int idx);
+int airui_nes_destroy(lv_obj_t *nes);
+int airui_nes_quit_requested(lv_obj_t *nes);
 
 #ifdef __cplusplus
 }
