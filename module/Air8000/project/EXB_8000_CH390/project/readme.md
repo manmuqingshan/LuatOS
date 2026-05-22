@@ -1,6 +1,6 @@
 # EXB_8000_CH390 综合项目
 
-基于 Air8000W + CH390 双网口开发板的 Modbus 网关项目，集成 RTU/TCP 主从站、温湿度采集、AirCloud 物联网上报、LBS 定位、 LED 状态指示。
+基于 Air8000W + CH390 双网口开发板集成 RTU/TCP 主从站、温湿度采集、AirCloud 物联网上报、LBS 定位、 LED 状态指示的项目。
 
 ## 文件结构
 
@@ -9,28 +9,24 @@ project/
 ├── main.lua                  ← 项目入口，调度所有功能模块
 ├── readme.md                 ← 本文件
 │
-├── netdrv_device.lua         ← 网络驱动选择器（4G/WiFi/ETH/多网/PC）
+├── netdrv_device.lua         ← 网络驱动选择器（4G/WiFi/ETH/多网）
 ├── netdrv_eth_static.lua     ← 以太网静态IP（双网口 CH390，网口1=192.168.1.183, 网口2=192.168.1.185）
 │
 ├── airlbs_app.lua            ← 合宙 LBS 定位（基站+WiFi，付费服务）
 ├── aircloud_data.lua         ← AirCloud 物联网数据上报（30秒周期，excloud 协议）
 │
-├── rtu_slave_regmap.lua      ← RTU 从站 + 寄存器映射表（UART3，RS485，9600 8N1，ID=1）
-├── temp_hum_sensor.lua       ← RTU 主站（UART1，RS485，读取 XY-MD02 温湿度传感器）
-├── tcp_modbus_master.lua     ← TCP 主站（网口1，读取建大仁科 RS-WS-ETH-6）
+├── rtu_slave_regmap.lua      ← RTU 从站 + 寄存器映射表
+├── temp_hum_sensor.lua       ← RTU 主站（UART1，RS485，读取 RTU 温湿度传感器）
+├── tcp_modbus_master.lua     ← TCP 主站（网口1，读取建大仁科 TCP 温湿度传感器）
 ├── tcp_slave.lua             ← TCP 从站（网口2，端口 502，ID=1，复用 RTU 从站寄存器）
 │
-├── led.lua                   ← 三色 LED 状态指示（红=Modbus请求, 绿=传感器更新, 蓝=暂未用）
-│
-├── tcp_parser.html           ← TCP 帧解析工具（浏览器打开）
-├── rtu_parser.html           ← RTU 帧解析 + 请求指令生成工具（浏览器打开）
+├── led.lua                   ←  LED 状态指示
 │
 ├── netdrv/                   ← 网络驱动 + 多网融合
 │   ├── netdrv_4g.lua
 │   ├── netdrv_wifi.lua
 │   ├── netdrv_eth_spi.lua
 │   ├── netdrv_multiple.lua
-│   ├── netdrv_pc.lua
 │   └── netif_app_1~3.lua
 ```
 
@@ -56,20 +52,20 @@ project/
 
 Modbus RTU/ TCP 从站均可读取以下保持寄存器(此映射表也可自行设计)：
 
-| 地址 | 寄存器数 | 类型 | 数据项 | 来源 | 示例 |
-|------|---------|------|--------|------|------|
-| 0x0000-01 | 2 | FLOAT | RTU 传感器湿度 | RS485 XY-MD02 | 65.3 %RH |
-| 0x0002-03 | 2 | FLOAT | RTU 传感器温度 | RS485 XY-MD02 | 23.5 ℃ |
-| 0x0004-05 | 2 | FLOAT | CPU 温度 | 模块内部 ADC | 45.2 ℃ |
-| 0x0006-07 | 2 | FLOAT | VBAT 电压 | 模块内部 ADC | 3.85 V |
-| 0x0008-11 | 10 | STRING | LBS 纬度 | 定位模块 | "34.8074150" |
-| 0x0012-1B | 10 | STRING | LBS 经度 | 定位模块 | "114.2941589" |
-| 0x001C | 1 | INT16 | 4G 信号强度 | 移动网络 | 25 dBm |
-| 0x001D-28 | 12 | STRING | 设备 IMEI | 移动网络 | "861234567890123" |
-| 0x0029-36 | 14 | STRING | SIM ICCID | 移动网络 | "898606..." |
-| 0x0037-38 | 2 | INT32 | 时间戳 | NTP | 1779158409 |
-| 0x0039 | 1 | INT16 | TCP 传感器湿度 | 网口1 | 653 (÷10=65.3%RH) |
-| 0x003A | 1 | INT16 | TCP 传感器温度 | 网口1 | 235 (÷10=23.5℃) |
+| 地址 | 寄存器数 | 数据项 | 来源 | 示例 |
+|------|---------|--------|------|------|
+| 0x0000-01 | 2 | RTU 传感器湿度 | RS485 XY-MD02 | 65.3 %RH |
+| 0x0002-03 | 2 | RTU 传感器温度 | RS485 XY-MD02 | 23.5 ℃ |
+| 0x0004-05 | 2 | CPU 温度 | 模块内部 ADC | 45.2 ℃ |
+| 0x0006-07 | 2 | VBAT 电压 | 模块内部 ADC | 3.85 V |
+| 0x0008-11 | 10 | LBS 纬度 | 定位模块 | "34.8074150" |
+| 0x0012-1B | 10 | LBS 经度 | 定位模块 | "114.2941589" |
+| 0x001C | 1 | 4G 信号强度 | 移动网络 | 25 dBm |
+| 0x001D-28 | 12 | 设备 IMEI | 移动网络 | "861234567890123" |
+| 0x0029-36 | 14 | SIM ICCID | 移动网络 | "898606..." |
+| 0x0037-38 | 2 | 时间戳 | NTP | 1779158409 |
+| 0x0039 | 1 | TCP 传感器湿度 | 网口1 | 653 (÷10=65.3%RH) |
+| 0x003A | 1 | TCP 传感器温度 | 网口1 | 235 (÷10=23.5℃) |
 
 **数据格式**：
 
