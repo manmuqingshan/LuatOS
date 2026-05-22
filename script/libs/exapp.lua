@@ -2837,8 +2837,6 @@ local function mount_storage(cfg)
     elseif storage == "little_flash" or storage == "nand_flash" then
         local label = STORAGE_DEFS[storage] and STORAGE_DEFS[storage].label or "Flash"
         log.info("exapp_init", "mounting", label, ": spi", spi_id, "cs", pin_cs)
-        spi.setup(spi_id, nil, 0, 0, 8, speed)
-        gpio.setup(pin_cs, 1)
         -- 使用全局变量存储，避免 GC 回收导致 flash 操作死机
         little_flash_spi_device = spi.deviceSetup(spi_id, pin_cs, 0, 0, 8, speed)
         if not little_flash_spi_device then
