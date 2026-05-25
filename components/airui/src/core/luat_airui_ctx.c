@@ -512,6 +512,7 @@ int airui_init(airui_ctx_t *ctx, uint16_t width, uint16_t height, lv_color_forma
         ctx->indev_udata[i].slot = i;
         lv_indev_set_user_data(ctx->indev_ptrs[i], &ctx->indev_udata[i]);
         lv_indev_set_read_cb(ctx->indev_ptrs[i], input_read_cb);
+        lv_timer_set_period(lv_indev_get_read_timer(ctx->indev_ptrs[i]), 10);
     }
     // 保持 ctx->indev 指向第一个（向后兼容）
     ctx->indev = ctx->indev_ptrs[0];
