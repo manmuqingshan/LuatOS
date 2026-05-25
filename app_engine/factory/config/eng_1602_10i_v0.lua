@@ -39,6 +39,7 @@ return {
                 port = 1,
                 pin_rst = 3,
                 pin_int = 51,
+                int_type = tp.FALLING,
                 w = 1024,
                 h = 600,
                 gpio_reset = 3,
