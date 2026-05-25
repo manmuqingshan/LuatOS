@@ -10,7 +10,6 @@ local main_container
 local screen_w, screen_h = 480, 800
 local margin = 20
 local card_w = 440
-local timer_id = nil
 
 -- 内存卡控件
 local sys_total, sys_used, sys_max, sys_percent, sys_bar
@@ -312,21 +311,20 @@ end
 
 local function on_create()
     build_ui()
-    sys.publish("STORAGE_GET_INFO_LIST")
-    sys.publish("MEMORY_INFO_GET")
     sys.subscribe("STORAGE_INFO_LIST", update_fs_info_list)
     sys.subscribe("MEMORY_INFO", update_memory_info)
-    if timer_id then sys.timerStop(timer_id) end
-    timer_id = sys.timerLoopStart(function()
-        sys.publish("MEMORY_INFO_GET")
+    -- 首屏秒出：内存 + 内置 Flash（不走 NAND，毫秒级）
+    sys.publish("MEMORY_INFO_GET")
+    sys.publish("STORAGE_GET_INFO_FAST")
+    -- NAND Flash / SD 卡延迟补齐（5 秒级），用 timer 延迟确保首帧已渲染
+    sys.timerStart(function()
         sys.publish("STORAGE_GET_INFO_LIST")
-    end, 2000)
+    end, 200)
 end
 
 local function on_destroy()
     sys.unsubscribe("STORAGE_INFO_LIST", update_fs_info_list)
     sys.unsubscribe("MEMORY_INFO", update_memory_info)
-    if timer_id then sys.timerStop(timer_id); timer_id = nil end
     if main_container then main_container:destroy(); main_container = nil end
     fs_cards = {}
     sys_total = nil; sys_used = nil; sys_max = nil; sys_percent = nil; sys_bar = nil
@@ -335,15 +333,14 @@ local function on_destroy()
 end
 
 local function on_get_focus()
-    if timer_id then sys.timerStop(timer_id) end
-    timer_id = sys.timerLoopStart(function()
-        sys.publish("MEMORY_INFO_GET")
+    sys.publish("MEMORY_INFO_GET")
+    sys.publish("STORAGE_GET_INFO_FAST")
+    sys.timerStart(function()
         sys.publish("STORAGE_GET_INFO_LIST")
-    end, 2000)
+    end, 200)
 end
 
 local function on_lose_focus()
-    if timer_id then sys.timerStop(timer_id); timer_id = nil end
 end
 
 local function open_handler()

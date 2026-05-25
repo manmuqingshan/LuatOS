@@ -48,6 +48,8 @@ local builtin_button_spacing = math.floor(20 * density_scale_val)
 local timer_handler = nil
 local external_app_cache = {}
 local page_grids = {}
+local app_rebuild_pending = false
+local app_cache_dirty = false
 
 local COLOR_PRIMARY        = 0x007AFF
 local COLOR_PRIMARY_DARK   = 0x0056B3
@@ -61,8 +63,10 @@ local COLOR_WHITE          = 0xFFFFFF
 local COLOR_DANGER         = 0xE63946
 
 local product_name = "合宙引擎主机"
-local is_air8000 = _G.model_str:find("Air8000") ~= nil
-local model_suffix = _G.model_str:gsub("^Air", "")
+local has_4g = _G.project_config and _G.project_config.features and _G.project_config.features.net_4g
+local has_wifi = _G.project_config and _G.project_config.features and _G.project_config.features.wifi
+local chip_name = (_G.project_config and _G.project_config.chip) or ""
+local model_suffix = chip_name:gsub("^Air", "")
 if model_suffix ~= "" then
     product_name = "合宙引擎主机" .. model_suffix
 end
@@ -116,6 +120,10 @@ local function calc_layout()
     local gah = screen_h - top_height - page_indicator_height
 
     local mcw = is_landscape and 120 or 100
+    -- 宽屏增大最小卡片宽度，减少列数避免卡片过密
+    if screen_w > 480 then
+        mcw = math.max(mcw, math.floor(screen_w / 5))
+    end
     grid_columns = math.max(1, math.floor(gaw / mcw))
     local mxc = math.floor(gaw / 70)
     if grid_columns > mxc then grid_columns = mxc end
@@ -131,6 +139,24 @@ local function calc_layout()
     local ah = gah - grid_top_padding
     local rpp = math.max(1, math.floor(ah / (card_height + grid_margin)))
     apps_per_page = grid_columns * rpp
+
+    -- 限制每页卡片数量，避免大屏上控件过密导致滑动卡顿
+    if not is_landscape and apps_per_page > 24 then
+        local total_cards = 0
+        local ok, installed_apps = pcall(exapp.list_installed)
+        if ok then
+            for _ in pairs(installed_apps) do total_cards = total_cards + 1 end
+        end
+        total_cards = total_cards - #builtin_apps
+        if total_cards > 24 + grid_columns then
+            apps_per_page = 24
+            local target_rows = math.ceil(apps_per_page / grid_columns)
+            card_height = math.floor((ah - grid_margin * (target_rows - 1)) / target_rows)
+            if card_height < math.floor(70 * _G.density_scale) then
+                card_height = math.floor(70 * _G.density_scale)
+            end
+        end
+    end
 
 end
 
@@ -349,6 +375,20 @@ local function load_external_apps()
     rebuild_app_pages()
 end
 
+local function on_installed_updated()
+    app_cache_dirty = true
+    if not app_rebuild_pending then
+        app_rebuild_pending = true
+        sys.timerStart(function()
+            app_rebuild_pending = false
+            if app_cache_dirty then
+                app_cache_dirty = false
+                load_external_apps()
+            end
+        end, 500)
+    end
+end
+
 local function update_time_date(time_str, date_str, weekday_str)
     if time_str then status_cache.time = time_str end
     if date_str then status_cache.date = date_str end
@@ -413,41 +453,39 @@ local function on_create()
     local sfs = math.min(math.floor(40 * _G.density_scale), math.floor(top_height * 0.65 * _G.density_scale))
     local plh = math.min(sfs, math.floor(24 * _G.density_scale))
     local ply = math.floor((top_height - plh) / 2)
-    local icon_spacing, icons_x
-    if is_air8000 then
-        icon_spacing = math.floor(8 * _G.density_scale)
-        icons_x = screen_w - (status_icon_size * 2 + icon_spacing) - math.floor(12 * _G.density_scale)
-    else
-        icons_x = screen_w - status_icon_size - math.floor(12 * _G.density_scale)
+
+    -- 计算可见图标数（均按配置驱动）
+    local icon_wifi = has_wifi
+    local icon_4g   = has_4g
+    local icon_count = (icon_wifi and 1 or 0) + (icon_4g and 1 or 0)
+    local icon_spacing = icon_count > 1 and math.floor(8 * _G.density_scale) or 0
+    local icons_total_w = icon_count > 0 and (status_icon_size * icon_count + icon_spacing * (icon_count - 1)) or 0
+    local icons_x = screen_w - icons_total_w - math.floor(12 * _G.density_scale)
+
+    -- WiFi 图标（按 features.wifi）
+    if icon_wifi then
+        wifi_icon = airui.image({
+            parent = sb, x = icons_x, y = siy,
+            w = status_icon_size, h = status_icon_size, src = "/luadb/wifixinhao0.png"
+        })
     end
-    wifi_icon = airui.image({
-        parent = sb, x = icons_x, y = siy,
-        w = status_icon_size, h = status_icon_size, src = "/luadb/wifixinhao0.png"
-    })
-    if is_air8000 then
+    -- 4G 图标（按 features.net_4g）
+    if icon_4g then
+        local mx = icons_x
+        if icon_wifi then mx = mx + status_icon_size + icon_spacing end
         mobile_icon = airui.image({
-            parent = sb,
-            x = icons_x + status_icon_size + icon_spacing, y = siy,
+            parent = sb, x = mx, y = siy,
             w = status_icon_size, h = status_icon_size, src = "/luadb/4Gxinhao6.png"
         })
     end
-    if is_air8000 then
-        product_label = airui.label({
-            parent = sb,
-            x = 0, y = ply,
-            w = screen_w - (status_icon_size * 2 + math.floor(8 * _G.density_scale)) - math.floor(20 * _G.density_scale),
-            h = plh, text = product_name, font_size = plh, color = COLOR_WHITE,
-            align = airui.TEXT_ALIGN_CENTER
-        })
-    else
-        product_label = airui.label({
-            parent = sb,
-            x = 0, y = ply,
-            w = screen_w - status_icon_size - math.floor(20 * _G.density_scale),
-            h = plh, text = product_name, font_size = plh, color = COLOR_WHITE,
-            align = airui.TEXT_ALIGN_CENTER
-        })
-    end
+    -- 产品名标签（宽度自适应图标区）
+    product_label = airui.label({
+        parent = sb,
+        x = 0, y = ply,
+        w = screen_w - icons_total_w - math.floor(20 * _G.density_scale) - (icon_count > 0 and icon_spacing or 0),
+        h = plh, text = product_name, font_size = plh, color = COLOR_WHITE,
+        align = airui.TEXT_ALIGN_CENTER
+    })
 
     tab_view = airui.tabview({
         parent = main_container,
@@ -488,13 +526,13 @@ local function on_create()
         update_time_date(status_cache.time, status_cache.date, status_cache.weekday)
     end, 1000)
     sys.subscribe("STATUS_TIME_UPDATED", on_status_time)
-    if is_air8000 then
+    if has_4g then
         sys.subscribe("STATUS_SIGNAL_UPDATED", on_status_mobile)
     end
-    sys.subscribe("STATUS_WIFI_SIGNAL_UPDATED", on_status_wifi)
-    sys.subscribe("APP_STORE_INSTALLED_UPDATED", function()
-        load_external_apps()
-    end)
+    if has_wifi then
+        sys.subscribe("STATUS_WIFI_SIGNAL_UPDATED", on_status_wifi)
+    end
+    sys.subscribe("APP_STORE_INSTALLED_UPDATED", on_installed_updated)
 
     sys.publish("REQUEST_STATUS_REFRESH")
 end
@@ -505,11 +543,13 @@ local function on_destroy()
         timer_handler = nil
     end
     sys.unsubscribe("STATUS_TIME_UPDATED", on_status_time)
-    if is_air8000 then
+    if has_4g then
         sys.unsubscribe("STATUS_SIGNAL_UPDATED", on_status_mobile)
     end
-    sys.unsubscribe("STATUS_WIFI_SIGNAL_UPDATED", on_status_wifi)
-    sys.unsubscribe("APP_STORE_INSTALLED_UPDATED", load_external_apps)
+    if has_wifi then
+        sys.unsubscribe("STATUS_WIFI_SIGNAL_UPDATED", on_status_wifi)
+    end
+    sys.unsubscribe("APP_STORE_INSTALLED_UPDATED", on_installed_updated)
 
     if tab_view then tab_view:destroy(); tab_view = nil end
     if main_container then main_container:destroy(); main_container = nil end

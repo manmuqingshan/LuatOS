@@ -204,11 +204,11 @@ local A_size = {
         script_size = 512
     },
     [15] = {
-        fs_size = 1792,
+        fs_size = 1664,
         script_size = 512
     },
     [16] = {
-        fs_size = 512,
+        fs_size = 384,
         script_size = 384
     }
 
@@ -223,7 +223,7 @@ local B_1 = {"camera", "eink", "tp", "lcd", "u8g2", "protobuf", "adc", "airlink"
              "sys", "sysplus", "uart", "wdt", "websocket", "wlan", "xxtea", "zbuff"}
 
 -- 2号固件
-local B_2 = {"camera", "lcd", "u8g2", "protobuf", "adc", "airlink", "bit64", "can", "crypto", "errDump", "fota", "fskv",
+local B_2 = {"camera", "lcd", "u8g2", "protobuf", "adc", "bit64", "can", "crypto", "errDump", "fota", "fskv",
              "ftp", "gmssl", "gpio", "hmeta", "ht1621", "http", "httpsrv", "i2c", "iconv", "io", "ioqueue", "iotauth",
              "iperf", "json", "log", "lora2", "mcu", "miniz", "mobile", "mqtt", "netdrv", "onewire", "os", "pack",
              "pins", "pm", "pwm", "rsa", "rtc", "rtos", "sms", "socket", "spi", "string", "sys", "sysplus", "uart",
@@ -257,11 +257,11 @@ local B_6 = {"adc", "airlink", "bit64", "can", "crypto", "errDump", "fota", "fsk
              "rtos", "sms", "socket", "spi", "string", "sys", "sysplus", "uart", "wdt", "websocket", "wlan", "xxtea",
              "zbuff"}
 
-local B_7 = {"lcd", "u8g2", "adc", "crypto", "errDump", "fota", "fskv", "gpio", "i2c", "iconv", "io", "json", "log",
+local B_7 = {"lcd", "u8g2", "adc", "crypto", "errDump", "fota", "fskv", "gpio", "i2c", "iconv","iperf", "io", "json", "log",
              "bit64", "http", "netdrv", "mcu", "mobile", "mqtt", "os", "pack", "pins", "pm", "pwm", "rtc", "rtos",
              "socket", "spi", "string", "sys", "sysplus", "uart", "wdt", "wlan", "zbuff"}
 
-local B_8 = {"lcd", "adc", "crypto", "errDump", "fota", "fskv", "gpio", "i2c", "iconv", "io", "json", "log", "iperf",
+local B_8 = {"airlink","lcd", "adc", "crypto", "errDump", "fota", "fskv", "gpio", "i2c", "iconv", "io", "json", "log", "iperf",
              "websocket", "fastlz", "bit64", "http", "netdrv", "mcu", "mobile", "mqtt", "os", "pack", "pins", "pm",
              "pwm", "rtc", "rtos", "socket", "spi", "string", "sys", "sysplus", "uart", "wdt", "wlan", "zbuff"}
 local B_size = {
@@ -305,7 +305,7 @@ local C_1 = {"bit64", "adc", "airlink", "fft", "protobuf", "iconv", "rsa", "xxte
              "ble", "fastlz", "lcd", "lf", "otp", "tp", "crypto", "errDump", "fota", "fskv", "ftp", "gmssl", "gpio",
              "hmeta", "http", "httpsrv", "i2c", "io", "iotauth", "iperf", "json", "log", "lora2", "mcu", "miniz",
              "mqtt", "netdrv", "os", "pack", "pwm", "pm", "rtc", "rtos", "socket", "spi", "string", "sys", "sysplus",
-             "uart", "wdt", "websocket", "wlan", "zbuff", "libgnss", "sfud", "ymodem", "eink", "u8g2", "codec", "audio",
+             "uart", "wdt", "websocket", "wlan", "zbuff", "u8g2", "codec", "audio",
              "i2s"}
 
 local C_2 = {"bit64", "adc", "airlink", "camera", "fatfs", "hzfont", "can", "pins", "ble", "fastlz", "lcd", "lf", "otp",
@@ -318,7 +318,7 @@ local C_4 = {"bit64", "adc", "airlink", "airui", "hzfont", "camera", "fatfs", "c
              "lf", "otp", "tp", "crypto", "errDump", "fota", "fskv", "ftp", "gmssl", "gpio", "hmeta", "http", "httpsrv",
              "i2c", "io", "iotauth", "iperf", "json", "log", "lora2", "mcu", "miniz", "mqtt", "netdrv", "os", "pack",
              "pwm", "pm", "rtc", "rtos", "socket", "spi", "string", "sys", "sysplus", "uart", "wdt", "websocket",
-             "wlan", "zbuff", "codec", "audio", "i2s"}
+             "wlan", "zbuff", "codec", "audio", "i2s", "rsa"}
 
 local C_5 = {"bit64", "adc", "airui", "hzfont", "can", "crypto", "errDump", "fastlz", "fota", "fskv", "ftp", "gpio",
              "http", "httpsrv", "i2c", "io", "json", "lcd", "little_flash", "log", "mcu", "miniz", "mqtt", "netdrv",
