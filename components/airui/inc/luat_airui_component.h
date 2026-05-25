@@ -691,7 +691,16 @@ int airui_shape_get_count(lv_obj_t *shape);
  */
 lv_obj_t *airui_nes_create_from_config(void *L, int idx);
 int airui_nes_destroy(lv_obj_t *nes);
-int airui_nes_quit_requested(lv_obj_t *nes);
+int airui_nes_set_key(lv_obj_t *nes, int key, int pressed);
+
+#define AIRUI_NES_KEY_UP     1
+#define AIRUI_NES_KEY_DOWN   2
+#define AIRUI_NES_KEY_LEFT   3
+#define AIRUI_NES_KEY_RIGHT  4
+#define AIRUI_NES_KEY_A      5
+#define AIRUI_NES_KEY_B      6
+#define AIRUI_NES_KEY_START  7
+#define AIRUI_NES_KEY_SELECT 8
 
 #ifdef __cplusplus
 }
