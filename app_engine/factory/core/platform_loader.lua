@@ -39,7 +39,7 @@ require ("eng_1602_5i_v3")    -- Air1602 5寸 V003 (NAND)
 require ("eng_1602_7i_v0")    -- Air1602 7寸
 require ("eng_1602_10i_v0")   -- Air1602 10.1寸
 require ("evb_8101_10i_v1")   -- Air8101 EVB 10.1寸
-require ("evb_8101_5i_v1")    -- Air8101 EVB 5寸
+require ("evb_8101b_5i_v1")    -- Air8101 EVB 5寸
 require ("pc_default")        -- PC 模拟器回退
 
 -- 所有 LCD 驱动（按屏幕 IC 型号分类）
@@ -78,7 +78,7 @@ local PROJECT_MAP = {
     ["Engine_Air1602_5inch_720x1280_003_V000"]     = "eng_1602_5i_v3",
     -- EVB turnkey 开发板系列（已实现）
     ["EVB_Air8101_10inch1_1024x600_000_V010"]      = "evb_8101_10i_v1",
-    ["EVB_Air8101_5inch_800x480_000_V010"]         = "evb_8101_5i_v1",
+    ["EVB_Air8101_5inch_800x480_000_V010"]         = "evb_8101b_5i_v1",
     -- 以下映射已预留，配置文件待实现
     -- ["EVB_Air1601_10inch1_1024x600_000_V011"]   = "evb_1601_10i_v11",
     -- ["EVB_Air1601_7inch_1024x600_000_V011"]     = "evb_1601_7i_v11",
@@ -88,7 +88,7 @@ local PROJECT_MAP = {
     -- ["EVB_Air780EHV_3inch5_480x320_000_V014"]   = "evb_780ehv_35i_v14",
     -- ["EVB_Air780EHU_3inch5_480x320_000_V014"]   = "evb_780ehu_35i_v14",
     -- ["EVB_Air780EHM_3inch5_480x320_000_V014"]   = "evb_780ehm_35i_v14",
-    -- ["EVB_Air8101B_5inch_480x854_000_V010"]     = "evb_8101b_5i_v1",
+    ["EVB_Air8101B_5inch_480x854_000_V010"]        = "evb_8101b_5i_v1",
     -- ["EVB_Air8101_10inch1_1024x600_000_V010_b"] = "evb_8101_10i_v1b",
     -- Core 核心板系列（待实现）
     -- ["Core_Air780EGG_3inch5_480x320_000_V020"]  = "cor_780eg_35i_v2",

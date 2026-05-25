@@ -44,7 +44,7 @@ PROJECT：项目名，ascii string类型
 
   EVB turnkey 开发板系列:
   "EVB_Air8101_10inch1_1024x600_000_V010"      → config/evb_8101_10i_v1.lua    10寸RGB HX8282  +WiFi+SD
-  "EVB_Air8101_5inch_800x480_000_V010"         → config/evb_8101_5i_v1.lua     5寸RGB  ST7701S +WiFi+SD
+  "EVB_Air8101B_5inch_480x854_000_V010"         → config/evb_8101b_5i_v1.lua     5寸RGB  ST7701S +WiFi+SD
 
   待实现（映射已预留，配置文件待创建）:
   "EVB_Air1601_10inch1_1024x600_000_V011"      "EVB_Air1601_7inch_1024x600_000_V011"
@@ -67,7 +67,7 @@ VERSION：项目版本号，ascii string类型
         如果不使用合宙iot.openluat.com进行远程升级，根据自己项目的需求，自定义格式即可
 ]]
 -- main.lua - 程序入口文件
-PROJECT = "EVB_Air8101_10inch1_1024x600_000_V010"  -- 项目命名，映射到 config/ 下的配置文件和硬件参数
+PROJECT = "Engine_Air8000W_4inch_320x480_000_V000"  -- 项目命名，映射到 config/ 下的配置文件和硬件参数
 VERSION = "001.999.006"                               -- 固件版本号，用于 FOTA 升级比对
 PROJECT_KEY = "vMzSTFa5YG3GBMdqR5hxrKXClkwWPnZp"    -- 项目密钥，FOTA 云端鉴权
 

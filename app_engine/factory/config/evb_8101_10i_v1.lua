@@ -75,4 +75,8 @@ return {
         show_camera_preview = false,
         show_sensor_panel = false,
     },
+    -- 存储设备配置（如 NAND Flash）
+    storage = {
+        sd_card = { spi_id = 0, pin_cs = 32, speed = 20000000},
+    },
 }

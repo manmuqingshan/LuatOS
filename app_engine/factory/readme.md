@@ -60,7 +60,7 @@ factory/
 │   ├── eng_1602_10i_v0.lua    # Air1602 10.1寸
 │   ├── eng_8000w_4i_v0.lua    # Air8000W 4寸
 │   ├── evb_8101_10i_v1.lua    # Air8101 10.1寸
-│   ├── evb_8101_5i_v1.lua     # Air8101 5寸
+│   ├── evb_8101b_5i_v1.lua     # Air8101 5寸
 │   ├── pc_default.lua         # PC 模拟器回退
 │   └── template.lua           # 配置参数完整说明
 ├── drv/                       # 配件驱动（参数驱动，不硬编码平台）

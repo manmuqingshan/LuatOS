@@ -36,8 +36,8 @@ if fe.nand_flash and st.nand_flash then
 end
 
 -- SD/TF 卡初始化
-if fe.sd_card and st.sd_tf then
-    local sd = st.sd_tf
+if fe.sd_card and st.sd_card then
+    local sd = st.sd_card
     exapp.init("custom", {
         storage_type = "sd_tf",
         spi_id = sd.spi_id,
