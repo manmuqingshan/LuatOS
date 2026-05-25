@@ -10,7 +10,6 @@ local main_container
 local screen_w, screen_h = 480, 800
 local margin = 20
 local card_w = 440
-local timer_id = nil
 
 -- 内存卡控件
 local sys_total, sys_used, sys_max, sys_percent, sys_bar
@@ -314,11 +313,13 @@ local function on_create()
     build_ui()
     sys.subscribe("STORAGE_INFO_LIST", update_fs_info_list)
     sys.subscribe("MEMORY_INFO", update_memory_info)
-    -- 异步查询，让 UI 先渲染完成再填充数据，避免 io.fsstat 阻塞首帧
-    sys.taskInit(function()
+    -- 首屏秒出：内存 + 内置 Flash（不走 NAND，毫秒级）
+    sys.publish("MEMORY_INFO_GET")
+    sys.publish("STORAGE_GET_INFO_FAST")
+    -- NAND Flash / SD 卡延迟补齐（5 秒级），用 timer 延迟确保首帧已渲染
+    sys.timerStart(function()
         sys.publish("STORAGE_GET_INFO_LIST")
-        sys.publish("MEMORY_INFO_GET")
-    end)
+    end, 200)
 end
 
 local function on_destroy()
@@ -332,14 +333,14 @@ local function on_destroy()
 end
 
 local function on_get_focus()
-    sys.taskInit(function()
-        sys.publish("MEMORY_INFO_GET")
+    sys.publish("MEMORY_INFO_GET")
+    sys.publish("STORAGE_GET_INFO_FAST")
+    sys.timerStart(function()
         sys.publish("STORAGE_GET_INFO_LIST")
-    end)
+    end, 200)
 end
 
 local function on_lose_focus()
-    if timer_id then sys.timerStop(timer_id); timer_id = nil end
 end
 
 local function open_handler()
