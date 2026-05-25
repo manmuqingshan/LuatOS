@@ -184,10 +184,12 @@ static int _audio_tts_output_callback(void *data, uint32_t param, void *user_dat
  */
 static void _audio_request_finish(void)
 {
+	luat_audio_request_cb_t cb;
 	void *sem = _luat_audio.current_request_block->done_sem;
+	cb = _luat_audio.current_request_block->cb;
 	luat_audio_request_deinit(_luat_audio.current_request_block);
-	_luat_audio.current_request_block->cb(LUAT_AUDIO_REQUEST_EVENT_END, NULL, 0, _luat_audio.current_request_block);
 	_luat_audio.current_request_block = NULL;
+	cb(LUAT_AUDIO_REQUEST_EVENT_END, NULL, 0, _luat_audio.current_request_block);
 	if (sem) {
 		luat_mutex_unlock(sem);
 	}
@@ -665,7 +667,7 @@ int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, struct luat
 			_luat_audio.driver_ctrl[i].state = LUAT_AUDIO_DRIVER_STATE_INITED;
 			_luat_audio.channel[i].driver_ctrl = &_luat_audio.driver_ctrl[i];
 			_luat_audio.channel[i].play_lock_mutex = luat_mutex_create();
-			_luat_audio.channel[i].soft_vol = 100;
+			_luat_audio.channel[i].soft_volume = 100;
 			_luat_audio.channel[i].play_fifo = luat_fifo_create(LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER);
     		_luat_audio.channel[i].play_fifo_low_level = 32 * 1024;
     		_luat_audio.channel[i].play_fifo_high_level = _luat_audio.channel[i].play_fifo->size - 16 * 1024;
@@ -971,4 +973,15 @@ int luat_audio_get_play_info_from_file(luat_audio_data_codec_t *codec, luat_audi
 	LLOGC(luat_audio_debug_flag, "detect ok %u-%d-%d-%d, data start pos %d", codec->common_param.sample_rate, codec->common_param.data_align,codec->common_param.channel_nums, 
 		codec->common_param.is_signed, jump_offset_bytes);
     return LUAT_ERROR_NONE;
+}
+
+uint8_t luat_audio_is_request_all_done(void)
+{
+	uint8_t result = 1;
+	luat_mutex_lock(_luat_audio.request_lock);
+	if (!luat_llist_empty(&_luat_audio.request_block_list) || _luat_audio.current_request_block) {
+		result = 0;
+	}
+	luat_mutex_unlock(_luat_audio.request_lock);
+	return result;
 }

@@ -59,6 +59,15 @@ int luat_audio_channel_record(luat_audio_channel_t *channel, uint8_t is_record)
     return LUAT_ERROR_NONE;
 }
 
+int luat_audio_channel_set_soft_volume(luat_audio_channel_t *channel,uint32_t volume)
+{
+    if (!channel) {
+        return -LUAT_ERROR_PARAM_INVALID;
+    }
+    channel->soft_volume = volume;
+    return LUAT_ERROR_NONE;
+}
+
 static void _audio_channel_play_vol_16bit(int16_t *data, uint32_t len_bytes, uint16_t vol)
 {
     uint32_t i = 0;
@@ -123,14 +132,14 @@ int luat_audio_channel_write_data(luat_audio_channel_t *channel, void *data, uin
     luat_data_union_t data_union;
     data_union.p = data;
     // LLOGC(luat_audio_debug_flag,"write data to channel len_bytes %u, is_signed %u, data_align %u, channel_nums %u", len_bytes, is_signed, data_align, channel_nums);
-    if (channel->soft_vol && channel->soft_vol != 100) {     // 音量软件调节
+    if (channel->soft_volume && channel->soft_volume != 100) {     // 音量软件调节
         switch (data_align) {
             case 2:
-                _audio_channel_play_vol_16bit(data_union.i16, len_bytes, channel->soft_vol);
+                _audio_channel_play_vol_16bit(data_union.i16, len_bytes, channel->soft_volume);
                 break;
             case 3:
             case 4:
-                _audio_channel_play_vol_32bit(data_union.i32, len_bytes, channel->soft_vol);
+                _audio_channel_play_vol_32bit(data_union.i32, len_bytes, channel->soft_volume);
                 break;
             default:
                 return -LUAT_ERROR_PARAM_INVALID;

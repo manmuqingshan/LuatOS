@@ -24,7 +24,7 @@
 #include "luat_mem.h"
 
 #ifndef LUAT_AUDIO_REQUEST_MAX
-#define LUAT_AUDIO_REQUEST_MAX 10
+#define LUAT_AUDIO_REQUEST_MAX 16
 #endif
 
 typedef struct {
@@ -36,10 +36,10 @@ typedef struct {
 } l_audio_request_t;
 
 typedef struct {
-    luat_llist_head request_free_list;
-    luat_llist_head request_busy_list;
-    l_audio_request_t request_table[LUAT_AUDIO_REQUEST_MAX];
-    int cb_ref;
+    luat_llist_head request_free_list;  // 空闲请求块列表
+    luat_llist_head request_busy_list;  // 正在处理请求块列表
+    l_audio_request_t request_table[LUAT_AUDIO_REQUEST_MAX];  // 请求块表
+    int cb_ref; // 回调函数引用
 } l_audio_ctrl_t;
 static l_audio_ctrl_t _l_audio;
 
@@ -175,6 +175,10 @@ DONE:
     return 2;
 }
 
+static int l_audio_stream(lua_State *L) {
+    return 0;
+}
+
 /*
 播放tts语音
 @api audio_v2.tts(text, priority, driver_probe_id)
@@ -263,6 +267,39 @@ static int l_audio_pause(lua_State *L) {
     return 0;
 }
 
+/*
+判断所有请求是否完成
+@api audio_v2.is_all_done()
+@return boolean 所有请求是否完成
+@usage
+is_all_done = audio_v2.is_all_done()
+*/
+static int l_audio_is_request_all_done(lua_State *L) {
+    lua_pushboolean(L, luat_llist_empty(&_l_audio.request_busy_list));
+    return 1;
+}
+
+/*
+设置软件音量增益，0~1000，值越大，音量越高，默认100，1000就是10倍音量
+@api audio_v2.soft_volume(volume, driver_probe_id)
+@int volume 软件音量增益，0~1000，值越大，音量越高，默认100
+@int driver_probe_id 驱动id，在不使用默认驱动时填写，绝大部分情况下都不需要填写。驱动id需要通过audio.make_probe_id合成
+@return boolean 成功返回true,否则返回false
+@usage
+audio_v2.soft_volume(75)
+*/
+static int l_audio_soft_volume(lua_State *L) {
+    luat_audio_driver_probe_t driver_probe = {0};
+    driver_probe.probe_id = luaL_optinteger(L, 2, 0);
+    uint32_t volume = luaL_optinteger(L, 1, 100);
+    luat_audio_driver_ctrl_t *driver_ctrl = luat_audio_driver_probe(driver_probe.probe_id ? &driver_probe : NULL);
+    if (driver_ctrl) {
+        lua_pushboolean(L, !luat_audio_channel_set_soft_volume(&driver_ctrl->data_channel, volume));
+    } else {
+        lua_pushboolean(L, 0);
+    }
+    return 1;
+}
 /*
 合成音频驱动id
 @api audio_v2.make_probe_id(tx_bus_type, tx_bus_id, rx_bus_type, rx_bus_id)
@@ -505,6 +542,9 @@ static const rotable_Reg_t reg_audio_v2[] =
     { "tts",			ROREG_FUNC(l_audio_tts)},
     { "stop",			ROREG_FUNC(l_audio_stop)},
     { "pause",			ROREG_FUNC(l_audio_pause)},
+    { "stream",			ROREG_FUNC(l_audio_stream)},
+    { "is_all_done",			ROREG_FUNC(l_audio_is_request_all_done)},
+    {"soft_volume",			ROREG_FUNC(l_audio_soft_volume)},
     { "make_probe_id",			ROREG_FUNC(l_audio_make_probe_id)},
     { "set_default_driver",			ROREG_FUNC(l_audio_set_default_driver)},
     { "get_driver_info",			ROREG_FUNC(l_audio_get_driver_info)},

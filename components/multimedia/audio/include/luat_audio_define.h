@@ -68,8 +68,7 @@ enum {
     LUAT_AUDIO_REQUEST_EVENT_GET_NEW_DATA,            /**< 录音获取到新数据 */
     LUAT_AUDIO_REQUEST_EVENT_DECODE_DONE,             /**< 解码完成 */
     LUAT_AUDIO_REQUEST_EVENT_END,                     /**< 请求结束 */
-    LUAT_AUDIO_REQUEST_ALL_PLAY_DATA_DONE,                /**< 所有播放数据完成 */
-    LUAT_AUDIO_REQUEST_MAX = 255,
+    LUAT_AUDIO_REQUEST_EVENT_MAX = 255,
 };
 
 /**

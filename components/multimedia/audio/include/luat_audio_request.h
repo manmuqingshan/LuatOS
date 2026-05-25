@@ -134,6 +134,24 @@ int luat_audio_request_play_files(luat_audio_request_block_t *request_block, lua
 int luat_audio_request_play_tts(luat_audio_request_block_t *request_block, luat_audio_driver_probe_t *probe, const char *text, uint32_t text_len, 
     uint8_t priority, uint8_t is_sync,
     luat_audio_request_cb_t cb, void *user_data);
+
+/**
+* @brief 播放流式音频
+* 
+* 此函数用于播放流式音频，支持指定流式音频数据指针和播放参数。
+* 
+* @param request_block 音频请求块指针，用于存储播放参数
+* @param probe 音频驱动匹配结构，用于描述驱动的匹配条件，如果为NULL，则使用默认驱动。
+* @param codec_opts 音频解码器选项结构，用于指定要使用的音频解码器，如果为NULL，则会自动选择合适的解码器。一般不需要指定。
+* @param priority 请求优先级，0-255，数值越大优先级越高
+* @param is_sync 是否为同步请求，0-异步，1-同步
+* @param cb 请求回调函数，用于在播放完成或错误时通知应用层
+* @param user_data 用户数据指针，用于传递自定义数据
+* @return LUAT_ERROR_NONE 表示成功，其他值表示失败
+*/
+int luat_audio_request_play_stream(luat_audio_request_block_t *request_block, luat_audio_driver_probe_t *probe, const luat_audio_data_codec_opts_t *codec_opts,
+    uint8_t priority, uint8_t is_sync,
+    luat_audio_request_cb_t cb, void *user_data);    
 /**
  * @brief 录音音频
  * 
