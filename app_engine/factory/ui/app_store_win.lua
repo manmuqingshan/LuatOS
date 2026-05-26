@@ -904,7 +904,7 @@ local function render_apps(apps, has_more_pages)
                 style = { bg_color = COLOR_PRIMARY, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                 on_click = function()
                     local msg_box = airui.msgbox({
-                        w = math.floor(screen_w * 0.78),
+                        w = math.min(400, screen_w - 80),
                         h = math.floor(screen_h * 0.28),
                         style = { text_font_size = button_font_size },
                         title ="确认安装",
@@ -1130,6 +1130,8 @@ local function on_create()
     sys.subscribe("APP_STORE_ICON_READY", on_icon_ready)
 
     sys.publish("APP_STORE_SYNC_INSTALLED")
+    -- 进入应用市场时重置存储校准，下次 get_app_list 重新读取各存储剩余空间
+    exapp.reset_storage_calibration()
     -- 立即请求列表（网络已就绪时马上加载）
     sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
     -- 网络未就绪时等IP_READY后再重试一次（避免首次进入需手动刷新）
