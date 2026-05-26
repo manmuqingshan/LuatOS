@@ -62,7 +62,7 @@ static __LUAT_C_CODE_IN_ISR__ void _audio_play_next_block(struct luat_audio_driv
 	ctrl->current_play_cnt = (ctrl->current_play_cnt + 1) & 3;
 	next_play_cnt = (ctrl->current_play_cnt + 1) & 3;
 	uint8_t *next_play_buff = ctrl->play_buff_byte + ctrl->one_play_block_len * next_play_cnt;
-	if (ctrl->data_channel->user_play_stop || !ctrl->audio_output_enable) {	// 播放状态为停止，播放空白音
+	if (!_luat_audio.current_request_block->is_wait_play_end && (ctrl->data_channel->user_play_stop || !ctrl->audio_output_enable)) {	// 播放状态为停止，播放空白音
 		ctrl->opts->fill(ctrl, next_play_buff, ctrl->one_play_block_len, ctrl->opts->is_signed, ctrl->data_channel->data_align);
 		return;
 	}
@@ -179,6 +179,18 @@ static int _audio_tts_output_callback(void *data, uint32_t param, void *user_dat
 	return LUAT_ERROR_NONE;
 }
 
+static void _audio_current_request_stop(void)
+{
+	_luat_audio.current_request_block->is_input_end = 1;
+	_luat_audio.current_request_block->is_wait_play_end = 1;
+	_luat_audio.current_request_block->play_blank_data_cnt = 0;
+	luat_audio_driver_pa_power_off(_luat_audio.current_request_block->data_channel->driver_ctrl);
+    luat_audio_driver_codec_power_off(_luat_audio.current_request_block->data_channel->driver_ctrl);
+	uint32_t cr = luat_rtos_entry_critical();
+	luat_fifo_clear(_luat_audio.current_request_block->data_channel->play_fifo);
+	luat_rtos_exit_critical(cr);
+	LLOGC(luat_audio_debug_flag, "current request stop, wait play end");
+}
 /**
  * @brief 请求块完成
  */
@@ -186,6 +198,7 @@ static void _audio_request_finish(void)
 {
 	luat_audio_request_block_t *request_block = _luat_audio.current_request_block;
 	void *sem = request_block->done_sem;
+	void *cancel_sem = request_block->cancel_sem;
 	luat_audio_request_deinit(request_block);
 	uint32_t cr = luat_rtos_entry_critical();
 	luat_fifo_clear(request_block->data_channel->play_fifo);
@@ -194,6 +207,9 @@ static void _audio_request_finish(void)
 	_luat_audio.current_request_block = NULL;
 	if (sem) {
 		luat_mutex_unlock(sem);
+	}
+	if (cancel_sem) {
+		luat_mutex_unlock(cancel_sem);
 	}
 	luat_rtos_event_send(_luat_audio.common_task_handle, LUAT_AUDIO_EV_REQUEST, 0, 0, 0, 0);
 }
@@ -587,9 +603,10 @@ static void luat_audio_common_task(void *param)
 				}
 
 			}
-
-			if (_luat_audio.current_request_block->is_error_stop || _luat_audio.current_request_block->is_user_stop || _luat_audio.current_request_block->is_stream_end) {
+			if (_luat_audio.current_request_block->is_stream_end) {
 				_audio_request_finish();
+			} else if (!request_block->is_wait_play_end && (request_block->is_error_stop || request_block->is_user_stop)) {
+				_audio_current_request_stop();
 			}
 			_luat_audio.decode_is_running = 0;
 			break;
@@ -618,14 +635,13 @@ static void luat_audio_common_task(void *param)
 					request_block = (luat_audio_request_block_t *)_luat_audio.request_block_list.next;
 					LLOGC(luat_audio_debug_flag, "next request_id: %d priority: %d, now request_id: %d priority: %d", request_block->request_id, request_block->priority, _luat_audio.current_request_block->request_id, _luat_audio.current_request_block->priority);
 					if (request_block->priority > _luat_audio.current_request_block->priority) {
-						
-						_luat_audio.current_request_block->is_user_stop = 1;
+						_luat_audio.current_request_block->is_cancel = 1;
 						if (_luat_audio.current_request_block->is_tts) {
 							LLOGC(luat_audio_debug_flag, "request_id: %d is tts, wait stop", request_block->request_id);
 							luat_mutex_unlock(_luat_audio.tts_wait_sem);
 						} else {
 							LLOGC(luat_audio_debug_flag, "request_id: %d is not tts, stop now", request_block->request_id);
-							_audio_request_finish();
+							_audio_current_request_stop();
 						}
 					}
 				}
@@ -642,17 +658,17 @@ static void luat_audio_common_task(void *param)
 			break;
 		case LUAT_AUDIO_EV_REQUEST_CANCEL:
 			request_block = (luat_audio_request_block_t *)out_event.param1;
-			request_block->is_user_stop = 1;
+			request_block->is_cancel = 1;
 			luat_mutex_lock(_luat_audio.request_lock);
 			luat_llist_del(&request_block->node);
 			luat_mutex_unlock(_luat_audio.request_lock);
 			if (_luat_audio.current_request_block && (_luat_audio.current_request_block->request_id == request_block->request_id)) {
-				_audio_request_finish();
+				_audio_current_request_stop();
 			} else {
 				luat_audio_request_deinit(request_block);
 				request_block->cb(LUAT_AUDIO_REQUEST_EVENT_END, NULL, 0, request_block);
+				luat_mutex_unlock(request_block->cancel_sem);
 			}
-			luat_mutex_unlock((void *)out_event.param2);
 			break;
 		}
 	}
@@ -805,9 +821,10 @@ void luat_audio_request_cancel(luat_audio_request_block_t *request_block)
 {
 	void *done_sem = luat_mutex_create();
 	luat_mutex_lock(done_sem);
-
-	luat_rtos_event_send(_luat_audio.common_task_handle, LUAT_AUDIO_EV_REQUEST_CANCEL, (uint32_t)request_block, (uint32_t)done_sem, 0, 0);
+	request_block->cancel_sem = done_sem;
+	luat_rtos_event_send(_luat_audio.common_task_handle, LUAT_AUDIO_EV_REQUEST_CANCEL, (uint32_t)request_block, 0, 0, 0);
 	luat_mutex_lock(done_sem);
+	luat_mutex_release(done_sem);
 	LLOGC(luat_audio_debug_flag, "request_id: %d cancel", request_block->request_id);
 	return;
 }
@@ -957,7 +974,7 @@ int luat_audio_get_play_info_from_file(luat_audio_data_codec_t *codec, luat_audi
     }
     int read_len;
     luat_buffer_t input_buffer;
-    uint8_t temp[12];
+    uint8_t temp[44];
     uint32_t jump_offset_bytes = 0;
     uint32_t need_bytes = 0;
 	volatile uint32_t now_file_pos = 0;

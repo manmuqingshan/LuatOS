@@ -57,6 +57,7 @@ struct luat_audio_request_block {
     luat_audio_request_cb_t cb;                 /**< 请求回调函数 */
     void *user_data;                           /**< 用户数据指针，用于传递自定义数据 */
     void *done_sem;                             /**< 完成信号量，用于同步等待 */
+    void *cancel_sem;                             /**< 取消信号量，用于同步等待 */
     uint8_t *temp_buff;                         /**< 临时缓冲区*/
     union {
         struct {                                /**< 流媒体模式下的必须字段 */
@@ -89,6 +90,7 @@ struct luat_audio_request_block {
     uint8_t is_stream_end:1;                   /**< 是否为流式请求结束 */
     uint8_t is_user_stop:1;                       /**< 用户是否请求停止 */
     uint8_t is_error_stop:1;                   /**< 是否为错误停止 */
+    uint8_t is_cancel:1;                   /**< 是否为取消请求 */
     uint8_t is_input_end:1;                   /**< 是否为输入结束请求 */
     uint8_t is_wait_play_end:1;                   /**< 是否等待播放结束 */
 };

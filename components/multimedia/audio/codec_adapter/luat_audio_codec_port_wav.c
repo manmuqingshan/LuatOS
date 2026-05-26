@@ -17,6 +17,7 @@ int luat_audio_wav_get_play_info(struct luat_audio_data_codec *codec, luat_buffe
         info->sample_rate = 0;
         return LUAT_ERROR_NONE;
     }
+        
     if (!memcmp(temp, "RIFF", 4) && !memcmp(temp + 8, "WAVE", 4) && !memcmp(temp + 12, "fmt ", 4)) {
         memcpy(&len, temp + 16, 4);
         pos = 16 + len;
