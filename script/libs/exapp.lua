@@ -1841,6 +1841,11 @@ local function app_task(app_path)
                 new_config.frames = resolve_paths(new_config.frames, false)
                 if not new_config.frames then return nil end
             end
+        elseif component_name == "nes" then
+            if type(new_config.rom) == "string" then
+                new_config.rom = resolve_file(new_config.rom)
+                if not new_config.rom then return nil end
+            end
         end
         return new_config
     end
@@ -2138,7 +2143,7 @@ local function app_task(app_path)
     for _, component_name in ipairs({
         "label", "image", "animimg", "button", "container", "bar", "dropdown",
         "switch", "table", "keyboard", "textarea", "tabview", "chart",
-        "qrcode", "win", "msgbox", "shape", "spinner", "video", "lottie"
+        "qrcode", "win", "msgbox", "shape", "spinner", "video", "lottie", "nes"
     }) do
         install_component(component_name)
     end

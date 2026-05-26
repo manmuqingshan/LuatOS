@@ -56,7 +56,7 @@ static void _nes_release_data(void *user_data);
 
 static int _nes_draw_cb(void *ctx, int x1, int y1, int x2, int y2, void *pixels_in) {
     airui_nes_data_t *data = (airui_nes_data_t *)ctx;
-    nes_color_t *pixels = (nes_color_t *)pixels_in;
+    uint16_t *pixels = (uint16_t *)pixels_in;
     if (!data || !data->initialized || !data->framebuffer) return -1;
     if (!pixels) return -2;
     if (x1 >= NES_SCREEN_W || y1 >= NES_SCREEN_H) return -3;
@@ -65,20 +65,49 @@ static int _nes_draw_cb(void *ctx, int x1, int y1, int x2, int y2, void *pixels_
 
     size_t cols = x2 - x1 + 1;
     size_t rows = y2 - y1 + 1;
+    int f = data->scale;
+    int dst_stride = NES_SCREEN_W * f;
 
 #if (NES_COLOR_SWAP == 0)
-    for (size_t row = 0; row < rows; row++) {
-        uint16_t *dst = data->framebuffer + (y1 + row) * NES_SCREEN_W + x1;
-        const nes_color_t *src = pixels + row * cols;
-        memcpy(dst, src, cols * sizeof(uint16_t));
+    if (f == 1) {
+        for (size_t row = 0; row < rows; row++) {
+            uint16_t *dst = data->framebuffer + (y1 + row) * dst_stride + x1;
+            memcpy(dst, pixels + row * cols, cols * sizeof(uint16_t));
+        }
+    } else {
+        for (size_t row = 0; row < rows; row++) {
+            for (int dy = 0; dy < f; dy++) {
+                uint16_t *dst = data->framebuffer + ((y1 + row) * f + dy) * dst_stride + x1 * f;
+                const uint16_t *src = pixels + row * cols;
+                for (size_t col = 0; col < cols; col++) {
+                    uint16_t v = src[col];
+                    uint16_t *dp = dst + col * f;
+                    for (int dx = 0; dx < f; dx++) dp[dx] = v;
+                }
+            }
+        }
     }
 #else
-    for (size_t row = 0; row < rows; row++) {
-        uint16_t *dst = data->framebuffer + (y1 + row) * NES_SCREEN_W + x1;
-        const nes_color_t *src = pixels + row * cols;
-        for (size_t col = 0; col < cols; col++) {
-            uint16_t v = src[col];
-            dst[col] = (uint16_t)((v >> 8) | (v << 8));
+    if (f == 1) {
+        for (size_t row = 0; row < rows; row++) {
+            uint16_t *dst = data->framebuffer + (y1 + row) * dst_stride + x1;
+            const uint16_t *src = pixels + row * cols;
+            for (size_t col = 0; col < cols; col++) {
+                uint16_t v = src[col];
+                dst[col] = (uint16_t)((v >> 8) | (v << 8));
+            }
+        }
+    } else {
+        for (size_t row = 0; row < rows; row++) {
+            for (int dy = 0; dy < f; dy++) {
+                uint16_t *dst = data->framebuffer + ((y1 + row) * f + dy) * dst_stride + x1 * f;
+                const uint16_t *src = pixels + row * cols;
+                for (size_t col = 0; col < cols; col++) {
+                    uint16_t v = (uint16_t)((src[col] >> 8) | (src[col] << 8));
+                    uint16_t *dp = dst + col * f;
+                    for (int dx = 0; dx < f; dx++) dp[dx] = v;
+                }
+            }
         }
     }
 #endif
@@ -200,7 +229,9 @@ lv_obj_t *airui_nes_create_from_config(void *L, int idx) {
     int x = airui_marshal_integer(L, idx, "x", 0);
     int y = airui_marshal_integer(L, idx, "y", 0);
 
-    size_t buf_size = NES_SCREEN_W * NES_SCREEN_H * sizeof(uint16_t);
+    int scaled_w = NES_SCREEN_W * scale;
+    int scaled_h = NES_SCREEN_H * scale;
+    size_t buf_size = scaled_w * scaled_h * sizeof(uint16_t);
     uint16_t *fb = lv_malloc(buf_size);
     if (!fb) {
         LLOGE("NES: framebuffer alloc failed");
@@ -236,22 +267,19 @@ lv_obj_t *airui_nes_create_from_config(void *L, int idx) {
         .header = {
             .magic  = LV_IMAGE_HEADER_MAGIC,
             .cf     = LV_COLOR_FORMAT_RGB565,
-            .w      = NES_SCREEN_W,
-            .h      = NES_SCREEN_H,
-            .stride = NES_SCREEN_W * sizeof(uint16_t),
+            .w      = (uint32_t)scaled_w,
+            .h      = (uint32_t)scaled_h,
+            .stride = (uint32_t)(scaled_w * sizeof(uint16_t)),
             .flags  = 0,
         },
-        .data_size = buf_size,
+        .data_size = (uint32_t)buf_size,
         .data      = (const uint8_t *)fb,
         .reserved  = NULL,
         .reserved_2 = NULL,
     };
     lv_image_set_src(game_screen, &data->img_dsc);
 
-    if (scale > 1) {
-        lv_image_set_scale(game_screen, scale * 256);
-    }
-    lv_obj_set_size(game_screen, NES_SCREEN_W * scale, NES_SCREEN_H * scale);
+    lv_obj_set_size(game_screen, scaled_w, scaled_h);
     lv_obj_set_pos(game_screen, x, y);
 
     data->nes_ctx = nes_init();
