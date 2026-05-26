@@ -87,12 +87,12 @@ struct luat_audio_request_block {
     uint8_t play_blank_data_cnt;                        /**< 播放空白数据计数 */
     uint8_t is_stream:1;                       /**< 是否为流式请求 */
     uint8_t is_tts:1;                          /**< 是否为文本转语音请求 */
-    uint8_t is_stream_end:1;                   /**< 是否为流式请求结束 */
     uint8_t is_user_stop:1;                       /**< 用户是否请求停止 */
     uint8_t is_error_stop:1;                   /**< 是否为错误停止 */
-    uint8_t is_cancel:1;                   /**< 是否为取消请求 */
+    uint8_t is_data_callback_stop:1;                   /**< 是否为回调函数请求停止 */
     uint8_t is_input_end:1;                   /**< 是否为输入结束请求 */
     uint8_t is_wait_play_end:1;                   /**< 是否等待播放结束 */
+    uint8_t is_stream_end:1;                   /**< 是否为流式请求结束 */
 };
 
 typedef struct luat_audio_request_block luat_audio_request_block_t;
