@@ -41,7 +41,7 @@ audio/
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                    Lua 层                                         │
-│  audio_v2.play() / audio_v2.tts() / audio_v2.on()               │
+│  audio_v2.play() / audio_v2.stream() / audio_v2.tts() / audio_v2.on()               │
 │  exaudio.lua (扩展封装: 优先级队列/多文件播放/回调管理)            │
 ├──────────────────────────────────────────────────────────────────┤
 │                    C 上层 API（luat_audio_request_xxx）            │
@@ -681,7 +681,7 @@ luat_audio_request_play_stream() [通过 prepare + start 手动构建]:
   ├─ _audio_decode_stream_to_fifo()
   └─ 回调 EVENT_NEED_NEW_DATA → 用户写入新数据到 org_input_fifo
 
-用户通过 `audio_v2` 相关接口 / `luat_audio_channel_write_data()` 写入数据
+用户通过 `audio_v2.stream()` 启动流播放，并在 `audio_v2.on()` 回调的 `REQUEST_NEED_NEW_DATA` 事件中写入数据到 `org_input_fifo`
 ```
 
 ---
@@ -778,9 +778,9 @@ channel->record_request_block->record_data_fifo
 
 ```
 用户（Lua/C 应用层）
-  ↓ audio_v2 写入 / luat_audio_channel_write_data()
-  ↓ EVENT_NEED_NEW_DATA 回调
-org_input_data_fifo（16KB 编码数据 FIFO）
+  ↓ audio_v2.stream() / luat_audio_channel_write_data()
+  ↓ EVENT_NEED_NEW_DATA 回调 → 用户推数据到 org_input_fifo
+org_input_data_fifo（编码数据 FIFO）
   ↓ luat_audio_data_codec_decode_once()
 out_buffer
   ↓ luat_audio_channel_write_data()
@@ -930,7 +930,7 @@ org_input_data_fifo
 
 ## 十四、audio_v2 Lua API 文档（`luat_lib_audio.c`）
 
-`audio_v2` 是 LuatOS 新一代音频框架的 Lua C 绑定层，提供了完整的音频播放、TTS、事件回调、驱动管理等功能的 Lua 接口。使用前需确保固件启用了 `LUAT_USE_AUDIO_V2`。
+`audio_v2` 是 LuatOS 新一代音频框架的 Lua C 绑定层，提供了完整的音频播放、流式音频、TTS、事件回调、驱动管理等功能的 Lua 接口。使用前需确保固件启用了 `LUAT_USE_AUDIO_V2`。
 
 ### 14.1 请求类 API
 
@@ -946,7 +946,7 @@ org_input_data_fifo
 | `err_stop` | boolean | 可选。是否在文件解码失败后停止解码，仅在连续播放多文件时有效。默认 `true`，遇到解码错误自动停止 |
 | `priority` | int | 可选。优先级（0~255），值越大优先级越高。默认 0 |
 | `driver_probe_id` | int | 可选。驱动 ID，不使用默认驱动时填写。需通过 `audio_v2.make_probe_id` 合成。绝大部分情况不需要填写 |
-| `codec_id` | int | 可选。解码器 ID，需要指定解码器时填写。见 `DATA_CODEC_TYPE_*` 常量，绝大部分情况不需要填写（自动识别）|
+| `codec_id` | int | 可选。解码器 ID，需要指定解码器时填写。见 `DATA_CODEC_TYPE_*` 常量，绝大部分情况不需要填写（自动识别）。`stream` 模式此参数为必填 |
 
 **返回值**：
 
@@ -1009,6 +1009,57 @@ local ok, req_id = audio_v2.tts(buff)
 
 ---
 
+#### `audio_v2.stream(codec_id, sample_rate, data_bits, channel_nums, is_signed, priority, driver_probe_id)`
+
+流模式播放。与 `play` 不同，它不读取文件，而是由应用层通过回调事件主动推送音频数据到解码器内部 FIFO。适用于实时音频流（如网络音频、实时 PCM 采集播放、音频编辑等）。
+
+**参数**：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `codec_id` | int | 解码器 ID，**必填**。指定使用的解码器类型，见 `DATA_CODEC_TYPE_*` 常量。常用 `audio_v2.DATA_CODEC_TYPE_RAW` 直接播放裸 PCM 数据 |
+| `sample_rate` | int | **必填**。采样率（Hz），例如 8000, 16000, 44100, 48000 |
+| `data_bits` | int | **必填**。数据位数，支持 8, 16, 24, 32 |
+| `channel_nums` | int | **必填**。声道数，1=Mono，2=Stereo |
+| `is_signed` | boolean | 可选。数据是否有符号，默认 `true`（有符号 PCM）。8bit 数据通常为 `false`（无符号） |
+| `priority` | int | 可选。优先级（0~255），值越大优先级越高。默认 0 |
+| `driver_probe_id` | int | 可选。驱动 ID，不使用默认驱动时填写。需通过 `audio_v2.make_probe_id` 合成 |
+
+**返回值**：
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| 成功标志 | boolean | 成功返回 `true`，否则返回 `false` |
+| request_index | int | 请求索引，用于停止、暂停等后续操作，也可在回调中区分请求 |
+
+**数据推送方式**：
+
+流模式启动后，框架通过 `audio_v2.REQUEST_NEED_NEW_DATA` 事件通知应用层需要更多数据。应用层需在回调中将数据写入请求块对应的 `org_input_data_fifo`（通过 `zbuff` 或其他方式）。当解码器处理完数据后，会再次触发 `REQUEST_NEED_NEW_DATA` 事件，循环直到用户主动停 止或调用 `audio_v2.stop()`。
+
+**示例**：
+
+```lua
+-- 启动 16000Hz, 16bit, 2ch 的有符号 PCM 流播放
+local ok, req_id = audio_v2.stream(audio_v2.DATA_CODEC_TYPE_RAW, 16000, 16, 2, true)
+
+-- 在回调中推数据
+audio_v2.on(function(request_index, event, param)
+    if request_index == req_id and event == audio_v2.REQUEST_NEED_NEW_DATA then
+        -- 应用层自行将 PCM 数据写入 zbuff，再写入 org_input_data_fifo
+        -- 实际应用中，可在 zbuff 准备好后调用底层写入接口
+    elseif event == audio_v2.REQUEST_END then
+        log.info("stream playback finished")
+    end
+end)
+```
+
+**注意**：
+- `stream` 模式**必须**指定 `codec_id`，不会自动识别解码器
+- 流模式不会自动结束，需要应用层在数据发送完毕后调用 `audio_v2.stop()` 停止播放
+- RAW 编解码器（`DATA_CODEC_TYPE_RAW`）不做任何解码，数据直通到音频通道，适合预先处理好的 PCM 数据
+
+---
+
 #### `audio_v2.stop(request_index)`
 
 停止正在播放的请求。
@@ -1017,7 +1068,7 @@ local ok, req_id = audio_v2.tts(buff)
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `request_index` | int | 请求索引，由 `audio_v2.play` 或 `audio_v2.tts` 返回 |
+| `request_index` | int | 请求索引，由 `audio_v2.play`、`audio_v2.stream` 或 `audio_v2.tts` 返回 |
 
 **返回值**：无
 
@@ -1039,7 +1090,7 @@ audio_v2.stop(req_id)
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `request_index` | int | 请求索引，由 `audio_v2.play` 或 `audio_v2.tts` 返回 |
+| `request_index` | int | 请求索引，由 `audio_v2.play`、`audio_v2.stream` 或 `audio_v2.tts` 返回 |
 | `pause` | boolean | 可选。`true` 暂停，`false`/nil 恢复。默认 `false` |
 
 **返回值**：无
@@ -1378,17 +1429,18 @@ audio_v2.config_codec_power_ctrl(true, 11, 1, 200, 10)
 | `audio_v2.DRIVER_TYPE_ADC` | 3 | ADC 模拟输入 |
 | `audio_v2.DRIVER_TYPE_USB` | 6 | USB 音频声卡 |
 
-#### 编解码器类型常量（用于 `play` 的 `codec_id`）
+#### 编解码器类型常量（用于 `play` 的 `codec_id`，以及 `stream` 的 `codec_id`）
 
 | 常量名 | 值 | 说明 |
 |--------|-----|------|
-| `audio_v2.DATA_CODEC_TYPE_WAV` | 0 | WAV 编解码器（PCM 直通）|
-| `audio_v2.DATA_CODEC_TYPE_AMR_NB` | 1 | AMR-NB 编解码器（8kHz）|
-| `audio_v2.DATA_CODEC_TYPE_AMR_WB` | 2 | AMR-WB 编解码器（16kHz）|
-| `audio_v2.DATA_CODEC_TYPE_TTS` | 3 | TTS 文本转语音 |
-| `audio_v2.DATA_CODEC_TYPE_MP3` | 4 | MP3 编解码器 |
-| `audio_v2.DATA_CODEC_TYPE_OPUS` | 5 | OPUS 编解码器 |
-| `audio_v2.DATA_CODEC_TYPE_G711` | 6 | G711 编解码器 |
+| `audio_v2.DATA_CODEC_TYPE_RAW` | 0 | RAW 编解码器（PCM 直通，不解码）|
+| `audio_v2.DATA_CODEC_TYPE_WAV` | 1 | WAV 编解码器（PCM 直通）|
+| `audio_v2.DATA_CODEC_TYPE_AMR_NB` | 2 | AMR-NB 编解码器（8kHz）|
+| `audio_v2.DATA_CODEC_TYPE_AMR_WB` | 3 | AMR-WB 编解码器（16kHz）|
+| `audio_v2.DATA_CODEC_TYPE_TTS` | 4 | TTS 文本转语音 |
+| `audio_v2.DATA_CODEC_TYPE_MP3` | 5 | MP3 编解码器 |
+| `audio_v2.DATA_CODEC_TYPE_OPUS` | 6 | OPUS 编解码器 |
+| `audio_v2.DATA_CODEC_TYPE_G711` | 7 | G711 编解码器 |
 
 ---
 
@@ -1446,6 +1498,25 @@ audio_v2.pause(req_id, false)  -- 恢复
 
 -- 5. 停止
 audio_v2.stop(req_id)
+```
+
+#### 流模式播放
+
+```lua
+-- 注册事件回调
+audio_v2.on(function(req_id, event, param)
+    if event == audio_v2.REQUEST_START then
+        log.info("stream start", req_id)
+    elseif event == audio_v2.REQUEST_NEED_NEW_DATA then
+        -- 在这里推送 PCM 数据到 org_input_data_fifo
+        -- 例如从网络接收的音频数据写入 zbuff，再喂给解码器
+    elseif event == audio_v2.REQUEST_END then
+        log.info("stream end", req_id)
+    end
+end)
+
+-- 启动 16bit 16kHz 单声道 PCM 流
+local ok, req_id = audio_v2.stream(audio_v2.DATA_CODEC_TYPE_RAW, 16000, 16, 1, true, 0)
 ```
 
 #### 驱动查询
