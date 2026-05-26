@@ -57,6 +57,7 @@ struct luat_audio_request_block {
     luat_audio_request_cb_t cb;                 /**< 请求回调函数 */
     void *user_data;                           /**< 用户数据指针，用于传递自定义数据 */
     void *done_sem;                             /**< 完成信号量，用于同步等待 */
+    void *cancel_sem;                             /**< 取消信号量，用于同步等待 */
     uint8_t *temp_buff;                         /**< 临时缓冲区*/
     union {
         struct {                                /**< 流媒体模式下的必须字段 */
@@ -89,7 +90,8 @@ struct luat_audio_request_block {
     uint8_t is_stream_end:1;                   /**< 是否为流式请求结束 */
     uint8_t is_user_stop:1;                       /**< 用户是否请求停止 */
     uint8_t is_error_stop:1;                   /**< 是否为错误停止 */
-    uint8_t is_file_end:1;                   /**< 是否为文件结束请求 */
+    uint8_t is_cancel:1;                   /**< 是否为取消请求 */
+    uint8_t is_input_end:1;                   /**< 是否为输入结束请求 */
     uint8_t is_wait_play_end:1;                   /**< 是否等待播放结束 */
 };
 
@@ -150,7 +152,7 @@ int luat_audio_request_play_tts(luat_audio_request_block_t *request_block, luat_
 * @return LUAT_ERROR_NONE 表示成功，其他值表示失败
 */
 int luat_audio_request_play_stream(luat_audio_request_block_t *request_block, luat_audio_driver_probe_t *probe, const luat_audio_data_codec_opts_t *codec_opts,
-    uint8_t priority, uint8_t is_sync,
+    luat_audio_common_param_t *common_param, uint8_t priority, uint8_t is_sync,
     luat_audio_request_cb_t cb, void *user_data);    
 /**
  * @brief 录音音频

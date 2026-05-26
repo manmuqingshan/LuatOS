@@ -77,6 +77,11 @@ void luat_audio_data_codec_unbind(luat_audio_data_codec_t *codec)
     codec->opts = NULL;
 }
 
+int luat_audio_data_codec_get_play_info(luat_audio_data_codec_t *codec, luat_buffer_t *input_buffer, uint32_t now_file_pos, uint32_t *jump_offset_bytes, uint32_t *need_bytes)
+{
+    return codec->opts->get_play_info(codec, input_buffer, now_file_pos, jump_offset_bytes, need_bytes, &codec->common_param);
+}
+
 int luat_audio_data_codec_decode_once(luat_audio_data_codec_t *codec, luat_fifo_t *input_data_fifo, luat_buffer_t *output_data_buffer, uint8_t is_end)
 {
     uint32_t input_data_len = 0;

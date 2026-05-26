@@ -42,10 +42,7 @@ model        : string  屏幕IC驱动模块名，取值:
                          "lcd_st7796"       — SPI ST7796 (3.5/4寸, 320×480 或 480×320)
                          "lcd_nv3052c_5in"  — RGB NV3052C (5寸, 720×1280, 含init cmds)
                          "lcd_st7701s_5in"  — RGB ST7701S (5寸, 480×854, 含init cmds)
-                         "lcd_hx8282_10in"  — RGB HX8282 (10.1寸, 1024×600)
-                         "lcd_custom_7in"   — RGB 通用 (7寸, 1024×600)
-                         "lcd_custom_10in"  — RGB 通用 (10.1寸, Air1601底板时序)
-                         "lcd_custom_evb_10in" — RGB 通用 (10.1寸, EVB底板时序)
+                         "lcd_hx8282_10in"  — RGB HX8282 (7/10.1寸, 1024×600 通用)
 
 params       : table   传给 model 驱动 init() 的参数，字段因 model 而异：
 
