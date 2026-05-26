@@ -51,7 +51,8 @@ enum {
     LUAT_AUDIO_DRIVER_MODE_CALL,           /**< 通话模式 */
     LUAT_AUDIO_DRIVER_MODE_CALL_WITH_BUFFER,/**< 通话带缓冲区模式 */
 
-    LUAT_AUDIO_DATA_CODEC_TYPE_WAV = 0,    /**< WAV 编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_RAW = 0,    /**< 原始音频数据编解码器 */
+    LUAT_AUDIO_DATA_CODEC_TYPE_WAV,    /**< WAV 编解码器 */
     LUAT_AUDIO_DATA_CODEC_TYPE_AMR_NB,        /**< AMR 编解码器 */
     LUAT_AUDIO_DATA_CODEC_TYPE_AMR_WB,        /**< AMR 编解码器 */
     LUAT_AUDIO_DATA_CODEC_TYPE_TTS,        /**< TTS 编解码器 */
@@ -64,6 +65,7 @@ enum {
     LUAT_AUDIO_TTS_EVENT_NEW_DATA,         /**< TTS 新数据可用事件 */
 
     LUAT_AUDIO_REQUEST_EVENT_START = 0,                /**< 请求开始 */
+    LUAT_AUDIO_REQUEST_EVENT_NEED_PLAY_INFO,          /**< 播放需要播放信息 */
     LUAT_AUDIO_REQUEST_EVENT_NEED_NEW_DATA,           /**< 播放需要新数据 */
     LUAT_AUDIO_REQUEST_EVENT_GET_NEW_DATA,            /**< 录音获取到新数据 */
     LUAT_AUDIO_REQUEST_EVENT_DECODE_DONE,             /**< 解码完成 */
@@ -71,6 +73,9 @@ enum {
     LUAT_AUDIO_REQUEST_EVENT_MAX = 255,
 };
 
+#ifndef LUAT_AUDIO_DATA_CACHE_LEN
+#define LUAT_AUDIO_DATA_CACHE_LEN   8000
+#endif
 /**
  * @brief 最大支持的音频驱动数量
  * 
