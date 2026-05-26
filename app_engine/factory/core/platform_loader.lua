@@ -36,6 +36,7 @@ require 即执行，按以下顺序：
 require ("eng_8000w_4i_v0")   -- Air8000W 4寸
 require ("eng_1602_5i_v2")    -- Air1602 5寸 V002
 require ("eng_1602_5i_v3")    -- Air1602 5寸 V003 (NAND)
+require ("eng_1602_5i_v5")    -- Air1602 5寸 V005 (ST7701S+NAND)
 require ("eng_1602_7i_v0")    -- Air1602 7寸
 require ("eng_1602_7i_v4")    -- Air1602 7寸 V004 (NAND)
 require ("eng_1602_10i_v0")   -- Air1602 10.1寸
@@ -75,6 +76,7 @@ local PROJECT_MAP = {
     ["Engine_Air1602_7inch_1024x600_000_V000"]     = "eng_1602_7i_v0",
     ["Engine_Air1602_10inch1_1024x600_001_V000"]   = "eng_1602_10i_v0",
     ["Engine_Air1602_5inch_720x1280_003_V000"]     = "eng_1602_5i_v3",
+    ["Engine_Air1602_5inch_480x854_005_V000"]      = "eng_1602_5i_v5",
     ["Engine_Air1602_7inch_1024x600_004_V000"]     = "eng_1602_7i_v4",
     -- EVB turnkey 开发板系列（已实现）
     ["EVB_Air8101_10inch1_1024x600_000_V010"]      = "evb_8101_10i_v1",

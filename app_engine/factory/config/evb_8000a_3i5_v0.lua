@@ -84,6 +84,6 @@ return {
     },
 
     storage = {
-        sd_card = { spi_id = 1, pin_cs = 20, speed = 2000000 },
+        sd_card = { spi_id = 1, pin_cs = 20, speed = 40000000 },
     },
 }
