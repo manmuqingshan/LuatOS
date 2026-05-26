@@ -471,6 +471,37 @@ static int l_audio_stop(lua_State *L) {
 }
 
 /*
+关闭音频驱动
+@api audio_v2.shutdown(driver_power_off, codec_power_off, pa_power_off, driver_probe_id)
+@boolean driver_power_off 是否关闭驱动，true关闭驱动，false不关闭驱动
+@boolean codec_power_off 是否关闭外部codec，true关闭外部codec，false不关闭外部codec
+@boolean pa_power_off 是否关闭pa，true关闭pa，false不关闭pa
+@int 驱动id，在不使用默认驱动时填写，绝大部分情况下都不需要填写。驱动id需要通过audio.make_probe_id合成
+@return nil
+@usage
+audio_v2.shutdown(true, true, true)
+@usage
+*/
+static int l_audio_shutdown(lua_State *L) {
+    uint8_t driver_power_off = lua_toboolean(L, 1);;
+    uint8_t codec_power_off = lua_toboolean(L, 2);
+    uint8_t pa_power_off = lua_toboolean(L, 3);
+    luat_audio_driver_probe_t driver_probe = {0};
+    driver_probe.probe_id = luaL_optinteger(L, 4, 0);
+    luat_audio_driver_ctrl_t *driver_ctrl = luat_audio_driver_probe(driver_probe.probe_id ? &driver_probe : NULL);
+    if (pa_power_off) {
+        luat_audio_driver_pa_power_off(driver_ctrl);
+    }
+    if (codec_power_off) {
+        luat_audio_driver_codec_power_off(driver_ctrl);
+    }
+    if (driver_power_off) {
+        luat_audio_driver_stop(driver_ctrl);
+        luat_audio_driver_deactivate(driver_ctrl);
+    }
+    return 0;
+}
+/*
 暂停播放文件或者tts对应的音频通道
 @api audio_v2.pause(request_index, pause)
 @int request_index 请求索引，通过audio.play_files或audio.tts返回
@@ -766,6 +797,7 @@ static const rotable_Reg_t reg_audio_v2[] =
     { "stream",			ROREG_FUNC(l_audio_stream)},
     { "record",			ROREG_FUNC(l_audio_record)},
     { "speech",			ROREG_FUNC(l_audio_speech)},
+    { "shutdown",			ROREG_FUNC(l_audio_shutdown)},
     { "get_play_info",		ROREG_FUNC(l_audio_get_play_info)},
     { "is_all_done",			ROREG_FUNC(l_audio_is_request_all_done)},
     { "soft_volume",			ROREG_FUNC(l_audio_soft_volume)},
