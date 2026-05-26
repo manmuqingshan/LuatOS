@@ -667,7 +667,35 @@ static int l_audio_print_probe_id(lua_State *L) {
         return 4;
     }
 }
-
+/*
+配置音频驱动的私有参数，采样率和数据位宽是通用参数，不能在这里配置
+@api audio_v2.config(config_param, config_value1, config_value2, driver_probe_id)
+@int config_param 驱动私有参数索引，见audio_v2.CFG_PARAM_xxx常量
+@int config_value1 驱动私有参数值1，见audio_v2.CFG_VALUE_xxx常量或者直接填写数值
+@int config_value2 驱动私有参数值2，见audio_v2.CFG_VALUE_xxx常量或者直接填写数值，通常情况下只需要1个参数，不需要填写config_value2
+@int driver_probe_id 驱动id，在不使用默认驱动时填写，绝大部分情况下都不需要填写。驱动id需要通过audio.make_probe_id合成
+@return boolean 成功返回true,否则返回false
+@usage
+audio_v2.config(audio_v2.CFG_PARAM_I2S_MODE, audio_v2.CFG_VALUE_I2S_MODE_I2S)
+audio_v2.config(audio_v2.CFG_PARAM_I2S_FRAME_BITS, 16)
+audio_v2.config(audio_v2.CFG_PARAM_I2S_CHANNEL_NUMS, 1)
+*/
+static int l_audio_config(lua_State *L) {
+    
+    luat_audio_driver_probe_t probe;
+    probe.probe_id = luaL_optinteger(L, 4, 0);
+    luat_audio_driver_ctrl_t *ctrl = luat_audio_driver_probe(probe.probe_id ? &probe : NULL);
+    if (!ctrl) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    uint32_t config_param = luaL_optinteger(L, 1, 0);
+    uint32_t config_value1 = luaL_optinteger(L, 2, 0);
+    uint32_t config_value2 = luaL_optinteger(L, 3, 0);
+    int ret = ctrl->opts->config_private_param(ctrl, config_param, config_value1, config_value2);
+    lua_pushboolean(L, !ret);
+    return 1;
+}
 /*
 配置音频驱动的pa电源控制
 @api audio_v2.config_pa_power_ctrl(pa_power_ctrl_enable, pa_power_pin, pa_power_on_level, pa_power_on_delay_time_ms, driver_probe_id)
@@ -798,6 +826,7 @@ static const rotable_Reg_t reg_audio_v2[] =
     { "record",			ROREG_FUNC(l_audio_record)},
     { "speech",			ROREG_FUNC(l_audio_speech)},
     { "shutdown",			ROREG_FUNC(l_audio_shutdown)},
+    { "config",			ROREG_FUNC(l_audio_config)},
     { "get_play_info",		ROREG_FUNC(l_audio_get_play_info)},
     { "is_all_done",			ROREG_FUNC(l_audio_is_request_all_done)},
     { "soft_volume",			ROREG_FUNC(l_audio_soft_volume)},
@@ -846,6 +875,25 @@ static const rotable_Reg_t reg_audio_v2[] =
     { "DATA_CODEC_TYPE_OPUS",			ROREG_INT(LUAT_AUDIO_DATA_CODEC_TYPE_OPUS)},
     //@const DATA_CODEC_TYPE_G711 number 编解码器类型G711
     { "DATA_CODEC_TYPE_G711",			ROREG_INT(LUAT_AUDIO_DATA_CODEC_TYPE_G711)},
+    //@const CONFIG_PARAM_I2S_MODE number 驱动私有参数的I2S模式
+    { "CFG_PARAM_I2S_MODE",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_PARAM_I2S_MODE)},
+    //@const CONFIG_PARAM_I2S_FRAME_BITS number 驱动私有参数的I2S帧位宽，需要和外部codec匹配
+    { "CFG_PARAM_I2S_FRAME_BITS",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_PARAM_I2S_FRAME_BITS)},
+    //@const CONFIG_PARAM_I2S_CHANNEL_NUMS number 驱动私有参数的I2S通道数，需要和外部codec匹配，codec本身有几个通道输出，这里就配置几个通道
+    { "CFG_PARAM_I2S_CHANNEL_NUMS",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_PARAM_I2S_CHANNEL_NUMS)},
+    //@const CONFIG_PARAM_DAC_BIT_WIDTH number 驱动私有参数的DAC位宽
+    { "CFG_PARAM_DAC_BIT_WIDTH",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_PARAM_DAC_BIT_WIDTH)},
+    //@const CONFIG_VALUE_I2S_MODE_I2S number 驱动私有参数的I2S模式可选值，I2S标准模式
+    { "CFG_VALUE_I2S_MODE_I2S",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_VALUE_I2S_MODE_I2S)},
+    //@const CONFIG_VALUE_I2S_MODE_LSB number 驱动私有参数的I2S模式可选值，LSB
+    { "CFG_VALUE_I2S_MODE_LSB",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_VALUE_I2S_MODE_LSB)},
+    //@const CONFIG_VALUE_I2S_MODE_MSB number 驱动私有参数的I2S模式可选值，MSB
+    { "CFG_VALUE_I2S_MODE_MSB",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_VALUE_I2S_MODE_MSB)},
+    //@const CONFIG_VALUE_I2S_MODE_PCMS number 驱动私有参数的I2S模式可选值，PCMS
+    { "CFG_VALUE_I2S_MODE_PCMS",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_VALUE_I2S_MODE_PCMS)},
+    //@const CONFIG_VALUE_I2S_MODE_PCML number 驱动私有参数的I2S模式可选值，PCML
+    { "CFG_VALUE_I2S_MODE_PCML",			ROREG_INT(LUAT_AUDIO_DRIVER_CONFIG_VALUE_I2S_MODE_PCML)},
+
 	{ NULL,            ROREG_INT(0)}
 };
 

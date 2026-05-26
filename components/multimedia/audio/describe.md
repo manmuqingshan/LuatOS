@@ -1065,6 +1065,55 @@ end)
 
 ---
 
+#### `audio_v2.input(request_index, data, is_end)`
+
+向流模式请求的输入 FIFO 推送音频数据。与 `stream` 搭配使用，在 `REQUEST_NEED_NEW_DATA` 回调中调用此函数将数据喂给解码器。
+
+**参数**：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `request_index` | int | 请求索引，由 `audio_v2.stream` 返回 |
+| `data` | string/zbuff | 要推送的音频数据。支持 Lua string 或 zbuff 对象 |
+| `is_end` | boolean | 可选。是否为最后一帧数据。`true` 表示数据发送完毕，解码器处理完剩余数据后将结束播放。默认 `false` |
+
+**返回值**：
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| 成功标志 | boolean | 成功返回 `true`，否则返回 `false`（请求不存在或未处于 busy 状态）|
+| write_len | int | 实际写入的字节数。FIFO 空间不足时可能小于传入数据长度 |
+| free_len | int | 输入 FIFO 剩余可用空间（字节）|
+
+**示例**：
+
+```lua
+-- 启动流播放
+local ok, req_id = audio_v2.stream(audio_v2.DATA_CODEC_TYPE_RAW, 16000, 16, 2, true)
+
+-- 在回调中写入数据
+audio_v2.on(function(request_index, event, param)
+    if request_index == req_id and event == audio_v2.REQUEST_NEED_NEW_DATA then
+        -- 从网络或其他来源获取音频数据写入 zbuff
+        local ok, written, free = audio_v2.input(req_id, zbuff_data)
+        log.info("input result", ok, written, free)
+    elseif event == audio_v2.REQUEST_END then
+        log.info("stream end")
+    end
+end)
+
+-- 发送最后一帧数据，通知解码结束
+audio_v2.input(req_id, last_data, true)
+```
+
+**注意**：
+- 必须在 `stream` 返回的 `request_index` 有效且请求处于 busy 状态时调用
+- 写入的数据量受 `org_input_data_fifo` 剩余空间限制（默认 16KB），超出部分将被截断
+- 使用 zbuff 传入时，写入成功后 zbuff 的 `used` 指针会自动前移（消耗已写数据）
+- 设置 `is_end = true` 后，解码器消费完 FIFO 中所有数据后会结束播放并触发 `REQUEST_END`
+
+---
+
 #### `audio_v2.stop(request_index)`
 
 停止正在播放的请求。
@@ -1140,6 +1189,67 @@ log.info("所有音频播放完成")
 - 此函数仅检查请求链表是否为空，判断依据是 `request_busy_list` 是否为空
 - 适用于简单场景，复杂场景建议在 `audio_v2.on` 回调中通过 `REQUEST_END` 事件精确判断
 - 存在竞态可能：两次调用之间可能有新请求加入，建议结合回调使用
+
+---
+
+#### `audio_v2.get_play_info(data, codec_id, pos)`
+
+从原始编码数据中解析音频播放信息（采样率、位宽、声道数等）。可用于在播放前预检音频文件属性，或手动解析编码数据的音频参数。
+
+**参数**：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `data` | string/zbuff | 输入编码数据，至少包含文件头部数据 |
+| `codec_id` | int | 解码器 ID，**必填**。指定使用的解码器类型，见 `DATA_CODEC_TYPE_*` 常量 |
+| `pos` | int | 当前输入数据在整个文件中的偏移位置（字节），通常为 0 |
+
+**返回值**：
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| no_error | boolean | `true` 表示无错误。还需检查后续 sample_rate 是否非 0，非 0 才表示成功获取信息 |
+| jump_offset | int | 需要跳转到的音频数据起始位置（字节）。解析到有效信息后应 seek 到此位置 |
+| need_len | int | 需要获取的数据长度。若本次未解析到有效信息但未返回错误，说明数据不足，需读取更多数据后重试 |
+| sample_rate | int | 采样率（Hz）。为 0 表示未获取到有效信息 |
+| data_bits | int | 数据位数（8/16/24/32）|
+| channel_nums | int | 声道数（1=Mono，2=Stereo）|
+| is_signed | boolean | 数据是否有符号 |
+
+**示例**：
+
+```lua
+-- 从文件头解析 WAV 音频信息
+local fp = io.open("/music.wav", "rb")
+if fp then
+    local head = fp:read(1024)  -- 读取头部数据
+    local ok, jump, need, rate, bits, ch, sig = audio_v2.get_play_info(head, audio_v2.DATA_CODEC_TYPE_WAV, 0)
+    if ok and rate > 0 then
+        log.info("WAV info", rate, bits, ch, sig)
+    end
+    fp:close()
+end
+
+-- 从 zbuff 解析 MP3 信息
+local buff = zbuff.create(4096)
+-- ... 填充 zbuff 数据 ...
+local ok, jump, need, rate, bits, ch, sig = audio_v2.get_play_info(buff, audio_v2.DATA_CODEC_TYPE_MP3, 0)
+```
+
+**注意**：
+- 此函数仅为信息查询，不启动播放
+- `sample_rate` 为 0 表示数据长度不足以完成解析，需读取更多数据后重试
+- 并非所有编解码器都支持 `get_play_info`（如 RAW 编解码器不支持）
+
+---
+
+#### `audio_v2.record()` — ⚠️ 待实现
+
+录音功能。当前版本暂未实现，声明为框架预留接口。
+
+#### `audio_v2.speech()` — ⚠️ 待实现
+
+通话（对讲）功能。当前版本暂未实现，声明为框架预留接口。
 
 ---
 
@@ -1382,6 +1492,58 @@ local tx_type, tx_id, rx_type, rx_id = audio_v2.print_probe_id(pid, false)
 
 ---
 
+#### `audio_v2.config(config_param, config_value1, config_value2, driver_probe_id)`
+
+配置音频驱动的私有参数。用于设置 I2S 模式、帧位宽、声道数等硬件接口参数。
+
+**参数**：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `config_param` | int | 驱动私有参数索引，见 `CFG_PARAM_*` 常量 |
+| `config_value1` | int | 参数值 1，见 `CFG_VALUE_*` 常量或直接填写数值 |
+| `config_value2` | int | 可选。参数值 2，通常情况下只需 1 个参数，无需填写 |
+| `driver_probe_id` | int | 可选。驱动 ID，不使用默认驱动时填写，详见 `make_probe_id` |
+
+**可配置参数一览**：
+
+| 参数常量 | 值 | 说明 | value1 取值 |
+|---------|-----|------|-------------|
+| `CFG_PARAM_I2S_MODE` | 0 | I2S 通信模式 | `CFG_VALUE_I2S_MODE_I2S`(0) / `LSB`(1) / `MSB`(2) / `PCMS`(3) / `PCML`(4) |
+| `CFG_PARAM_I2S_FRAME_BITS` | 1 | I2S 帧位宽，需与外部 CODEC 匹配 | 16 / 24 / 32 等 |
+| `CFG_PARAM_I2S_CHANNEL_NUMS` | 2 | I2S 通道数，需与外部 CODEC 匹配 | 1=Mono, 2=Stereo |
+| `CFG_PARAM_DAC_BIT_WIDTH` | 3 | DAC 位宽 | 8 / 16 / 24 / 32 |
+
+**返回值**：
+
+| 返回值 | 类型 | 说明 |
+|--------|------|------|
+| 成功标志 | boolean | 成功返回 `true`，否则返回 `false`（驱动未找到或驱动不支持该参数）|
+
+**示例**：
+
+```lua
+-- 配置 I2S0：标准 I2S 模式，16bit 帧位宽，单声道
+audio_v2.config(audio_v2.CFG_PARAM_I2S_MODE, audio_v2.CFG_VALUE_I2S_MODE_I2S)
+audio_v2.config(audio_v2.CFG_PARAM_I2S_FRAME_BITS, 16)
+audio_v2.config(audio_v2.CFG_PARAM_I2S_CHANNEL_NUMS, 1)
+
+-- 配置 DAC0：16bit 位宽
+audio_v2.config(audio_v2.CFG_PARAM_DAC_BIT_WIDTH, 16)
+
+-- 对指定驱动配置
+local pid = audio_v2.make_probe_id(audio_v2.DRIVER_TYPE_I2S, 0,
+                                   audio_v2.DRIVER_TYPE_I2S, 0)
+audio_v2.config(audio_v2.CFG_PARAM_I2S_MODE, audio_v2.CFG_VALUE_I2S_MODE_MSB, nil, pid)
+```
+
+**注意**：
+- 采样率和数据位宽是通用参数，在 `audio_v2.stream()` 中通过 `sample_rate / data_bits` 参数设置，不能通过此 API 配置
+- 不同驱动支持的可配置参数不同，具体取决于驱动实现
+- 应在 `play` / `stream` / `tts` 之前完成配置，播放过程中修改可能无效
+
+---
+
 #### `audio_v2.soft_volume(volume, driver_probe_id)`
 
 设置软件音量增益。通过软件算法调整音频输出音量，适用于需要额外音量放大或减小的场景。
@@ -1558,6 +1720,25 @@ audio_v2.shutdown(true, true, true, pid)
 | `audio_v2.DATA_CODEC_TYPE_OPUS` | 6 | OPUS 编解码器 |
 | `audio_v2.DATA_CODEC_TYPE_G711` | 7 | G711 编解码器 |
 
+#### 驱动私有参数常量（用于 `audio_v2.config` 的 `config_param`）
+
+| 常量名 | 值 | 说明 |
+|--------|-----|------|
+| `audio_v2.CFG_PARAM_I2S_MODE` | 0 | I2S 通信模式 |
+| `audio_v2.CFG_PARAM_I2S_FRAME_BITS` | 1 | I2S 帧位宽 |
+| `audio_v2.CFG_PARAM_I2S_CHANNEL_NUMS` | 2 | I2S 通道数 |
+| `audio_v2.CFG_PARAM_DAC_BIT_WIDTH` | 3 | DAC 位宽 |
+
+#### I2S 模式取值常量（用于 `audio_v2.config` 的 `config_value1`，配合 `CFG_PARAM_I2S_MODE`）
+
+| 常量名 | 值 | 说明 |
+|--------|-----|------|
+| `audio_v2.CFG_VALUE_I2S_MODE_I2S` | 0 | I2S 标准模式（飞利浦格式）|
+| `audio_v2.CFG_VALUE_I2S_MODE_LSB` | 1 | LSB 格式（左对齐）|
+| `audio_v2.CFG_VALUE_I2S_MODE_MSB` | 2 | MSB 格式（右对齐）|
+| `audio_v2.CFG_VALUE_I2S_MODE_PCMS` | 3 | PCM 短帧格式 |
+| `audio_v2.CFG_VALUE_I2S_MODE_PCML` | 4 | PCM 长帧格式 |
+
 ---
 
 ### 14.6 完整使用示例
@@ -1590,42 +1771,40 @@ audio_v2.tts("告警！", 200)
 -- 当高优先级播放结束后，低优先级自动恢复
 ```
 
-#### 全功能配置 + 播放
+#### I2S 驱动初始化 + 全功能播放
 
 ```lua
--- 1. 配置电源管理
+-- 1. 配置 I2S 驱动私有参数（在 play 之前完成）
+local pid = audio_v2.make_probe_id(audio_v2.DRIVER_TYPE_I2S, 0,
+                                   audio_v2.DRIVER_TYPE_I2S, 0)
+audio_v2.config(audio_v2.CFG_PARAM_I2S_MODE, audio_v2.CFG_VALUE_I2S_MODE_I2S, nil, pid)
+audio_v2.config(audio_v2.CFG_PARAM_I2S_FRAME_BITS, 16, nil, pid)
+audio_v2.config(audio_v2.CFG_PARAM_I2S_CHANNEL_NUMS, 2, nil, pid)
+
+-- 2. 配置电源管理
 audio_v2.config_pa_power_ctrl(true, 12, 1, 100)
 audio_v2.config_codec_power_ctrl(true, 11, 1, 200, 10)
 
--- 2. 设置软件音量（原始音量的 80%）
+-- 3. 设置软件音量（原始音量的 80%）
 audio_v2.soft_volume(80)
 
--- 3. 注册回调
+-- 4. 注册回调
 audio_v2.on(function(req_id, event, param)
     log.info("audio event", req_id, event, param)
 end)
 
--- 4. 连续播放列表
+-- 5. 连续播放列表
 local files = {"/intro.mp3", "/content.amr", "/outro.wav"}
 local ok, req_id = audio_v2.play(files, false, 50)
 
--- 5. 等待播放完成（简单轮询方式）
+-- 6. 等待播放完成（简单轮询方式）
 while not audio_v2.is_all_done() do
     sys.wait(200)
 end
 log.info("所有文件播放完成")
 
--- 6. 播放高优先级 TTS
-local ok, tts_id = audio_v2.tts("播放结束，感谢收听", 200)
-
--- 7. 暂停/恢复控制
-sys.wait(3000)
-audio_v2.pause(tts_id, true)   -- 暂停
-sys.wait(2000)
-audio_v2.pause(tts_id, false)  -- 恢复
-
--- 8. 停止
-audio_v2.stop(tts_id)
+-- 7. 关闭音频驱动（进入低功耗前）
+audio_v2.shutdown(true, true, true)
 ```
 
 #### 流模式播放
@@ -1636,8 +1815,12 @@ audio_v2.on(function(req_id, event, param)
     if event == audio_v2.REQUEST_START then
         log.info("stream start", req_id)
     elseif event == audio_v2.REQUEST_NEED_NEW_DATA then
-        -- 在这里推送 PCM 数据到 org_input_data_fifo
-        -- 例如从网络接收的音频数据写入 zbuff，再喂给解码器
+        -- 在回调中通过 audio_v2.input() 推送 PCM 数据
+        -- 例如从网络接收或实时生成的音频数据
+        local ok, written, free = audio_v2.input(req_id, pcm_zbuff)
+        if not ok then
+            log.warn("input failed")
+        end
     elseif event == audio_v2.REQUEST_END then
         log.info("stream end", req_id)
     end
@@ -1645,6 +1828,9 @@ end)
 
 -- 启动 16bit 16kHz 单声道 PCM 流
 local ok, req_id = audio_v2.stream(audio_v2.DATA_CODEC_TYPE_RAW, 16000, 16, 1, true, 0)
+
+-- 数据发送完毕后，标记结束
+audio_v2.input(req_id, last_data, true)
 ```
 
 #### 驱动查询
