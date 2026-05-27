@@ -261,6 +261,8 @@ local function on_sta_event(evt, data)
         sys.publish("WIFI_CONNECTED", data)
         -- 发布level=5表示"已连接AP，正在获取IP"，待IP_READY后由RSSI轮询更新为真实信号等级
         sys.publish("STATUS_WIFI_SIGNAL_UPDATED", 5)
+        -- 立即发布状态更新，让UI层在DHCP阶段就能显示"正在获取IP"
+        common.update_status(wifi_state, saved_config)
         last_connect = "CONNECTED"
         user_connect = false
         if update_timer then sys.timerStop(update_timer) end
