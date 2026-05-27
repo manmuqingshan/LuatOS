@@ -1506,6 +1506,23 @@ local function app_task(app_path)
         return -1
     end
 
+    -- libfota3 库（两步协议FOTA）
+    -- 禁止应用使用固件升级功能，阻断check/download/report_result
+    local libfota3_lib = safe_global("libfota3")
+    my_env.libfota3 = setmetatable({}, { __index = libfota3_lib })
+    my_env.libfota3.check = function(...)
+        my_env.log.error("libfota3", "沙箱环境不允许FOTA升级操作")
+        return nil, "禁止操作"
+    end
+    my_env.libfota3.download = function(...)
+        my_env.log.error("libfota3", "沙箱环境不允许FOTA升级操作")
+        return false, "禁止操作"
+    end
+    my_env.libfota3.report_result = function(...)
+        my_env.log.error("libfota3", "沙箱环境不允许FOTA升级操作")
+        return false, "禁止操作"
+    end
+
     -- pm 库
     -- 禁止应用控制系统电源管理，替换为错误提示
     local pm_lib = safe_global("pm")
