@@ -1154,6 +1154,13 @@ local function on_destroy()
     close_progress_dialog()
     if search_keyboard then search_keyboard:destroy() end
     if main_container then main_container:destroy() end
+
+    -- 复位搜索和分类状态，下次进入从默认开始
+    current_category = "全部"
+    current_sort = "recommend"
+    current_page = 1
+    current_query = ""
+    local_installed_info = {}
 end
 
 local function on_get_focus()

@@ -81,6 +81,7 @@ local function create_wifi_item(wifi_entry, index)
     local signal_pct = math.min(100, math.max(0, (wifi_entry.rssi or -100) + 100))
     local item_w = SCREEN_W - 2 * MARGIN - math.floor(20 * _G.density_scale)
     local is_connected = wifi_status and wifi_status.current_ssid == wifi_entry.ssid
+    local is_ready = wifi_status and wifi_status.ready
     local item = airui.container({
         parent = wifi_list_container,
         x = math.floor(10 * _G.density_scale), y = math.floor(10 * _G.density_scale) + (index - 1) * math.floor(75 * _G.density_scale),
@@ -113,13 +114,15 @@ local function create_wifi_item(wifi_entry, index)
         align = airui.TEXT_ALIGN_LEFT,
     })
     if is_connected then
+        local status_text = is_ready and "已连接" or "正在获取IP"
+        local status_color_val = is_ready and 0x4CAF50 or COLOR_ACCENT
         airui.label({
             parent = item,
             x = item_w - math.floor(80 * _G.density_scale), y = math.floor(17 * _G.density_scale),
             w = math.floor(70 * _G.density_scale), h = math.floor(30 * _G.density_scale),
-            text = "已连接",
+            text = status_text,
             font_size = math.floor(16 * _G.density_scale),
-            color = 0x4CAF50,
+            color = status_color_val,
             align = airui.TEXT_ALIGN_CENTER,
         })
     end
@@ -134,7 +137,7 @@ local function create_saved_item(saved_wifi, index, stx)
         w = item_w, h = math.floor(50 * _G.density_scale),
         color = COLOR_CARD, radius = 4,
         on_click = function()
-            if stx == "已连接" then
+            if stx == "已连接" or stx == "正在获取IP" then
                 sys.publish("OPEN_WIFI_DETAIL_WIN")
             else
                 sys.publish("OPEN_WIFI_CONNECT_WIN", saved_wifi, false)
@@ -150,7 +153,16 @@ local function create_saved_item(saved_wifi, index, stx)
         color = COLOR_TEXT,
         align = airui.TEXT_ALIGN_LEFT,
     })
-    local status_color = stx == "已连接" and 0x4CAF50 or (stx == "已配置" and COLOR_ACCENT or COLOR_PRIMARY)
+    local status_color
+    if stx == "已连接" then
+        status_color = 0x4CAF50
+    elseif stx == "正在获取IP" then
+        status_color = COLOR_ACCENT
+    elseif stx == "已配置" then
+        status_color = COLOR_ACCENT
+    else
+        status_color = COLOR_PRIMARY
+    end
     airui.label({
         parent = item,
         text = stx,
@@ -178,9 +190,15 @@ local function update_saved_list()
             if saved_config_wifi.ssid == saved_wifi.ssid then status_color = true; break end
         end
         if status_color or is_connected then
+            local status_text
+            if is_connected then
+                status_text = wifi_status.ready and "已连接" or "正在获取IP"
+            else
+                status_text = "可连接"
+            end
             table.insert(matched_list, {
                 wifi = saved_wifi,
-                status = is_connected and "已连接" or "可连接",
+                status = status_text,
                 is_connected = is_connected
             })
         end
@@ -408,7 +426,7 @@ local function on_connected(sid)
     if connecting_container then connecting_container:hide() end
     update_saved_list()
     update_wifi_list(current_scan_results)
-    airui.msgbox({ text = "WiFi 连接成功", buttons = { "确定" }, timeout = 3000, on_action = function(s) s:destroy() end })
+    airui.msgbox({ text = "WiFi已连接，正在获取IP...", buttons = { "确定" }, timeout = 3000, on_action = function(s) s:destroy() end })
 end
 
 local function on_disconnected(scan_results, code)

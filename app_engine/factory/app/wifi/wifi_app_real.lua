@@ -259,7 +259,8 @@ local function on_sta_event(evt, data)
         wifi_state.current_ssid = data
         wifi_state.connectivity_verified = false
         sys.publish("WIFI_CONNECTED", data)
-        sys.publish("STATUS_WIFI_SIGNAL_UPDATED", 3)
+        -- 发布level=5表示"已连接AP，正在获取IP"，待IP_READY后由RSSI轮询更新为真实信号等级
+        sys.publish("STATUS_WIFI_SIGNAL_UPDATED", 5)
         last_connect = "CONNECTED"
         user_connect = false
         if update_timer then sys.timerStop(update_timer) end
