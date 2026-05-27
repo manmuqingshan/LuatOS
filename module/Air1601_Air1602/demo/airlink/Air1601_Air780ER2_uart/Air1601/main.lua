@@ -5,11 +5,17 @@
 @date    2026.05.27
 @author  马梦阳
 @usage
-本demo演示的核心功能为：
-1. 初始化4G和WiFi网络连接。
-2. Air1601与对端设备进行数据交互。
-3. 自动切换网络连接模式。
-4. 通过HTTP GET请求测试网络连接情况。
+本demo通过AirLink UART模式实现Air1601外挂Air780ER2 4G模块联网功能。
+
+主要功能：
+1. 初始化看门狗
+2. 加载network_airlink模块，实现Air1601与Air780ER2的数据交互
+3. 定时发送数据给对端设备
+4. 通过HTTP GET请求测试网络连接
+
+使用说明：
+1. 配合Air780ER2端的airlink_uart_4g.lua使用
+2. 硬件连接：Air1601 UART3 <-> Air780ER2 UART2
 ]]
 
 --[[
