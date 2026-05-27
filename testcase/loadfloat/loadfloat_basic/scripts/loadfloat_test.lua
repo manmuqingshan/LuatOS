@@ -93,4 +93,71 @@ function loadfloat_tests.test_tonumber_long_float()
     log.info("loadfloat", "test_tonumber_long_float PASS, n=" .. tostring(n))
 end
 
+-- Test 8: load() with 20~30 char float (customer crash threshold on air1601)
+-- This is the minimal reproduction of the reported crash scenario.
+function loadfloat_tests.test_20to30_char_float_in_load()
+    -- 25-char mantissa - would crash at guard=32 but safe at guard=20
+    local s25 = "1." .. string.rep("1", 23)  -- 25 chars total
+    assert(#s25 == 25, "expected 25 char string, got " .. #s25)
+    local f, err = load("return " .. s25)
+    assert(f ~= nil, "load failed for 25-char float: " .. tostring(err))
+    local v = f()
+    assert(type(v) == "number", "type should be number")
+    assert(v > 1.0 and v < 2.0, "value out of range: " .. tostring(v))
+
+    -- 33-char mantissa (triggers L_MAXLENNUM_GUARD truncation)
+    local s33 = "1." .. string.rep("9", 31)  -- 33 chars total
+    assert(#s33 == 33, "expected 33 char string, got " .. #s33)
+    local f2, err2 = load("return " .. s33)
+    assert(f2 ~= nil, "load failed for 33-char float: " .. tostring(err2))
+    local v2 = f2()
+    assert(type(v2) == "number", "type should be number")
+    assert(v2 > 1.0 and v2 < 3.0, "value out of range: " .. tostring(v2))
+    log.info("loadfloat", "test_20to30_char_float_in_load PASS, s25=" .. tostring(v) .. " s33=" .. tostring(v2))
+end
+
+-- Test 10: exact customer literals that caused air1601 crash
+-- These are 22-char strings that would crash newlib-nano strtod on ARM Cortex-M7
+function loadfloat_tests.test_customer_crash_literals()
+    -- local PI = 3.14159265358979323846
+    local code_pi = "return 3.14159265358979323846"
+    assert(#"3.14159265358979323846" == 22, "PI literal should be 22 chars")
+    local f1, err1 = load(code_pi)
+    assert(f1 ~= nil, "load PI failed: " .. tostring(err1))
+    local pi = f1()
+    assert(type(pi) == "number", "PI should be number")
+    assert(pi > 3.14 and pi < 3.15, "PI out of range: " .. tostring(pi))
+
+    -- local EE = 0.00669342162296594323
+    local code_ee = "return 0.00669342162296594323"
+    assert(#"0.00669342162296594323" == 22, "EE literal should be 22 chars")
+    local f2, err2 = load(code_ee)
+    assert(f2 ~= nil, "load EE failed: " .. tostring(err2))
+    local ee = f2()
+    assert(type(ee) == "number", "EE should be number")
+    assert(ee > 0.006 and ee < 0.007, "EE out of range: " .. tostring(ee))
+
+    -- local EARTH_RADIUS = 6378245.0  (9 chars, short - should still work fine)
+    local f3, err3 = load("return 6378245.0")
+    assert(f3 ~= nil, "load EARTH_RADIUS failed: " .. tostring(err3))
+    local r = f3()
+    assert(r == 6378245.0, "EARTH_RADIUS wrong: " .. tostring(r))
+
+    log.info("loadfloat", "test_customer_crash_literals PASS pi=" .. tostring(pi) .. " ee=" .. tostring(ee) .. " r=" .. tostring(r))
+end
+
+-- Test 9: float with exponent where mantissa would be truncated (correctness check)
+function loadfloat_tests.test_truncated_mantissa_preserves_exponent()
+    -- "1." + 30 zeros + "e+10" = 35 chars total, triggers guard
+    -- After truncation: mantissa part + "e+10" preserved => ~1e10
+    local s = "1." .. string.rep("0", 30) .. "e+10"
+    assert(#s > 32, "test string should be longer than guard limit")
+    local f, err = load("return " .. s)
+    assert(f ~= nil, "load failed: " .. tostring(err))
+    local v = f()
+    assert(type(v) == "number", "type should be number")
+    assert(v > 9e9 and v < 2e10, "value should be ~1e10, got " .. tostring(v))
+    log.info("loadfloat", "test_truncated_mantissa_preserves_exponent PASS, v=" .. tostring(v))
+end
+
 return loadfloat_tests
