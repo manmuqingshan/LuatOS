@@ -289,6 +289,7 @@ static int luat_little_flash_mount(lua_State *L) {
             .filesystem = (char*)backend.filesystem,
             .mount_point = mount_point,
         };
+        LLOGD("vfs mount start %s fs %s offset %u size %u", mount_point, backend.filesystem, (unsigned int)offset, (unsigned int)maxsize);
         int ret = luat_fs_mount(&conf);
         LLOGD("vfs mount %s fs %s ret %d", mount_point, backend.filesystem, ret);
         lua_pushboolean(L, ret == 0);

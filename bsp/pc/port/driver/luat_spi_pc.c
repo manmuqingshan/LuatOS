@@ -27,9 +27,11 @@
 #define LUAT_PC_NAND_DEFAULT_SEED          (0x13572468u)
 #define LUAT_PC_NAND_PROFILE_DEFAULT       "dev"
 
-#define NAND_CMD_WRITE_STATUS              (0x01)
+#define NAND_CMD_WRITE_STATUS_LEGACY       (0x01)
+#define NAND_CMD_WRITE_STATUS              (0x1F)
 #define NAND_CMD_WRITE_DISABLE             (0x04)
-#define NAND_CMD_READ_STATUS               (0x05)
+#define NAND_CMD_READ_STATUS_LEGACY        (0x05)
+#define NAND_CMD_READ_STATUS               (0x0F)
 #define NAND_CMD_WRITE_ENABLE              (0x06)
 #define NAND_CMD_PAGE_PROG_DATA            (0x02)
 #define NAND_CMD_READ_DATA                 (0x03)
@@ -334,7 +336,8 @@ static int pc_vnand_transfer(pc_vnand_t* sim, const char* send_buf, size_t send_
                 }
             }
             return (int)recv_length;
-        case NAND_CMD_READ_STATUS: {
+        case NAND_CMD_READ_STATUS:
+        case NAND_CMD_READ_STATUS_LEGACY: {
             uint8_t addr = send_length >= 2 ? tx[1] : 0;
             if (rx && recv_length) {
                 rx[0] = pc_vnand_read_reg(sim, addr);
@@ -342,6 +345,7 @@ static int pc_vnand_transfer(pc_vnand_t* sim, const char* send_buf, size_t send_
             return (int)recv_length;
         }
         case NAND_CMD_WRITE_STATUS:
+        case NAND_CMD_WRITE_STATUS_LEGACY:
             if (send_length >= 3) {
                 pc_vnand_write_reg(sim, tx[1], tx[2]);
             } else if (send_length >= 2) {
