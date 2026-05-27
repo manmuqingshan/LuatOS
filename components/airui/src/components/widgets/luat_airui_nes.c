@@ -145,8 +145,11 @@ static int _nes_refresh_handler(lua_State *L, void *ptr) {
 
 static void _nes_task_entry(void *param) {
     nes_t *ctx = (nes_t *)param;
-    if (!ctx) return;
+    if (!ctx) {
+        while (1) { luat_rtos_task_sleep(1000); }
+    }
     nes_run(ctx);
+    while (1) { luat_rtos_task_sleep(1000); }
 }
 
 /* ========== 销毁 ========== */

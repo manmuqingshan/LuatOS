@@ -37,11 +37,14 @@ PROJECT：项目名，ascii string类型
 
   Engine 引擎主机系列:
   "Engine_Air8000W_4inch_320x480_000_V000"     → config/eng_8000w_4i_v0.lua     4寸SPI  ST7796  +4G+WiFi
+
+  "Engine_Air1602_7inch_1024x600_000_V000"     → config/eng_1602_7i_v0.lua     7寸RGB  HX8282  +WiFi
+  "Engine_Air1602_10inch1_1024x600_001_V000"   → config/eng_1602_10i_v0.lua    10寸RGB HX8282  +WiFi+蜂鸣器
   "Engine_Air1602_5inch_720x1280_002_V000"     → config/eng_1602_5i_v2.lua     5寸RGB  NV3052C +WiFi
   "Engine_Air1602_5inch_720x1280_003_V000"     → config/eng_1602_5i_v3.lua     5寸RGB  NV3052C +WiFi+NAND
-  "Engine_Air1602_7inch_1024x600_000_V000"     → config/eng_1602_7i_v0.lua     7寸RGB  HX8282  +WiFi
+  "Engine_Air1602_5inch_480x854_005_V000"       → config/eng_1602_5i_v5.lua     5寸RGB  ST7701S +WiFi+NAND
   "Engine_Air1602_7inch_1024x600_004_V000"     → config/eng_1602_7i_v4.lua     7寸RGB  HX8282  +WiFi+NAND
-  "Engine_Air1602_10inch1_1024x600_001_V000"   → config/eng_1602_10i_v0.lua    10寸RGB HX8282  +WiFi+蜂鸣器
+
 
   EVB turnkey 开发板系列:
   "EVB_Air8101_10inch1_1024x600_000_V010"      → config/evb_8101_10i_v1.lua    10寸RGB HX8282  +WiFi+SD
@@ -69,7 +72,7 @@ VERSION：项目版本号，ascii string类型
         如果不使用合宙iot.openluat.com进行远程升级，根据自己项目的需求，自定义格式即可
 ]]
 -- main.lua - 程序入口文件
-PROJECT = "Engine_Air1602_7inch_1024x600_004_V000"  -- 项目命名，映射到 config/ 下的配置文件和硬件参数
+PROJECT = "Engine_Air1602_5inch_480x854_005_V000"  -- 项目命名，映射到 config/ 下的配置文件和硬件参数
 VERSION = "001.999.006"                               -- 固件版本号，用于 FOTA 升级比对
 PROJECT_KEY = "vMzSTFa5YG3GBMdqR5hxrKXClkwWPnZp"    -- 项目密钥，FOTA 云端鉴权
 

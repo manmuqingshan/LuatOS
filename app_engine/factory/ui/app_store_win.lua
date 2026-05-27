@@ -335,10 +335,10 @@ local function show_status_toast(action, app_name)
         msg = "操作完成"
     end
     local toast_msg = airui.msgbox({
-        w = math.floor(screen_w * 0.7),
+        w = math.min(400, screen_w - 80),
         h = math.floor(screen_h * 0.25),
         style = { text_font_size = button_font_size },
-	title = "提示",
+        title = "提示",
         text = msg,
         buttons = { "确定" },
         timeout = 1000,
@@ -904,7 +904,7 @@ local function render_apps(apps, has_more_pages)
                 style = { bg_color = COLOR_PRIMARY, pressed_bg_color = COLOR_PRIMARY_DARK, text_color = COLOR_WHITE, radius = 16, border_width = 0 },
                 on_click = function()
                     local msg_box = airui.msgbox({
-                        w = math.floor(screen_w * 0.78),
+                        w = math.min(400, screen_w - 80),
                         h = math.floor(screen_h * 0.28),
                         style = { text_font_size = button_font_size },
                         title ="确认安装",
@@ -1081,8 +1081,8 @@ local function on_action_done(app_id, action, success)
             local_installed_info[key] = false
         end
 
-        -- 卸载后调整分页：如果当前页已空且非首页，回退一页
-        if action == "uninstall" and success then
+        -- 操作后调整分页：安装/卸载可能导致当前页超出总页数（如最后一页清空）
+        if success then
             if current_category == "已安装" then
                 local ia = exapp.list_installed()
                 local installed_cnt = 0
@@ -1104,7 +1104,7 @@ end
 local function on_error(error_msg)
     close_progress_dialog()
     local msg_box = airui.msgbox({
-        w = math.floor(screen_w * 0.78),
+        w = math.min(400, screen_w - 80),
         h = math.floor(screen_h * 0.28),
         style = { text_font_size = button_font_size },
         title = "错误",
@@ -1130,6 +1130,8 @@ local function on_create()
     sys.subscribe("APP_STORE_ICON_READY", on_icon_ready)
 
     sys.publish("APP_STORE_SYNC_INSTALLED")
+    -- 进入应用市场时重置存储校准，下次 get_app_list 重新读取各存储剩余空间
+    exapp.reset_storage_calibration()
     -- 立即请求列表（网络已就绪时马上加载）
     sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
     -- 网络未就绪时等IP_READY后再重试一次（避免首次进入需手动刷新）
@@ -1152,6 +1154,13 @@ local function on_destroy()
     close_progress_dialog()
     if search_keyboard then search_keyboard:destroy() end
     if main_container then main_container:destroy() end
+
+    -- 复位搜索和分类状态，下次进入从默认开始
+    current_category = "全部"
+    current_sort = "recommend"
+    current_page = 1
+    current_query = ""
+    local_installed_info = {}
 end
 
 local function on_get_focus()

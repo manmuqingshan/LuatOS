@@ -77,6 +77,6 @@ return {
     },
 
     storage = {
-        nand_flash = { spi_id = 2, pin_cs = 4, speed = 20000000, pin_pwr = 50 },
+        nand_flash = { spi_id = 2, pin_cs = 4, speed = 40000000, pin_pwr = 50 },
     },
 }
