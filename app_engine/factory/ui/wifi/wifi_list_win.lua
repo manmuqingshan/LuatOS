@@ -86,7 +86,8 @@ local function create_wifi_item(wifi_entry, index)
     if wifi_status then
         local status_bssid = wifi_status.bssid and wifi_status.bssid ~= "--" and wifi_status.bssid:lower():gsub("[^0-9a-f]", "")
         local entry_bssid = wifi_entry.bssid and wifi_entry.bssid:lower():gsub("[^0-9a-f]", "")
-        if status_bssid and status_bssid ~= "" and entry_bssid and entry_bssid ~= "" then
+        -- 有效BSSID归一化后应为12位十六进制串，短于12位视为无效（如airlink原始字节）
+        if status_bssid and #status_bssid >= 12 and entry_bssid and #entry_bssid >= 12 then
             is_connected = (status_bssid == entry_bssid)
         else
             is_connected = (wifi_status.current_ssid == wifi_entry.ssid)
