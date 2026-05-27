@@ -508,8 +508,16 @@ end
     - 触发垃圾回收
     - 检测内存泄漏（比较清理后内存与基准值）
 ]]
-local function sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
+local function sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base, sandbox_container)
     log.info("sandbox_cleanup", "start cleanup:", app_path)
+
+    -- 先销毁UI沙箱容器（会自动递归销毁所有子组件）
+    if sandbox_container then
+        local ok, err = pcall(sandbox_container.destroy, sandbox_container)
+        if not ok then
+            log.warn("sandbox_cleanup", "container destroy failed:", err)
+        end
+    end
 
     unsubscribe_all()
 
@@ -652,6 +660,10 @@ local function app_task(app_path)
         log = sandbox_log,
         package = { loaded = {} }
     }, { __index = _G })
+
+    -- UI沙箱容器：声明为nil，稍后在ctx初始化后用airui创建
+    -- 闭包会捕获此upvalue，创建后所有install_component都能访问到
+    local sandbox_container = nil
 
     -- ==============================================
     -- 创建沙箱专用的exapp对象
@@ -1634,6 +1646,23 @@ local function app_task(app_path)
 
     local ctx = init_context()
 
+    -- ==============================================
+    -- 创建UI沙箱主容器（100%透明，填满屏幕）
+    -- 所有app的顶层UI组件都会被重定向到这个容器内
+    -- ==============================================
+    sandbox_container = ui.container({
+        x = 0, y = 0,
+        w = ctx.screen_w, h = ctx.screen_h,
+        color = 0x000000, opa = 0,  -- 100%透明
+    })
+    if sandbox_container then
+        -- 用沙箱容器替换airui.screen，app中parent=airui.screen实际指向此容器
+        my_env.airui.screen = sandbox_container
+        my_env.log.info("exapp", "UI sandbox container created", ctx.screen_w, ctx.screen_h)
+    else
+        my_env.log.error("exapp", "failed to create UI sandbox container")
+    end
+
     local function scale_x_fn(v)
         if type(v) ~= "number" or not ctx.adapt_enabled then return v end
         local result = round_val(v * ctx.scale_x)
@@ -2110,6 +2139,12 @@ local function app_task(app_path)
         my_env.airui[component_name] = function(...)
             local args = {...}
             if type(args[1]) == "table" then
+                -- === UI沙箱：将顶层组件的parent重定向到沙箱容器 ===
+                -- parent为nil（未指定）或指向全局screen时，统一挂到sandbox_container下
+                -- 组件内部明确指定了父容器的（如嵌套container），保持原有parent不变
+                if sandbox_container and (args[1].parent == nil or args[1].parent == ui.screen) then
+                    args[1].parent = sandbox_container
+                end
                 -- 如果parent是包装对象，提取原始对象
                 if args[1].parent then
                     if type(args[1].parent) == "table" and args[1].parent.__raw then
@@ -2379,7 +2414,7 @@ local function app_task(app_path)
     -- 加载失败，记录错误并清理沙箱
     if not f then
         my_env.log.error("app_task", "failed to load main.lua:", err)
-        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
+        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base, sandbox_container)
         return
     end
 
@@ -2398,7 +2433,7 @@ local function app_task(app_path)
     -- 应用异常退出，执行清理
     if not ok then
         my_env.log.error("app_task", "app crashed, starting cleanup:", app_path, result)
-        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
+        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base, sandbox_container)
         return
     end
 
@@ -2407,7 +2442,7 @@ local function app_task(app_path)
     -- 等待应用关闭请求
     local ret, rdata = sys.waitUntil(app_path .."_close_req")
     if rdata == "yes" then
-        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
+        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base, sandbox_container)
         log.info("app co quit", app_path)
     end
 end
