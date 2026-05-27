@@ -9,7 +9,7 @@ static const little_flash_chipinfo_t little_flash_table[] = LITTLE_FLASH_CHIP_TA
 lf_err_t little_flash_write_status(const little_flash_t *lf, uint8_t address, uint8_t status){
     lf_err_t result = LF_ERR_OK;
     uint8_t cmd_data[3]={0};
-    cmd_data[0]=LF_CMD_WRITE_STATUS_REGISTER;
+    cmd_data[0]=lf->chip_info.type==LF_DRIVER_NOR_FLASH?LF_CMD_NORFLASH_WRITE_STATUS_REGISTER:LF_CMD_NANDFLASH_WRITE_STATUS_REGISTER;
     if (address){
         cmd_data[1]=address;
         cmd_data[2]=status;
@@ -23,7 +23,7 @@ lf_err_t little_flash_write_status(const little_flash_t *lf, uint8_t address, ui
 lf_err_t little_flash_read_status(const little_flash_t *lf, uint8_t address, uint8_t *status){
     lf_err_t result = LF_ERR_OK;
     uint8_t cmd_data[2]={0};
-    cmd_data[0]=LF_CMD_READ_STATUS_REGISTER;
+    cmd_data[0]=lf->chip_info.type==LF_DRIVER_NOR_FLASH?LF_CMD_NORFLASH_READ_STATUS_REGISTER:LF_CMD_NANDFLASH_READ_STATUS_REGISTER;
     if (address){
         cmd_data[1]=address;
     }
@@ -318,6 +318,19 @@ lf_err_t little_flash_device_deinit(little_flash_t *lf){
 
 lf_err_t little_flash_deinit(void){
     return LF_ERR_OK;
+}
+
+lf_err_t little_flash_powerdown_status(const little_flash_t *lf, uint8_t status){
+    if (status) {
+        lf_err_t result = little_flash_wait_busy(lf, 1000);
+        if (result) return result;
+        return lf->spi.transfer(lf, (uint8_t[]){LF_CMD_POWER_DOWN}, 1, LF_NULL, 0);
+    } else {
+        lf_err_t result = lf->spi.transfer(lf, (uint8_t[]){LF_CMD_RELEASE_POWER_DOWN, 0x00, 0x00, 0x00}, 4, LF_NULL, 0);
+        if (result) return result;
+        lf->wait_10us(3); /* tRES1 typical 3us, wait 30us to be safe */
+        return LF_ERR_OK;
+    }
 }
 
 static lf_err_t little_flash_cheak_erase(const little_flash_t *lf){
