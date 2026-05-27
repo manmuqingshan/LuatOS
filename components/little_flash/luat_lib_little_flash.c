@@ -212,21 +212,6 @@ typedef struct {
     const char* filesystem;
 } luat_lf_mount_backend_t;
 
-#ifdef LUAT_USE_LFS2_NAND_COMPONENT
-extern void* luat_fs_lfs2_nand_default_bus(void* flash, size_t offset, size_t maxsize);
-extern void luat_lfs2_nand_vfs_init(void);
-#else
-static void* luat_fs_lfs2_nand_default_bus(void* flash, size_t offset, size_t maxsize) {
-    (void)flash;
-    (void)offset;
-    (void)maxsize;
-    return NULL;
-}
-
-static void luat_lfs2_nand_vfs_init(void) {
-}
-#endif
-
 static void* luat_little_flash_default_bus(void* flash, size_t offset, size_t maxsize) {
     return flash_lfs_lf((little_flash_t*)flash, offset, maxsize);
 }
