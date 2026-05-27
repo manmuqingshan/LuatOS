@@ -79,6 +79,7 @@ local total_pages = 0
 local page_limit = 10
 local has_more = false
 local current_query = ""
+local request_category = current_category  -- 最后一次请求的分类，用于过滤过期响应
 
 -- 只保存UI状态，不保存业务数据
 local local_installed_info = {}
@@ -433,6 +434,7 @@ local function create_ui()
     local function publish_get_list()
         sync_search_text()
         current_query = search_text
+        request_category = current_category  -- 记录请求分类，用于过滤过期响应
         sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
     end
 
@@ -1004,6 +1006,10 @@ local function on_list_updated(apps, page_info)
             end
         end
         if #filtered == 0 then
+            -- 区分真空中与过期响应：原始apps非空但全部未安装 = 来自"全部"分类的过期HTTP响应
+            if #apps > 0 then
+                return  -- 丢弃过期响应
+            end
             render_apps({}, false)
             return
         end

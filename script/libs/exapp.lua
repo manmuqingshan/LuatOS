@@ -167,13 +167,13 @@ local storage_calibrated = false
 -- order: 默认优先级序号（越小越优先）
 local STORAGE_DEFS = {
     sd_tf        = { mount_point = "/sd/",          label = "外挂TF卡",     order = 1 },
-    little_flash = { mount_point = "/little_flash/", label = "外挂NOR Flash", order = 2 },
+    little_flash = { mount_point = "/little_flash/", label = "外挂NAND Flash", order = 2 },
     nand_flash   = { mount_point = "/little_flash/", label = "外挂NAND Flash",order = 3 },
     internal     = { mount_point = "/",              label = "内置文件系统", order = 4 },
 }
 
 -- 当前生效的存储优先级配置（type_key 数组，高优先级在前）
--- 默认值：TF > NOR Flash > NAND Flash > 内置
+-- 默认值：TF > NAND Flash > 内置
 local storage_priority = { "sd_tf", "little_flash", "nand_flash", "internal" }
 
 -- 存储介质可用状态（init 时探测）
@@ -584,6 +584,35 @@ local function copy_data_dir(src_dir, dst_dir)
             copy_data_dir(src_path .. "/", dst_path .. "/")
         else
             -- 读取源文件内容，写入目标文件
+            local data = io.readFile(src_path)
+            if data then
+                io.writeFile(dst_path, data)
+            else
+                log.warn("copy_data_dir", "cannot read:", src_path)
+            end
+        end
+    end
+    return true
+end
+
+-- 递归拷贝目录（用于更新时跨存储迁移data目录）
+local function copy_data_dir(src_dir, dst_dir)
+    if not io.dexist(src_dir) then return false end
+    if not io.dexist(dst_dir) then
+        local ok = io.mkdir(dst_dir)
+        if not ok then
+            log.warn("copy_data_dir", "cannot create dst dir:", dst_dir)
+            return false
+        end
+    end
+    local ret, list = io.lsdir(src_dir, 100, 0)
+    if not ret then return false end
+    for _, item in ipairs(list) do
+        local src_path = src_dir .. item.name
+        local dst_path = dst_dir .. item.name
+        if item.type == 1 then
+            copy_data_dir(src_path .. "/", dst_path .. "/")
+        else
             local data = io.readFile(src_path)
             if data then
                 io.writeFile(dst_path, data)
