@@ -405,6 +405,9 @@ target("luatos-lua")
     add_defines("LUAT_USE_LFS2_NAND_COMPONENT")
     add_includedirs(luatos.."components/luat_lfs2_nand",{public = true})
     add_files(luatos.."components/luat_lfs2_nand/**.c")
+    add_defines("LUAT_USE_PGFS_COMPONENT")
+    add_includedirs(luatos.."components/pgfs",{public = true})
+    add_files(luatos.."components/pgfs/**.c")
 
     -- 添加mreport
     -- add_includedirs(luatos.."components/mreport/include",{public = true})
