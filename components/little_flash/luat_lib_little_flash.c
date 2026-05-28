@@ -203,7 +203,7 @@ static int luat_little_flash_get_info(lua_State *L){
 
 #ifdef LUAT_USE_FS_VFS
 #include "luat_fs.h"
-#include "lfs.h"
+#include "luat_lfs2.h"
 #ifdef LUAT_USE_LFS2_NAND_COMPONENT
 #include "luat_lfs2_nand.h"
 #endif
@@ -211,7 +211,7 @@ static int luat_little_flash_get_info(lua_State *L){
 #include "luat_pgfs.h"
 #endif
 
-extern lfs_t* flash_lfs_lf(little_flash_t* flash, size_t offset, size_t maxsize);
+extern luat_lfs2_t* flash_lfs_lf(little_flash_t* flash, size_t offset, size_t maxsize);
 typedef struct {
     void* bus;
     const char* filesystem;
