@@ -156,6 +156,21 @@ function pgfs_tests.test_info_fast_path_and_rebuild()
 
 end
 
+function pgfs_tests.test_getc_line_read_path()
+    setup_flash()
+    local path = "/pgfs/getc_probe.txt"
+    assert(io.writeFile(path, "line1\nline2\n"), "prepare getc probe file failed")
+    local f = assert(io.open(path, "rb"), "open getc probe file failed")
+
+    local line1 = f:read("*l")
+    assert(line1 == "line1", "first line mismatch: " .. tostring(line1))
+    local line2 = f:read("*l")
+    assert(line2 == "line2", "second line mismatch: " .. tostring(line2))
+    local line3 = f:read("*l")
+    assert(line3 == nil, "expected nil on eof, got " .. tostring(line3))
+    assert(f:close(), "close getc probe file failed")
+end
+
 function pgfs_tests.test_directory_listing_and_existence()
     setup_flash()
 

@@ -768,6 +768,25 @@ size_t pgfs_file_read(pgfs_mount_ctx_t* ctx, void *ptr, size_t size, size_t nmem
     return size == 0 ? 0 : (take / size);
 }
 
+int pgfs_file_getc(pgfs_mount_ctx_t* ctx, FILE* stream) {
+    pgfs_file_t* f = (pgfs_file_t*)stream;
+    int ch = -1;
+    if (f == NULL || f->entry == NULL || !f->mode_read) {
+        return -1;
+    }
+    if (!pgfs_ctx_handle_valid(ctx, f->generation)) {
+        return -1;
+    }
+    if (f->pos >= f->entry->len) {
+        f->eof = 1;
+        return -1;
+    }
+    ch = (int)((uint8_t)f->entry->data[f->pos]);
+    f->pos++;
+    f->eof = (f->pos >= f->entry->len) ? 1 : 0;
+    return ch;
+}
+
 size_t pgfs_file_write(pgfs_mount_ctx_t* ctx, const void *ptr, size_t size, size_t nmemb, FILE *stream) {
     pgfs_file_t* f = (pgfs_file_t*)stream;
     size_t total = size * nmemb;
