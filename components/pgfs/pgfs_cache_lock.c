@@ -3,12 +3,22 @@
 #include "luat_mem.h"
 
 int pgfs_lock(pgfs_mount_ctx_t* ctx) {
-    (void)ctx;
+    if (ctx == NULL) {
+        return -1;
+    }
+    if (ctx->lock_mode == PGFS_LOCK_MODE_ON) {
+        ctx->stats.lock_acquire_count++;
+    }
+    else {
+        ctx->stats.lock_passthrough_count++;
+    }
     return 0;
 }
 
 int pgfs_unlock(pgfs_mount_ctx_t* ctx) {
-    (void)ctx;
+    if (ctx == NULL) {
+        return -1;
+    }
     return 0;
 }
 

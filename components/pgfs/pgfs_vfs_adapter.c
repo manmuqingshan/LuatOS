@@ -251,6 +251,55 @@ int luat_pgfs_info(const char *path, luat_fs_info_t *info) {
     return luat_fs_info(path, info);
 }
 
+static int pgfs_parse_on_off(const char* mode, int* out) {
+    if (mode == NULL || out == NULL) {
+        return -1;
+    }
+    if (strcmp(mode, "on") == 0) {
+        *out = 1;
+        return 0;
+    }
+    if (strcmp(mode, "off") == 0) {
+        *out = 0;
+        return 0;
+    }
+    return -1;
+}
+
+int pgfs_control_set_lock_mode(const char* mode) {
+    int enabled = 0;
+    if (pgfs_parse_on_off(mode, &enabled) != 0) {
+        return -1;
+    }
+    s_pgfs_ctx.lock_mode = enabled ? PGFS_LOCK_MODE_ON : PGFS_LOCK_MODE_OFF;
+    return 0;
+}
+
+int pgfs_control_inject_powercut_stage(const char* stage) {
+    if (stage == NULL) {
+        return -1;
+    }
+    if (strcmp(stage, "none") == 0) {
+        s_pgfs_ctx.inject_powercut_stage = PGFS_INJECT_POWERCUT_NONE;
+        return 0;
+    }
+    if (strcmp(stage, "before_checkpoint") == 0) {
+        s_pgfs_ctx.inject_powercut_stage = PGFS_INJECT_POWERCUT_BEFORE_CP;
+        return 0;
+    }
+    return -1;
+}
+
+int pgfs_control_inject_corrupt_latest_cp(int enable) {
+    s_pgfs_ctx.inject_corrupt_latest_cp = enable ? 1 : 0;
+    return 0;
+}
+
+int pgfs_control_inject_bad_block_once(int enable) {
+    s_pgfs_ctx.inject_bad_block_once = enable ? 1 : 0;
+    return 0;
+}
+
 #else
 
 const struct luat_vfs_filesystem vfs_fs_pgfs = {
@@ -289,6 +338,26 @@ int luat_pgfs_info(const char *path, luat_fs_info_t *info) {
     if (info != NULL) {
         memset(info, 0, sizeof(*info));
     }
+    return -1;
+}
+
+int pgfs_control_set_lock_mode(const char* mode) {
+    (void)mode;
+    return -1;
+}
+
+int pgfs_control_inject_powercut_stage(const char* stage) {
+    (void)stage;
+    return -1;
+}
+
+int pgfs_control_inject_corrupt_latest_cp(int enable) {
+    (void)enable;
+    return -1;
+}
+
+int pgfs_control_inject_bad_block_once(int enable) {
+    (void)enable;
     return -1;
 }
 

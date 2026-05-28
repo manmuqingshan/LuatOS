@@ -134,6 +134,11 @@ static int pgfs_append_data_record(pgfs_mount_ctx_t* ctx, pgfs_file_t* f) {
         ctx->flash_opts == NULL || ctx->flash_opts->write == NULL) {
         return -1;
     }
+    if (ctx->inject_bad_block_once) {
+        ctx->inject_bad_block_once = 0;
+        ctx->stats.badblock_inject_count++;
+        return -1;
+    }
     hdr.magic = PGFS_DATA_RECORD_MAGIC;
     hdr.path_len = (uint32_t)strlen(f->entry->path);
     hdr.data_len = (uint32_t)f->cache.len;
@@ -240,6 +245,12 @@ int pgfs_file_close(pgfs_mount_ctx_t* ctx, FILE* stream) {
             goto finish;
         }
         if (pgfs_apply_cache_to_entry(f) != 0) {
+            ret = -1;
+            goto finish;
+        }
+        if (ctx->inject_powercut_stage == PGFS_INJECT_POWERCUT_BEFORE_CP) {
+            ctx->inject_powercut_stage = PGFS_INJECT_POWERCUT_NONE;
+            ctx->stats.powercut_inject_count++;
             ret = -1;
             goto finish;
         }
@@ -368,4 +379,3 @@ int pgfs_file_flush(pgfs_mount_ctx_t* ctx, FILE* stream) {
 }
 
 #endif
-    uint32_t seg_id = 0;

@@ -21,5 +21,9 @@ int luat_pgfs_vfs_register(void);
 int luat_pgfs_mount(const char *mount_point, const pgfs_flash_opts_t *opts);
 int luat_pgfs_umount(const char *mount_point);
 int luat_pgfs_info(const char *path, luat_fs_info_t *info);
+int pgfs_control_set_lock_mode(const char* mode);
+int pgfs_control_inject_powercut_stage(const char* stage);
+int pgfs_control_inject_corrupt_latest_cp(int enable);
+int pgfs_control_inject_bad_block_once(int enable);
 
 #endif

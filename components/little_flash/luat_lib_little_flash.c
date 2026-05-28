@@ -317,6 +317,36 @@ static int luat_little_flash_mount(lua_State *L) {
     }
     return 1;
 }
+
+#ifdef LUAT_USE_PGFS_COMPONENT
+/*
+PGFS runtime control helper
+@api lf.pgfsctl(cmd, value)
+@string cmd lock_mode|powercut_stage|corrupt_latest_cp|bad_block_once
+@string/bool value value for command
+@return bool success
+*/
+static int luat_little_flash_pgfsctl(lua_State *L) {
+    const char* cmd = luaL_checkstring(L, 1);
+    int ret = -1;
+    if (strcmp(cmd, "lock_mode") == 0) {
+        const char* mode = luaL_checkstring(L, 2);
+        ret = pgfs_control_set_lock_mode(mode);
+    }
+    else if (strcmp(cmd, "powercut_stage") == 0) {
+        const char* stage = luaL_checkstring(L, 2);
+        ret = pgfs_control_inject_powercut_stage(stage);
+    }
+    else if (strcmp(cmd, "corrupt_latest_cp") == 0) {
+        ret = pgfs_control_inject_corrupt_latest_cp(lua_toboolean(L, 2));
+    }
+    else if (strcmp(cmd, "bad_block_once") == 0) {
+        ret = pgfs_control_inject_bad_block_once(lua_toboolean(L, 2));
+    }
+    lua_pushboolean(L, ret == 0);
+    return 1;
+}
+#endif
 #endif
 
 #include "rotable2.h"
@@ -331,6 +361,9 @@ static const rotable_Reg_t reg_little_flash[] =
     { "getInfo",        ROREG_FUNC(luat_little_flash_get_info)},
 #ifdef LUAT_USE_FS_VFS
     { "mount",          ROREG_FUNC(luat_little_flash_mount)},
+#ifdef LUAT_USE_PGFS_COMPONENT
+    { "pgfsctl",        ROREG_FUNC(luat_little_flash_pgfsctl)},
+#endif
 #endif
 	{ NULL,             ROREG_INT(0)}
 };

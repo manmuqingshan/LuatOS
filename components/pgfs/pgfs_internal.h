@@ -14,6 +14,10 @@
 #define PGFS_DATA_LOG_BASE_ADDR      0x4000u
 
 #define PGFS_CTRL_GET_GEOMETRY       1u
+#define PGFS_LOCK_MODE_OFF           0u
+#define PGFS_LOCK_MODE_ON            1u
+#define PGFS_INJECT_POWERCUT_NONE    0u
+#define PGFS_INJECT_POWERCUT_BEFORE_CP 1u
 
 #if defined(_MSC_VER)
 #pragma pack(push, 1)
@@ -57,15 +61,27 @@ typedef struct pgfs_flash_geometry {
     uint32_t prog_size;
 } pgfs_flash_geometry_t;
 
+typedef struct pgfs_diag_stats {
+    uint32_t lock_acquire_count;
+    uint32_t lock_passthrough_count;
+    uint32_t checkpoint_fallback_count;
+    uint32_t powercut_inject_count;
+    uint32_t badblock_inject_count;
+} pgfs_diag_stats_t;
+
 typedef struct pgfs_mount_ctx {
     int mounted;
     char mount_point[16];
     const pgfs_flash_opts_t *flash_opts;
     uint8_t checkpoint_loaded;
-    uint8_t reserved[3];
+    uint8_t lock_mode;
+    uint8_t inject_powercut_stage;
+    uint8_t inject_bad_block_once;
+    uint8_t inject_corrupt_latest_cp;
     pgfs_checkpoint_t checkpoint;
     uint32_t data_log_write_addr;
     uint32_t gc_next_seg_id;
+    pgfs_diag_stats_t stats;
 } pgfs_mount_ctx_t;
 
 typedef struct pgfs_file_cache {

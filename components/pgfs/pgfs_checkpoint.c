@@ -108,6 +108,7 @@ int pgfs_checkpoint_load(void* fs, pgfs_checkpoint_t* cp) {
     pgfs_superblock_t sb_b = {0};
     pgfs_superblock_t picked = {0};
     int prefer_b = 0;
+    int loaded = -1;
 
     if (ctx == NULL || cp == NULL) {
         return -1;
@@ -118,6 +119,19 @@ int pgfs_checkpoint_load(void* fs, pgfs_checkpoint_t* cp) {
     if (pgfs_flash_read(ctx, PGFS_SUPERBLOCK_B_ADDR, &sb_b, sizeof(sb_b)) != 0) {
         return -1;
     }
+    if (ctx->inject_corrupt_latest_cp) {
+        int valid_a = pgfs_superblock_valid(&sb_a);
+        int valid_b = pgfs_superblock_valid(&sb_b);
+        if (valid_a || valid_b) {
+            if (!valid_a || (valid_b && sb_b.seq >= sb_a.seq)) {
+                sb_b.magic = 0;
+            }
+            else {
+                sb_a.magic = 0;
+            }
+        }
+        ctx->inject_corrupt_latest_cp = 0;
+    }
 
     if (pgfs_pick_latest_valid_sb(&sb_a, &sb_b, &picked) != 0) {
         return -1;
@@ -127,21 +141,28 @@ int pgfs_checkpoint_load(void* fs, pgfs_checkpoint_t* cp) {
 
     if (prefer_b) {
         if (pgfs_load_checkpoint_by_sb(ctx, &sb_b, cp) == 0) {
-            return 0;
+            loaded = 0;
+            goto done;
         }
         if (pgfs_load_checkpoint_by_sb(ctx, &sb_a, cp) == 0) {
-            return 0;
+            ctx->stats.checkpoint_fallback_count++;
+            loaded = 0;
+            goto done;
         }
     }
     else {
         if (pgfs_load_checkpoint_by_sb(ctx, &sb_a, cp) == 0) {
-            return 0;
+            loaded = 0;
+            goto done;
         }
         if (pgfs_load_checkpoint_by_sb(ctx, &sb_b, cp) == 0) {
-            return 0;
+            ctx->stats.checkpoint_fallback_count++;
+            loaded = 0;
+            goto done;
         }
     }
-    return -1;
+done:
+    return loaded;
 }
 
 int pgfs_checkpoint_store_next(void* fs, const pgfs_checkpoint_t* current, pgfs_checkpoint_t* next) {
