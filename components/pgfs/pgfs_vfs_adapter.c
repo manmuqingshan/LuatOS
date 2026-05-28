@@ -64,6 +64,20 @@ const struct luat_vfs_filesystem vfs_fs_pgfs = {
     .fopts = {0},
 };
 
+void* pgfs_default_bus(void* flash, size_t offset, size_t maxsize) {
+    (void)offset;
+    (void)maxsize;
+    return flash;
+}
+
+void pgfs_vfs_init(void) {
+    static uint8_t inited = 0;
+    if (!inited) {
+        luat_pgfs_vfs_register();
+        inited = 1;
+    }
+}
+
 int luat_pgfs_vfs_register(void) {
     return luat_vfs_reg(&vfs_fs_pgfs);
 }
@@ -90,6 +104,18 @@ int luat_pgfs_umount(const char *mount_point) {
 
 int luat_pgfs_info(const char *path, luat_fs_info_t *info) {
     return luat_fs_info(path, info);
+}
+
+#else
+
+void* pgfs_default_bus(void* flash, size_t offset, size_t maxsize) {
+    (void)flash;
+    (void)offset;
+    (void)maxsize;
+    return NULL;
+}
+
+void pgfs_vfs_init(void) {
 }
 
 #endif

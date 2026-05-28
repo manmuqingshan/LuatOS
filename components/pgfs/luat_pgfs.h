@@ -15,6 +15,8 @@ typedef struct pgfs_flash_opts {
 
 extern const struct luat_vfs_filesystem vfs_fs_pgfs;
 
+void pgfs_vfs_init(void);
+void* pgfs_default_bus(void* flash, size_t offset, size_t maxsize);
 int luat_pgfs_vfs_register(void);
 int luat_pgfs_mount(const char *mount_point, const pgfs_flash_opts_t *opts);
 int luat_pgfs_umount(const char *mount_point);
