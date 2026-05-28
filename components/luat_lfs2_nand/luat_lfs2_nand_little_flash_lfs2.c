@@ -321,12 +321,18 @@ luat_lfs2_t* luat_lfs2_nand_flash_lfs_lf(little_flash_t* flash, size_t offset, s
     {
         err = luat_lfs2_format(lfs, luat_lfs2_cfg);
         LFS2_IO_TRACE_LOG("luat_lfs2_format %d",err);
-        if(err)
+        if(err) {
+            LLOGE("lfsn format failed err=%d offset=%u maxsize=%u block_count=%u",
+                  err, (unsigned int)offset, (unsigned int)maxsize, (unsigned int)luat_lfs2_cfg->block_count);
             goto fail;
+        }
         err = luat_lfs2_mount(lfs, luat_lfs2_cfg);
         LFS2_IO_TRACE_LOG("luat_lfs2_mount %d",err);
-        if(err)
+        if(err) {
+            LLOGE("lfsn remount failed err=%d offset=%u maxsize=%u block_count=%u",
+                  err, (unsigned int)offset, (unsigned int)maxsize, (unsigned int)luat_lfs2_cfg->block_count);
             goto fail;
+        }
     }
     return lfs;
 fail :

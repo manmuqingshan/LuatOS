@@ -489,6 +489,7 @@ static int luat_vfs_lfs2_nand_fexist(void* userdata, const char *filename) {
 static int luat_vfs_lfs2_nand_info(void* userdata, const char* path, luat_fs_info_t *conf) {
     luat_lfs2_t* fs = (luat_lfs2_t*)userdata;
     luat_lfs2_nand_space_meta_t meta = {0};
+    size_t fs_len = 0;
     (void)path;
     if (!fs || !conf) {
         return -1;
@@ -501,7 +502,12 @@ static int luat_vfs_lfs2_nand_info(void* userdata, const char* path, luat_fs_inf
         return -1;
     }
     memset(conf->filesystem, 0, sizeof(conf->filesystem));
-    memcpy(conf->filesystem, NAND_FS_NAME, sizeof(conf->filesystem) - 1);
+    fs_len = strlen(NAND_FS_NAME);
+    if (fs_len >= sizeof(conf->filesystem)) {
+        fs_len = sizeof(conf->filesystem) - 1;
+    }
+    memcpy(conf->filesystem, NAND_FS_NAME, fs_len);
+    conf->filesystem[fs_len] = 0;
     conf->type = 0;
     conf->total_block = meta.total;
     conf->block_used = meta.used;

@@ -198,6 +198,7 @@ const struct luat_vfs_filesystem vfs_fs_pgfs = {
 
 void* pgfs_default_bus(void* flash, size_t offset, size_t maxsize) {
 #ifdef LUAT_USE_LITTLE_FLASH
+    LLOGD("pgfs_default_bus offset=%u maxsize=%u", (unsigned int)offset, (unsigned int)maxsize);
     memset(&s_pgfs_lf_bus, 0, sizeof(s_pgfs_lf_bus));
     s_pgfs_lf_bus.flash = (little_flash_t*)flash;
     s_pgfs_lf_bus.offset = (uint32_t)offset;
