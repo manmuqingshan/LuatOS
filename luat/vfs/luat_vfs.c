@@ -38,12 +38,12 @@ int luat_vfs_init(void* params) {
 int luat_vfs_reg(const struct luat_vfs_filesystem* fs) {
     for (size_t i = 0; i < LUAT_VFS_FILESYSTEM_MAX; i++)
     {
+        if (vfs.fsList[i] == fs) {
+            return 0;
+        }
         if (vfs.fsList[i] == NULL) {
             vfs.fsList[i] = (struct luat_vfs_filesystem*)fs;
             //LLOGD("register fs %s", fs->name);
-            return 0;
-        }
-        if (vfs.fsList[i] == fs) {
             return 0;
         }
     }
