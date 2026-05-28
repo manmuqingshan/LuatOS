@@ -378,7 +378,9 @@ int luat_fs_dexist(const char *_DirName){
     }
     void* dir = mount->fs->opts.opendir(mount->userdata, _DirName + strlen(mount->prefix));
     // LLOGD("opendir dir:%p",dir);
-    mount->fs->opts.closedir(mount->userdata,dir);
+    if (dir != NULL && mount->fs->opts.closedir != NULL) {
+        mount->fs->opts.closedir(mount->userdata, dir);
+    }
     return dir == NULL ? 0 : 1;
 }
 

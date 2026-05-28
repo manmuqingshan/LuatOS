@@ -157,11 +157,49 @@ static int pgfs_test_lock_mode_counters(void) {
     return fail;
 }
 
+static int pgfs_test_directory_helpers(void) {
+    int fail = 0;
+    pgfs_mount_ctx_t ctx = {0};
+    luat_fs_dirent_t ents[4] = {0};
+    void* dir = NULL;
+
+    if (pgfs_dir_mkdir(&ctx, "selftest_docs") != 0) {
+        fail++;
+    }
+    if (pgfs_dir_mkdir(&ctx, "selftest_docs/manual") != 0) {
+        fail++;
+    }
+    dir = pgfs_dir_opendir(&ctx, "selftest_docs");
+    if (dir == NULL) {
+        fail++;
+    }
+    else {
+        pgfs_dir_closedir(&ctx, dir);
+    }
+    if (pgfs_dir_closedir(&ctx, NULL) != 0) {
+        fail++;
+    }
+    if (pgfs_dir_lsdir(&ctx, "selftest_docs", ents, 0, 4) != 1) {
+        fail++;
+    }
+    else if (strcmp(ents[0].d_name, "manual") != 0 || ents[0].d_type != 1) {
+        fail++;
+    }
+    if (pgfs_dir_rmdir(&ctx, "selftest_docs/manual") != 0) {
+        fail++;
+    }
+    if (pgfs_dir_rmdir(&ctx, "selftest_docs") != 0) {
+        fail++;
+    }
+    return fail;
+}
+
 int pgfs_run_c_layer_tests(void) {
     int fail = 0;
     fail += pgfs_test_pick_latest_valid_sb();
     fail += pgfs_test_checkpoint_roundtrip_and_fallback();
     fail += pgfs_test_lock_mode_counters();
+    fail += pgfs_test_directory_helpers();
     return fail == 0 ? 0 : -1;
 }
 

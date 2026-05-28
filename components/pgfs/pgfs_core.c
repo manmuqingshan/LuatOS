@@ -16,10 +16,361 @@ typedef struct pgfs_data_record_hdr {
 } pgfs_data_record_hdr_t;
 
 static pgfs_file_entry_t s_pgfs_files[PGFS_MAX_FILES];
+static pgfs_dir_entry_t s_pgfs_dirs[PGFS_MAX_DIRS];
 
 static uint32_t pgfs_crc32_calc(const void* data, size_t len) {
     return luat_crc32(data, (uint32_t)len, 0xFFFFFFFFu, 0);
 }
+
+static int pgfs_path_normalize(const char* in, char* out, size_t outlen) {
+    size_t len = 0;
+    if (in == NULL || out == NULL || outlen == 0) {
+        return -1;
+    }
+    while (*in == '/' || *in == '\\') {
+        in++;
+    }
+    while (*in != '\0') {
+        char c = *in++;
+        if (c == '\\') {
+            c = '/';
+        }
+        if (c == '/') {
+            while (*in == '/' || *in == '\\') {
+                in++;
+            }
+            if (len == 0 || out[len - 1] == '/') {
+                continue;
+            }
+            if (len + 1 >= outlen) {
+                return -1;
+            }
+            out[len++] = '/';
+            continue;
+        }
+        if (len + 1 >= outlen) {
+            return -1;
+        }
+        out[len++] = c;
+    }
+    while (len > 0 && out[len - 1] == '/') {
+        len--;
+    }
+    out[len] = '\0';
+    return 0;
+}
+
+static int pgfs_path_parent(const char* path, char* parent, size_t parentlen) {
+    const char* pos = NULL;
+    size_t len = 0;
+    if (path == NULL || parent == NULL || parentlen == 0) {
+        return -1;
+    }
+    pos = strrchr(path, '/');
+    if (pos == NULL) {
+        parent[0] = '\0';
+        return 0;
+    }
+    len = (size_t)(pos - path);
+    if (len >= parentlen) {
+        return -1;
+    }
+    memcpy(parent, path, len);
+    parent[len] = '\0';
+    return 0;
+}
+
+static int pgfs_path_child(const char* dir, const char* path, char* child, size_t childlen, int* is_dir) {
+    const char* cursor = NULL;
+    const char* slash = NULL;
+    size_t seg_len = 0;
+    size_t dir_len = 0;
+    if (dir == NULL || path == NULL) {
+        return -1;
+    }
+    dir_len = strlen(dir);
+    if (dir_len == 0) {
+        cursor = path;
+    }
+    else {
+        if (strncmp(path, dir, dir_len) != 0 || path[dir_len] != '/') {
+            return 0;
+        }
+        cursor = path + dir_len + 1;
+    }
+    if (*cursor == '\0') {
+        return 0;
+    }
+    slash = strchr(cursor, '/');
+    seg_len = slash ? (size_t)(slash - cursor) : strlen(cursor);
+    if (seg_len == 0) {
+        return 0;
+    }
+    if (child != NULL) {
+        if (seg_len >= childlen) {
+            return -1;
+        }
+        memcpy(child, cursor, seg_len);
+        child[seg_len] = '\0';
+    }
+    if (is_dir != NULL) {
+        *is_dir = slash != NULL ? 1 : 0;
+    }
+    return 1;
+}
+
+static pgfs_file_entry_t* pgfs_find_file_norm(const char* path) {
+    size_t i = 0;
+    for (i = 0; i < PGFS_MAX_FILES; i++) {
+        if (s_pgfs_files[i].used && strcmp(s_pgfs_files[i].path, path) == 0) {
+            return &s_pgfs_files[i];
+        }
+    }
+    return NULL;
+}
+
+static pgfs_dir_entry_t* pgfs_find_dir_norm(const char* path) {
+    size_t i = 0;
+    for (i = 0; i < PGFS_MAX_DIRS; i++) {
+        if (s_pgfs_dirs[i].used && strcmp(s_pgfs_dirs[i].path, path) == 0) {
+            return &s_pgfs_dirs[i];
+        }
+    }
+    return NULL;
+}
+
+static int pgfs_ctx_handle_valid(pgfs_mount_ctx_t* ctx, uint32_t generation) {
+    if (ctx == NULL) {
+        return 0;
+    }
+    return ctx->runtime_generation == generation;
+}
+
+static int pgfs_dir_has_descendant_norm(const char* path) {
+    size_t i = 0;
+    for (i = 0; i < PGFS_MAX_FILES; i++) {
+        if (!s_pgfs_files[i].used) {
+            continue;
+        }
+        if (path[0] == '\0' || (strncmp(s_pgfs_files[i].path, path, strlen(path)) == 0 && s_pgfs_files[i].path[strlen(path)] == '/')) {
+            return 1;
+        }
+    }
+    for (i = 0; i < PGFS_MAX_DIRS; i++) {
+        if (!s_pgfs_dirs[i].used) {
+            continue;
+        }
+        if (path[0] == '\0') {
+            if (s_pgfs_dirs[i].path[0] != '\0') {
+                return 1;
+            }
+            continue;
+        }
+        if (strncmp(s_pgfs_dirs[i].path, path, strlen(path)) == 0 && s_pgfs_dirs[i].path[strlen(path)] == '/') {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pgfs_dir_exists_norm(const char* path) {
+    if (path == NULL) {
+        return 0;
+    }
+    if (path[0] == '\0') {
+        return 1;
+    }
+    return pgfs_find_dir_norm(path) != NULL || pgfs_dir_has_descendant_norm(path);
+}
+
+static int pgfs_dir_find_free_slot(void) {
+    size_t i = 0;
+    for (i = 0; i < PGFS_MAX_DIRS; i++) {
+        if (!s_pgfs_dirs[i].used) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+static int pgfs_dir_store_norm(const char* path) {
+    pgfs_dir_entry_t* entry = NULL;
+    int slot = 0;
+    if (path == NULL || path[0] == '\0') {
+        return 0;
+    }
+    if (pgfs_find_file_norm(path) != NULL) {
+        return -1;
+    }
+    entry = pgfs_find_dir_norm(path);
+    if (entry != NULL) {
+        return 0;
+    }
+    slot = pgfs_dir_find_free_slot();
+    if (slot < 0) {
+        return -1;
+    }
+    memset(&s_pgfs_dirs[slot], 0, sizeof(s_pgfs_dirs[slot]));
+    s_pgfs_dirs[slot].used = 1;
+    memcpy(s_pgfs_dirs[slot].path, path, strlen(path) + 1);
+    return 0;
+}
+
+static int pgfs_dir_ensure_norm(const char* path) {
+    char current[sizeof(s_pgfs_dirs[0].path)] = {0};
+    size_t len = 0;
+    if (path == NULL) {
+        return -1;
+    }
+    if (path[0] == '\0') {
+        return 0;
+    }
+    len = strlen(path);
+    if (len >= sizeof(current)) {
+        return -1;
+    }
+    memcpy(current, path, len + 1);
+    for (size_t i = 0; i < len; i++) {
+        if (current[i] != '/') {
+            continue;
+        }
+        current[i] = '\0';
+        if (current[0] != '\0' && pgfs_dir_store_norm(current) != 0) {
+            return -1;
+        }
+        current[i] = '/';
+    }
+    return pgfs_dir_store_norm(current);
+}
+
+static int pgfs_dir_remove_norm(const char* path) {
+    pgfs_dir_entry_t* entry = NULL;
+    if (path == NULL || path[0] == '\0') {
+        return -1;
+    }
+    if (pgfs_dir_has_descendant_norm(path)) {
+        return -1;
+    }
+    entry = pgfs_find_dir_norm(path);
+    if (entry == NULL) {
+        return -1;
+    }
+    memset(entry, 0, sizeof(*entry));
+    return 0;
+}
+
+static int pgfs_dir_lsdir_norm(pgfs_mount_ctx_t* ctx, const char* path, luat_fs_dirent_t* ents, size_t offset, size_t len) {
+    size_t unique_count = 0;
+    size_t out = 0;
+    size_t i = 0;
+    size_t max_seen = PGFS_MAX_FILES + PGFS_MAX_DIRS;
+    char (*seen_names)[sizeof(((pgfs_dir_entry_t*)0)->path)] = NULL;
+    char norm[sizeof(s_pgfs_dirs[0].path)] = {0};
+    if (ctx == NULL || ents == NULL || len == 0 || path == NULL) {
+        return 0;
+    }
+    if (pgfs_path_normalize(path, norm, sizeof(norm)) != 0) {
+        return 0;
+    }
+    if (!pgfs_dir_exists_norm(norm)) {
+        return 0;
+    }
+    seen_names = (char (*)[sizeof(((pgfs_dir_entry_t*)0)->path)])luat_heap_malloc(max_seen * sizeof(*seen_names));
+    if (seen_names == NULL) {
+        return 0;
+    }
+    memset(seen_names, 0, max_seen * sizeof(*seen_names));
+    for (i = 0; i < PGFS_MAX_DIRS; i++) {
+        char child[sizeof(s_pgfs_dirs[0].path)] = {0};
+        int child_is_dir = 1;
+        if (!s_pgfs_dirs[i].used) {
+            continue;
+        }
+        if (strcmp(s_pgfs_dirs[i].path, norm) == 0) {
+            continue;
+        }
+        if (pgfs_path_child(norm, s_pgfs_dirs[i].path, child, sizeof(child), &child_is_dir) <= 0 || child[0] == '\0') {
+            continue;
+        }
+        if (child_is_dir != 1) {
+            child_is_dir = 1;
+        }
+        if (unique_count > 0) {
+            size_t j = 0;
+            int duplicate = 0;
+            for (j = 0; j < unique_count; j++) {
+                if (strcmp(seen_names[j], child) == 0) {
+                    duplicate = 1;
+                    break;
+                }
+            }
+            if (duplicate) {
+                continue;
+            }
+        }
+        if (unique_count >= max_seen) {
+            break;
+        }
+        memcpy(seen_names[unique_count], child, strlen(child) + 1);
+        unique_count++;
+        if (unique_count <= offset) {
+            continue;
+        }
+        if (out < len) {
+            memset(&ents[out], 0, sizeof(ents[out]));
+            ents[out].d_type = 1;
+            memcpy(ents[out].d_name, child, strlen(child) + 1);
+            out++;
+        }
+    }
+    for (i = 0; i < PGFS_MAX_FILES; i++) {
+        char child[sizeof(s_pgfs_dirs[0].path)] = {0};
+        int child_is_dir = 0;
+        if (!s_pgfs_files[i].used) {
+            continue;
+        }
+        if (strcmp(s_pgfs_files[i].path, norm) == 0) {
+            continue;
+        }
+        if (pgfs_path_child(norm, s_pgfs_files[i].path, child, sizeof(child), &child_is_dir) <= 0 || child[0] == '\0') {
+            continue;
+        }
+        if (unique_count > 0) {
+            size_t j = 0;
+            int duplicate = 0;
+            for (j = 0; j < unique_count; j++) {
+                if (strcmp(seen_names[j], child) == 0) {
+                    duplicate = 1;
+                    break;
+                }
+            }
+            if (duplicate) {
+                continue;
+            }
+        }
+        if (unique_count >= max_seen) {
+            break;
+        }
+        memcpy(seen_names[unique_count], child, strlen(child) + 1);
+        unique_count++;
+        if (unique_count <= offset) {
+            continue;
+        }
+        if (out < len) {
+            memset(&ents[out], 0, sizeof(ents[out]));
+            ents[out].d_type = child_is_dir ? 1 : 0;
+            memcpy(ents[out].d_name, child, strlen(child) + 1);
+            out++;
+        }
+    }
+    luat_heap_free(seen_names);
+    return (int)out;
+}
+
+typedef struct pgfs_dir_handle {
+    uint32_t generation;
+    char path[sizeof(s_pgfs_dirs[0].path)];
+} pgfs_dir_handle_t;
 
 static int pgfs_mode_is_write(const char* mode) {
     return mode && (strchr(mode, 'w') || strchr(mode, 'a') || strchr(mode, '+'));
@@ -42,19 +393,15 @@ static int pgfs_path_copy(char* out, size_t outlen, const char* in) {
     return 0;
 }
 
-static pgfs_file_entry_t* pgfs_find_file(const char* path) {
-    size_t i = 0;
-    for (i = 0; i < PGFS_MAX_FILES; i++) {
-        if (s_pgfs_files[i].used && strcmp(s_pgfs_files[i].path, path) == 0) {
-            return &s_pgfs_files[i];
-        }
-    }
-    return NULL;
-}
-
 static pgfs_file_entry_t* pgfs_alloc_file(const char* path) {
     size_t i = 0;
-    pgfs_file_entry_t* e = pgfs_find_file(path);
+    if (path == NULL || path[0] == '\0') {
+        return NULL;
+    }
+    if (pgfs_dir_exists_norm(path)) {
+        return NULL;
+    }
+    pgfs_file_entry_t* e = pgfs_find_file_norm(path);
     if (e) {
         return e;
     }
@@ -80,15 +427,22 @@ void pgfs_file_reset_all(void) {
         }
         memset(&s_pgfs_files[i], 0, sizeof(s_pgfs_files[i]));
     }
+    for (i = 0; i < PGFS_MAX_DIRS; i++) {
+        memset(&s_pgfs_dirs[i], 0, sizeof(s_pgfs_dirs[i]));
+    }
 }
 
 int pgfs_file_remove(pgfs_mount_ctx_t* ctx, const char *filename) {
     pgfs_file_entry_t* e = NULL;
+    char norm[sizeof(s_pgfs_files[0].path)] = {0};
     (void)ctx;
     if (filename == NULL) {
         return -1;
     }
-    e = pgfs_find_file(filename);
+    if (pgfs_path_normalize(filename, norm, sizeof(norm)) != 0 || norm[0] == '\0') {
+        return -1;
+    }
+    e = pgfs_find_file_norm(norm);
     if (e == NULL) {
         return -1;
     }
@@ -193,13 +547,28 @@ static int pgfs_apply_cache_to_entry(pgfs_file_t* f) {
 FILE* pgfs_file_open(pgfs_mount_ctx_t* ctx, const char *filename, const char *mode) {
     pgfs_file_t* f = NULL;
     pgfs_file_entry_t* e = NULL;
+    char norm[sizeof(s_pgfs_files[0].path)] = {0};
+    char parent[sizeof(s_pgfs_dirs[0].path)] = {0};
     if (ctx == NULL || filename == NULL || mode == NULL) {
         return NULL;
     }
     if (pgfs_lock(ctx) != 0) {
         return NULL;
     }
-    e = pgfs_mode_is_write(mode) ? pgfs_alloc_file(filename) : pgfs_find_file(filename);
+    if (pgfs_path_normalize(filename, norm, sizeof(norm)) != 0 || norm[0] == '\0') {
+        pgfs_unlock(ctx);
+        return NULL;
+    }
+    if (pgfs_mode_is_write(mode)) {
+        if (pgfs_path_parent(norm, parent, sizeof(parent)) != 0 || pgfs_dir_ensure_norm(parent) != 0) {
+            pgfs_unlock(ctx);
+            return NULL;
+        }
+        e = pgfs_alloc_file(norm);
+    }
+    else {
+        e = pgfs_find_file_norm(norm);
+    }
     if (e == NULL) {
         pgfs_unlock(ctx);
         return NULL;
@@ -212,6 +581,7 @@ FILE* pgfs_file_open(pgfs_mount_ctx_t* ctx, const char *filename, const char *mo
     memset(f, 0, sizeof(*f));
     f->ctx = ctx;
     f->entry = e;
+    f->generation = ctx->runtime_generation;
     f->mode_write = (uint8_t)pgfs_mode_is_write(mode);
     f->mode_read = (uint8_t)pgfs_mode_is_read(mode);
     f->pos = 0;
@@ -229,6 +599,14 @@ int pgfs_file_close(pgfs_mount_ctx_t* ctx, FILE* stream) {
     if (ctx == NULL || f == NULL) {
         return -1;
     }
+    if (!pgfs_ctx_handle_valid(ctx, f->generation)) {
+        if (f->cache.data) {
+            luat_heap_free(f->cache.data);
+        }
+        luat_heap_free(f);
+        return -1;
+    }
+
     if (pgfs_lock(ctx) != 0) {
         return -1;
     }
@@ -270,6 +648,102 @@ finish:
     return ret;
 }
 
+int pgfs_dir_mkdir(pgfs_mount_ctx_t* ctx, const char *path) {
+    char norm[sizeof(s_pgfs_dirs[0].path)] = {0};
+    int ret = 0;
+    if (path == NULL) {
+        return -1;
+    }
+    if (pgfs_path_normalize(path, norm, sizeof(norm)) != 0) {
+        return -1;
+    }
+    if (ctx != NULL && pgfs_lock(ctx) != 0) {
+        return -1;
+    }
+    ret = pgfs_dir_ensure_norm(norm);
+    if (ctx != NULL) {
+        pgfs_unlock(ctx);
+    }
+    return ret;
+}
+
+int pgfs_dir_rmdir(pgfs_mount_ctx_t* ctx, const char *path) {
+    char norm[sizeof(s_pgfs_dirs[0].path)] = {0};
+    int ret = -1;
+    if (path == NULL) {
+        return -1;
+    }
+    if (pgfs_path_normalize(path, norm, sizeof(norm)) != 0) {
+        return -1;
+    }
+    if (ctx != NULL && pgfs_lock(ctx) != 0) {
+        return -1;
+    }
+    ret = pgfs_dir_remove_norm(norm);
+    if (ctx != NULL) {
+        pgfs_unlock(ctx);
+    }
+    return ret;
+}
+
+int pgfs_dir_lsdir(pgfs_mount_ctx_t* ctx, const char *path, luat_fs_dirent_t* ents, size_t offset, size_t len) {
+    int ret = 0;
+    if (ctx != NULL && pgfs_lock(ctx) != 0) {
+        return 0;
+    }
+    ret = pgfs_dir_lsdir_norm(ctx, path, ents, offset, len);
+    if (ctx != NULL) {
+        pgfs_unlock(ctx);
+    }
+    return ret;
+}
+
+void* pgfs_dir_opendir(pgfs_mount_ctx_t* ctx, const char *path) {
+    pgfs_dir_handle_t* dir = NULL;
+    char norm[sizeof(s_pgfs_dirs[0].path)] = {0};
+    if (path == NULL) {
+        return NULL;
+    }
+    if (pgfs_path_normalize(path, norm, sizeof(norm)) != 0) {
+        return NULL;
+    }
+    if (ctx != NULL && pgfs_lock(ctx) != 0) {
+        return NULL;
+    }
+    if (!pgfs_dir_exists_norm(norm)) {
+        if (ctx != NULL) {
+            pgfs_unlock(ctx);
+        }
+        return NULL;
+    }
+    dir = (pgfs_dir_handle_t*)luat_heap_malloc(sizeof(pgfs_dir_handle_t));
+    if (dir == NULL) {
+        if (ctx != NULL) {
+            pgfs_unlock(ctx);
+        }
+        return NULL;
+    }
+    memset(dir, 0, sizeof(*dir));
+    dir->generation = ctx != NULL ? ctx->runtime_generation : 0;
+    memcpy(dir->path, norm, strlen(norm) + 1);
+    if (ctx != NULL) {
+        pgfs_unlock(ctx);
+    }
+    return dir;
+}
+
+int pgfs_dir_closedir(pgfs_mount_ctx_t* ctx, void* dir) {
+    pgfs_dir_handle_t* handle = (pgfs_dir_handle_t*)dir;
+    if (dir != NULL) {
+        if (ctx != NULL && handle != NULL && handle->generation != ctx->runtime_generation) {
+            luat_heap_free(dir);
+            return -1;
+        }
+        luat_heap_free(dir);
+    }
+    return 0;
+}
+
 size_t pgfs_file_read(pgfs_mount_ctx_t* ctx, void *ptr, size_t size, size_t nmemb, FILE *stream) {
     pgfs_file_t* f = (pgfs_file_t*)stream;
     size_t want = size * nmemb;
@@ -277,6 +751,9 @@ size_t pgfs_file_read(pgfs_mount_ctx_t* ctx, void *ptr, size_t size, size_t nmem
     size_t take = 0;
     (void)ctx;
     if (ptr == NULL || f == NULL || f->entry == NULL || !f->mode_read || size == 0 || nmemb == 0) {
+        return 0;
+    }
+    if (!pgfs_ctx_handle_valid(ctx, f->generation)) {
         return 0;
     }
     if (f->pos >= f->entry->len) {
@@ -298,6 +775,9 @@ size_t pgfs_file_write(pgfs_mount_ctx_t* ctx, const void *ptr, size_t size, size
     if (f == NULL || ptr == NULL || !f->mode_write || size == 0 || nmemb == 0) {
         return 0;
     }
+    if (!pgfs_ctx_handle_valid(ctx, f->generation)) {
+        return 0;
+    }
     if (pgfs_cache_append(f, (const uint8_t*)ptr, total) != 0) {
         return 0;
     }
@@ -311,6 +791,9 @@ int pgfs_file_seek(pgfs_mount_ctx_t* ctx, FILE* stream, long int offset, int ori
     size_t npos = 0;
     (void)ctx;
     if (f == NULL || f->entry == NULL) {
+        return -1;
+    }
+    if (!pgfs_ctx_handle_valid(ctx, f->generation)) {
         return -1;
     }
     if (origin == SEEK_SET) {
@@ -343,24 +826,36 @@ int pgfs_file_tell(pgfs_mount_ctx_t* ctx, FILE* stream) {
     if (f == NULL) {
         return -1;
     }
+    if (!pgfs_ctx_handle_valid(ctx, f->generation)) {
+        return -1;
+    }
     return (int)f->pos;
 }
 
 int pgfs_file_eof(pgfs_mount_ctx_t* ctx, FILE* stream) {
     pgfs_file_t* f = (pgfs_file_t*)stream;
     (void)ctx;
+    if (!pgfs_ctx_handle_valid(ctx, f ? f->generation : 0)) {
+        return 1;
+    }
     return f ? f->eof : 1;
 }
 
 int pgfs_file_error(pgfs_mount_ctx_t* ctx, FILE* stream) {
     pgfs_file_t* f = (pgfs_file_t*)stream;
     (void)ctx;
+    if (!pgfs_ctx_handle_valid(ctx, f ? f->generation : 0)) {
+        return 1;
+    }
     return f ? f->err : 1;
 }
 
 int pgfs_file_flush(pgfs_mount_ctx_t* ctx, FILE* stream) {
     pgfs_file_t* f = (pgfs_file_t*)stream;
     if (ctx == NULL || f == NULL) {
+        return -1;
+    }
+    if (!pgfs_ctx_handle_valid(ctx, f->generation)) {
         return -1;
     }
     if (!f->mode_write) {

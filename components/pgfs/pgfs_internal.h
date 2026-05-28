@@ -12,6 +12,7 @@
 #define PGFS_CHECKPOINT_A_ADDR       0x2000u
 #define PGFS_CHECKPOINT_B_ADDR       0x3000u
 #define PGFS_DATA_LOG_BASE_ADDR      0x4000u
+#define PGFS_MAX_DIRS                256u
 
 #define PGFS_CTRL_GET_GEOMETRY       1u
 #define PGFS_LOCK_MODE_OFF           0u
@@ -73,6 +74,7 @@ typedef struct pgfs_mount_ctx {
     int mounted;
     char mount_point[16];
     const pgfs_flash_opts_t *flash_opts;
+    uint32_t runtime_generation;
     uint8_t checkpoint_loaded;
     uint8_t lock_mode;
     uint8_t inject_powercut_stage;
@@ -99,10 +101,17 @@ typedef struct pgfs_file_entry {
     size_t cap;
 } pgfs_file_entry_t;
 
+typedef struct pgfs_dir_entry {
+    uint8_t used;
+    uint8_t reserved[3];
+    char path[96];
+} pgfs_dir_entry_t;
+
 typedef struct pgfs_file {
     pgfs_mount_ctx_t *ctx;
     pgfs_file_entry_t *entry;
     size_t pos;
+    uint32_t generation;
     uint8_t mode_write;
     uint8_t mode_read;
     uint8_t eof;
@@ -138,6 +147,11 @@ int pgfs_file_error(pgfs_mount_ctx_t* ctx, FILE* stream);
 int pgfs_file_flush(pgfs_mount_ctx_t* ctx, FILE* stream);
 void pgfs_file_reset_all(void);
 int pgfs_file_remove(pgfs_mount_ctx_t* ctx, const char *filename);
+int pgfs_dir_mkdir(pgfs_mount_ctx_t* ctx, const char *path);
+int pgfs_dir_rmdir(pgfs_mount_ctx_t* ctx, const char *path);
+int pgfs_dir_lsdir(pgfs_mount_ctx_t* ctx, const char *path, luat_fs_dirent_t* ents, size_t offset, size_t len);
+void* pgfs_dir_opendir(pgfs_mount_ctx_t* ctx, const char *path);
+int pgfs_dir_closedir(pgfs_mount_ctx_t* ctx, void* dir);
 
 typedef struct pgfs_seg_summary {
     uint32_t live_bytes;

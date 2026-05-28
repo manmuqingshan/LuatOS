@@ -21,6 +21,7 @@ local function setup_flash()
         assert(s_flash, "lf.init failed")
     end
     assert(lf.erase(s_flash, 0, PGFS_ERASE_LEN), "lf.erase failed")
+    assert(lf.pgfsctl("reset_runtime"), "pgfs reset_runtime failed")
     if not s_mounted then
         assert(lf.mount(s_flash, "/pgfs/", 0, 0, "pgfs"), "pgfs mount failed")
         s_mounted = true
@@ -142,6 +143,7 @@ function pgfs_tests.test_info_fast_path_and_rebuild()
     local _, flash = setup_flash()
 
     assert(io.writeFile("/pgfs/info_probe.txt", "ok"), "write probe failed")
+    sys.wait(30)
     local ok1, total1 = fs.fsstat("/pgfs/")
     assert(ok1, "first fsstat failed")
     assert(total1 and total1 > 0, "first fsstat total should be >0")
@@ -151,6 +153,58 @@ function pgfs_tests.test_info_fast_path_and_rebuild()
     assert(ok2, "second fsstat should rebuild and pass")
     assert(total2 and total2 > 0, "second fsstat total should be >0")
 
+end
+
+function pgfs_tests.test_directory_listing_and_existence()
+    setup_flash()
+
+    local root_dir = "/pgfs/folder_vars"
+    local nested_dir = root_dir .. "/vars"
+    local nested_file = nested_dir .. "/config.txt"
+
+    assert(io.mkdir(root_dir), "mkdir root_dir failed")
+    assert(io.mkdir(nested_dir), "mkdir nested_dir failed")
+    assert(io.writeFile(nested_file, "alpha"), "write nested_file failed")
+
+    assert(io.dexist("/pgfs/"), "mount root should exist")
+    assert(io.dexist(root_dir), "root_dir should exist")
+    assert(io.dexist(nested_dir), "nested_dir should exist")
+    assert(not io.dexist(root_dir .. "/missing"), "missing dir should not exist")
+    assert(not io.dexist(nested_file), "file path should not be treated as directory")
+
+    local ok_root, root_entries = io.lsdir("/pgfs/")
+    assert(ok_root and type(root_entries) == "table", "lsdir /pgfs/ failed")
+    local found_root = false
+    for _, item in ipairs(root_entries) do
+        if item.name == "folder_vars" and item.type == 1 then
+            found_root = true
+        end
+    end
+    assert(found_root, "root listing missing folder_vars")
+
+    local ok_nested, nested_entries = io.lsdir(root_dir)
+    assert(ok_nested and type(nested_entries) == "table", "lsdir root_dir failed")
+    local found_nested = false
+    for _, item in ipairs(nested_entries) do
+        if item.name == "vars" and item.type == 1 then
+            found_nested = true
+        end
+    end
+    assert(found_nested, "nested listing missing vars")
+
+    local ok_vars, vars_entries = io.lsdir(nested_dir)
+    assert(ok_vars and type(vars_entries) == "table", "lsdir nested_dir failed")
+    local found_file = false
+    for _, item in ipairs(vars_entries) do
+        if item.name == "config.txt" and item.type == 0 then
+            found_file = true
+        end
+    end
+    assert(found_file, "nested listing missing config.txt")
+
+    assert(os.remove(nested_file), "remove nested file failed")
+    assert(io.rmdir(nested_dir), "remove nested dir failed")
+    assert(io.rmdir(root_dir), "remove root dir failed")
 end
 
 return pgfs_tests
