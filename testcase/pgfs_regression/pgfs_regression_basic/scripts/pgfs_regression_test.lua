@@ -51,4 +51,20 @@ function pgfs_regression.test_lock_mode_toggle()
     assert(io.readFile("/pgfs/lock_off.txt") == "off", "lock off file mismatch")
 end
 
+function pgfs_regression.test_write_close_performance_trace()
+    setup_flash()
+    local loops = 120
+    local payload = string.rep("P", 1024)
+    local start_tick = mcu.ticks()
+    for i = 1, loops do
+        local ok = io.writeFile("/pgfs/perf_" .. i .. ".bin", payload)
+        assert(ok, "write failed at " .. i)
+    end
+    local elapsed_ms = mcu.ticks() - start_tick
+    local avg_ms = elapsed_ms / loops
+    local trace_total_stall_us = elapsed_ms * 1000
+    log.info("pgfs_perf", string.format("trace_total_stall_us=%d loops=%d elapsed_ms=%d avg_ms=%.2f", trace_total_stall_us, loops, elapsed_ms, avg_ms))
+    assert(elapsed_ms < 20000, "pgfs perf regression: elapsed_ms=" .. elapsed_ms)
+end
+
 return pgfs_regression
