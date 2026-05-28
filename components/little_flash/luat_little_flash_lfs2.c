@@ -13,6 +13,17 @@
 #include "luat_lfs2.h"
 #include "little_flash.h"
 
+#ifndef LUAT_LFS2_IO_TRACE_LOG
+#define LUAT_LFS2_IO_TRACE_LOG 0
+#endif
+
+#ifndef LUAT_LFS2_IO_PROFILE_LOG
+#define LUAT_LFS2_IO_PROFILE_LOG 0
+#endif
+
+#define LFS2_IO_TRACE_LOG(...)   do { if (LUAT_LFS2_IO_TRACE_LOG) { LLOGD(__VA_ARGS__); } } while (0)
+#define LFS2_IO_PROFILE_LOG(...) do { if (LUAT_LFS2_IO_PROFILE_LOG) { LLOGD(__VA_ARGS__); } } while (0)
+
 static size_t lf_offset = 0;
 #define LFS2_IO_SLOW_US (5000u)
 
@@ -66,13 +77,13 @@ static void luat_lfs2_trace_io(uint32_t op, luat_lfs2_block_t block, luat_lfs2_o
         return;
     }
     if (op == LUAT_LFS2_IO_ERASE || cost_us >= LFS2_IO_SLOW_US) {
-        LLOGD("LFS2_TRACE_IO op=%s block=%u off=%u bytes=%u ret=%d cost_us=%llu",
-              op_name[op],
-              (unsigned int)block,
-              (unsigned int)off,
-              (unsigned int)bytes,
-              ret,
-              (unsigned long long)cost_us);
+        LFS2_IO_TRACE_LOG("LFS2_TRACE_IO op=%s block=%u off=%u bytes=%u ret=%d cost_us=%llu",
+                          op_name[op],
+                          (unsigned int)block,
+                          (unsigned int)off,
+                          (unsigned int)bytes,
+                          ret,
+                          (unsigned long long)cost_us);
     }
 }
 
@@ -89,13 +100,13 @@ void luat_lfs2_block_profile_log(const char* prefix) {
         if (st->calls == 0) {
             continue;
         }
-        LLOGD("%s op=%s calls=%llu bytes=%llu total_us=%llu max_us=%llu slow_calls=%llu",
-              p, op_name[i],
-              (unsigned long long)st->calls,
-              (unsigned long long)st->bytes,
-              (unsigned long long)st->total_us,
-              (unsigned long long)st->max_us,
-              (unsigned long long)st->slow_calls);
+        LFS2_IO_PROFILE_LOG("%s op=%s calls=%llu bytes=%llu total_us=%llu max_us=%llu slow_calls=%llu",
+                            p, op_name[i],
+                            (unsigned long long)st->calls,
+                            (unsigned long long)st->bytes,
+                            (unsigned long long)st->total_us,
+                            (unsigned long long)st->max_us,
+                            (unsigned long long)st->slow_calls);
     }
 }
 
@@ -300,20 +311,20 @@ luat_lfs2_t* flash_lfs_lf(little_flash_t* flash, size_t offset, size_t maxsize) 
     // LLOGD("erase_size %d", flash->chip_info.erase_size);
 
     // ------
-    LLOGD("flash_lfs_lf mount begin offset=%u maxsize=%u block_size=%u block_count=%u cache=%u lookahead=%u",
-          (unsigned int)offset, (unsigned int)maxsize,
-          (unsigned int)luat_lfs2_cfg->block_size, (unsigned int)luat_lfs2_cfg->block_count,
-          (unsigned int)luat_lfs2_cfg->cache_size, (unsigned int)luat_lfs2_cfg->lookahead_size);
+    LFS2_IO_TRACE_LOG("flash_lfs_lf mount begin offset=%u maxsize=%u block_size=%u block_count=%u cache=%u lookahead=%u",
+                      (unsigned int)offset, (unsigned int)maxsize,
+                      (unsigned int)luat_lfs2_cfg->block_size, (unsigned int)luat_lfs2_cfg->block_count,
+                      (unsigned int)luat_lfs2_cfg->cache_size, (unsigned int)luat_lfs2_cfg->lookahead_size);
     int err = luat_lfs2_mount(lfs, luat_lfs2_cfg);
-    LLOGD("luat_lfs2_mount %d",err);
+    LFS2_IO_TRACE_LOG("luat_lfs2_mount %d",err);
     if (err)
     {
         err = luat_lfs2_format(lfs, luat_lfs2_cfg);
-        LLOGD("luat_lfs2_format %d",err);
+        LFS2_IO_TRACE_LOG("luat_lfs2_format %d",err);
         if(err)
             goto fail;
         err = luat_lfs2_mount(lfs, luat_lfs2_cfg);
-        LLOGD("luat_lfs2_mount %d",err);
+        LFS2_IO_TRACE_LOG("luat_lfs2_mount %d",err);
         if(err)
             goto fail;
     }

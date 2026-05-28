@@ -14,6 +14,12 @@
 
 #include "luat_lfs2.h"
 
+#ifndef LUAT_LFS2N_CORE_TRACE_LOG
+#define LUAT_LFS2N_CORE_TRACE_LOG 0
+#endif
+
+#define LFS2N_CORE_TRACE(...) do { if (LUAT_LFS2N_CORE_TRACE_LOG) { LLOGD(__VA_ARGS__); } } while (0)
+
 #define LFS2_TRACE_SLOW_US (5000u)
 
 static uint64_t luat_vfs_lfs2_nand_base_now_us(void) {
@@ -104,7 +110,7 @@ int luat_vfs_lfs2_nand_base_fclose(void* userdata, FILE* stream) {
     int ret = luat_lfs2_file_close(fs, file);
     uint64_t cost_us = luat_vfs_lfs2_nand_base_now_us() - start_us;
     if (cost_us >= LFS2_TRACE_SLOW_US || ret < 0) {
-        LLOGD("LFS2_TRACE_FCLOSE ret=%d cost_us=%llu", ret, (unsigned long long)cost_us);
+        LFS2N_CORE_TRACE("LFS2_TRACE_FCLOSE ret=%d cost_us=%llu", ret, (unsigned long long)cost_us);
     }
     if (file != NULL)
         luat_heap_free(file);
@@ -145,8 +151,8 @@ size_t luat_vfs_lfs2_nand_base_fwrite(void* userdata, const void *ptr, size_t si
     ret = luat_lfs2_file_write(fs, file, ptr, total);
     cost_us = luat_vfs_lfs2_nand_base_now_us() - start_us;
     if (cost_us >= LFS2_TRACE_SLOW_US || ret < 0) {
-        LLOGD("LFS2_TRACE_FWRITE req=%u ret=%d flags=0x%08X cost_us=%llu",
-              (unsigned int)total, ret, file->flags, (unsigned long long)cost_us);
+        LFS2N_CORE_TRACE("LFS2_TRACE_FWRITE req=%u ret=%d flags=0x%08X cost_us=%llu",
+                         (unsigned int)total, ret, file->flags, (unsigned long long)cost_us);
     }
     return ret < 0 ? 0 : ret;
 }
@@ -158,8 +164,8 @@ int luat_vfs_lfs2_nand_base_fflush(void* userdata, FILE *stream) {
     int ret = luat_lfs2_file_sync(fs, file);
     uint64_t cost_us = luat_vfs_lfs2_nand_base_now_us() - start_us;
     if (cost_us >= LFS2_TRACE_SLOW_US || ret < 0) {
-        LLOGD("LFS2_TRACE_FFLUSH ret=%d flags=0x%08X cost_us=%llu",
-              ret, file->flags, (unsigned long long)cost_us);
+        LFS2N_CORE_TRACE("LFS2_TRACE_FFLUSH ret=%d flags=0x%08X cost_us=%llu",
+                         ret, file->flags, (unsigned long long)cost_us);
     }
     return ret < 0 ? 0 : ret;
 }

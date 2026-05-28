@@ -2,6 +2,8 @@ local M = {}
 local mounted_lfs2n = false
 local mounted_spi_dev = nil
 local mounted_lfdev = nil
+local LFS2N_DEBUG_LOG_ENABLED = false
+local LFS2N_PERF_LOG_ENABLED = false
 
 local BASELINE_INPUTS = {
     chunk_size = 4096,
@@ -43,6 +45,18 @@ end
 local function now_wall_ms()
     -- Use monotonic ticks-based timing; os.time() granularity/drift can distort short-path wall metrics.
     return us_to_ms(now_us())
+end
+
+local function lfs2n_debug_log(...)
+    if LFS2N_DEBUG_LOG_ENABLED then
+        log.info(...)
+    end
+end
+
+local function lfs2n_perf_log(...)
+    if LFS2N_PERF_LOG_ENABLED then
+        log.info(...)
+    end
 end
 
 local function get_lfs2n_baseline_inputs()
@@ -131,10 +145,10 @@ function M.test_lfs2n_mount()
     assert(ok == true and type(entries) == "table", "lsdir /lfs2n failed")
     assert(mount_wall_ms < baseline.mount_timeout_ms, "mount timeout risk ms=" .. tostring(mount_wall_ms))
     if mount_wall_ms >= baseline.mount_slow_warn_ms then
-        log.info("LFS2N_MOUNT_SLOW_WARN", mount_wall_ms)
+        lfs2n_perf_log("LFS2N_MOUNT_SLOW_WARN", mount_wall_ms)
     end
-    log.info("LFS2N_MOUNT_INFO", "lsdir_ok entries=" .. tostring(#entries))
-    log.info("LFS2N_BASELINE_MOUNT_MS", mount_wall_ms)
+    lfs2n_debug_log("LFS2N_MOUNT_INFO", "lsdir_ok entries=" .. tostring(#entries))
+    lfs2n_perf_log("LFS2N_BASELINE_MOUNT_MS", mount_wall_ms)
 end
 
 function M.test_lfs2n_write_performance()
@@ -143,12 +157,12 @@ function M.test_lfs2n_write_performance()
     local cost_ms, wall_cost_ms = run_baseline_write_perf_case(baseline)
     assert(wall_cost_ms < baseline.write_timeout_ms, "write timeout risk ms=" .. tostring(wall_cost_ms))
     if wall_cost_ms >= baseline.write_slow_warn_ms then
-        log.info("LFS2N_WRITE_SLOW_WARN", wall_cost_ms)
+        lfs2n_perf_log("LFS2N_WRITE_SLOW_WARN", wall_cost_ms)
     end
-    log.info("LFS2N_WRITE_MS", cost_ms)
-    log.info("LFS2N_BASELINE_WRITE_PURE_WALL_MS", wall_cost_ms)
-    log.info("LFS2N_METRIC", "LFS2N_BASELINE_WRITE_PURE_WALL_MS", wall_cost_ms)
-    log.info("LFS2N_BASELINE_WRITE_WALL_MS", wall_cost_ms)
+    lfs2n_perf_log("LFS2N_WRITE_MS", cost_ms)
+    lfs2n_perf_log("LFS2N_BASELINE_WRITE_PURE_WALL_MS", wall_cost_ms)
+    lfs2n_perf_log("LFS2N_METRIC", "LFS2N_BASELINE_WRITE_PURE_WALL_MS", wall_cost_ms)
+    lfs2n_perf_log("LFS2N_BASELINE_WRITE_WALL_MS", wall_cost_ms)
 end
 
 function M.test_lfs2n_write_cache_limit_overflow_behavior()
@@ -170,7 +184,7 @@ function M.test_lfs2n_write_cache_limit_overflow_behavior()
     assert(#read_back == loops * chunk_size, "cache overflow readback size mismatch")
     assert(read_back:sub(1, 1) == "C", "cache overflow content head mismatch")
     assert(read_back:sub(-1) == "C", "cache overflow content tail mismatch")
-    log.info("LFS2N_CACHE_OVERFLOW_TEST", "bytes=" .. tostring(#read_back) .. " hard_cap=" .. tostring(baseline.write_cache_hard_cap_bytes))
+    lfs2n_debug_log("LFS2N_CACHE_OVERFLOW_TEST", "bytes=" .. tostring(#read_back) .. " hard_cap=" .. tostring(baseline.write_cache_hard_cap_bytes))
     os.remove(path)
 end
 
@@ -178,7 +192,7 @@ function M.test_lfs2n_unzip_if_fixture_exists()
     mount_lfs2n()
     local zip_file = "/luadb/pac_man.zip"
     if not io.exists(zip_file) then
-        log.info("LFS2N_UNZIP_SKIP", "missing " .. zip_file)
+        lfs2n_debug_log("LFS2N_UNZIP_SKIP", "missing " .. zip_file)
         return
     end
     local target = "/lfs2n/"
@@ -187,7 +201,7 @@ function M.test_lfs2n_unzip_if_fixture_exists()
     local ok = miniz.unzip(zip_file, target, true, timeout.unzip_ms)
     local cost_ms = us_to_ms(now_us() - t0)
     assert(ok == true, "miniz.unzip to /lfs2n failed")
-    log.info("LFS2N_UNZIP_MS", cost_ms)
+    lfs2n_perf_log("LFS2N_UNZIP_MS", cost_ms)
 end
 
 function M.test_lfs2n_baseline_bottleneck_inputs()
@@ -228,11 +242,11 @@ function M.test_lfs2n_forcepath_trigger_boundaries()
         local path = string.format("/lfs2n/lfs2n_forcepath_case_%d.bin", idx)
         local flush_mode = run_forcepath_trigger_case(path, payload .. tostring(idx), wait_ms)
         total_wait_ms = total_wait_ms + wait_ms
-        log.info("LFS2N_FORCE_TRIGGER_CASE", "idx=" .. tostring(idx) .. " wait_ms=" .. tostring(wait_ms) .. " flush=" .. flush_mode)
+        lfs2n_debug_log("LFS2N_FORCE_TRIGGER_CASE", "idx=" .. tostring(idx) .. " wait_ms=" .. tostring(wait_ms) .. " flush=" .. flush_mode)
     end
     local wall_ms = us_to_ms(now_us() - t0)
-    log.info("LFS2N_FORCE_TRIGGER_TOTAL_WAIT", total_wait_ms)
-    log.info("LFS2N_FORCE_TRIGGER_DIAG_WALL", wall_ms)
+    lfs2n_perf_log("LFS2N_FORCE_TRIGGER_TOTAL_WAIT", total_wait_ms)
+    lfs2n_perf_log("LFS2N_FORCE_TRIGGER_DIAG_WALL", wall_ms)
 end
 
 return M

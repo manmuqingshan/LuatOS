@@ -11,6 +11,17 @@
 
 #ifdef LUAT_USE_FS_VFS
 
+#ifndef LUAT_LFS2N_DEBUG_LOG
+#define LUAT_LFS2N_DEBUG_LOG 0
+#endif
+
+#ifndef LUAT_LFS2N_PERF_LOG
+#define LUAT_LFS2N_PERF_LOG 0
+#endif
+
+#define LFS2N_DEBUG_LOG(...) do { if (LUAT_LFS2N_DEBUG_LOG) { LLOGD(__VA_ARGS__); } } while (0)
+#define LFS2N_PERF_LOG(...)  do { if (LUAT_LFS2N_PERF_LOG)  { LLOGD(__VA_ARGS__); } } while (0)
+
 #define NAND_FS_NAME "lfs2_nand"
 #define LFS2_NAND_META_SLOT0 ".lfs2_nand_space.meta0"
 #define LFS2_NAND_META_SLOT1 ".lfs2_nand_space.meta1"
@@ -84,7 +95,7 @@ static uint64_t luat_vfs_lfs2_nand_now_us(void) {
 
 static void luat_vfs_lfs2_nand_log_slow(const char* op, const char* detail, uint64_t cost_us) {
     if (cost_us >= LFS2_NAND_SLOW_OP_US) {
-        LLOGD("%s slow %s cost=%llu us", op, detail ? detail : "", (unsigned long long)cost_us);
+        LFS2N_PERF_LOG("%s slow %s cost=%llu us", op, detail ? detail : "", (unsigned long long)cost_us);
     }
 }
 
@@ -94,7 +105,7 @@ static const char* luat_vfs_lfs2_nand_meta_slot_path(uint32_t slot) {
 
 static void luat_vfs_lfs2_nand_meta_log(void* ctx, const char* message) {
     (void)ctx;
-    LLOGD("%s", message);
+    LFS2N_PERF_LOG("%s", message);
 }
 
 static int luat_vfs_lfs2_nand_meta_scan(void* ctx, uint32_t* used, uint32_t* total) {
@@ -167,11 +178,11 @@ static int luat_vfs_lfs2_nand_refresh_space_meta(void* userdata, const char* rea
     luat_lfs2_nand_space_meta_t current = {0};
     uint32_t slot = 0;
     if (luat_lfs2_nand_space_meta_load_or_rebuild(&ops, &current, &slot, NULL) != 0) {
-        LLOGD("lfs2_nand: metadata bootstrap failed");
+        LFS2N_DEBUG_LOG("lfs2_nand: metadata bootstrap failed");
         return -1;
     }
     if (luat_lfs2_nand_space_meta_refresh(&ops, &current, slot, &current, &slot) != 0) {
-        LLOGD("lfs2_nand: metadata refresh failed; fs_info will rebuild");
+        LFS2N_DEBUG_LOG("lfs2_nand: metadata refresh failed; fs_info will rebuild");
         return -1;
     }
     cost_us = luat_vfs_lfs2_nand_now_us() - start_us;
@@ -290,13 +301,15 @@ static int luat_vfs_lfs2_nand_cache_flush(void* userdata, luat_vfs_lfs2_nand_wri
     g_lfs2_nand_cache_flush_count++;
     g_lfs2_nand_cache_flush_us += cost_us;
     g_lfs2_nand_cache_flush_bytes += slot->len;
-    LLOGD("LFS2_TRACE_CACHE_FLUSH flush_idx=%u bytes=%u cost_us=%llu",
-          (unsigned int)g_lfs2_nand_cache_flush_count,
-          (unsigned int)slot->len,
-          (unsigned long long)cost_us);
+    LFS2N_PERF_LOG("LFS2_TRACE_CACHE_FLUSH flush_idx=%u bytes=%u cost_us=%llu",
+                   (unsigned int)g_lfs2_nand_cache_flush_count,
+                   (unsigned int)slot->len,
+                   (unsigned long long)cost_us);
     luat_vfs_lfs2_nand_log_slow("cache_flush", "writeback", cost_us);
 #ifdef LUAT_USE_LITTLE_FLASH
-    luat_lfs2_block_profile_log("LFS2N_IO_SUMMARY");
+    if (LUAT_LFS2N_PERF_LOG) {
+        luat_lfs2_block_profile_log("LFS2N_IO_SUMMARY");
+    }
 #endif
     slot->len = 0;
     luat_vfs_lfs2_nand_mark_space_dirty();
@@ -309,28 +322,28 @@ static int luat_vfs_lfs2_nand_load_space_meta(void* userdata, luat_lfs2_nand_spa
     uint8_t rebuilt = 0;
     uint8_t persisted = 0;
     if (luat_lfs2_nand_space_meta_load_prefer_fast(&ops, meta, &rebuilt, &persisted) != 0) {
-        LLOGD("lfs2_nand: metadata recovery failed");
+        LFS2N_DEBUG_LOG("lfs2_nand: metadata recovery failed");
         return -1;
     }
     if (rebuilt) {
         if (persisted) {
-            LLOGD("lfs2_nand: metadata rebuilt after validation failure");
+            LFS2N_DEBUG_LOG("lfs2_nand: metadata rebuilt after validation failure");
         }
         else {
-            LLOGD("lfs2_nand: metadata rebuilt via scan fallback without persistence");
+            LFS2N_DEBUG_LOG("lfs2_nand: metadata rebuilt via scan fallback without persistence");
         }
     }
     return 0;
 }
 
 static int luat_vfs_lfs2_nand_recover_layout(void* userdata, luat_fs_conf_t *conf) {
-    LLOGD("lfs2_nand: legacy/incompatible layout detected, formatting and remounting");
+    LFS2N_DEBUG_LOG("lfs2_nand: legacy/incompatible layout detected, formatting and remounting");
     if (luat_vfs_lfs2_nand_base_mkfs(userdata, conf) != 0) {
-        LLOGD("lfs2_nand: recovery mkfs failed");
+        LFS2N_DEBUG_LOG("lfs2_nand: recovery mkfs failed");
         return -1;
     }
     if (luat_vfs_lfs2_nand_refresh_space_meta(userdata, "recover") != 0) {
-        LLOGD("lfs2_nand: recovery metadata bootstrap failed");
+        LFS2N_DEBUG_LOG("lfs2_nand: recovery metadata bootstrap failed");
         return -1;
     }
     return 0;
@@ -343,7 +356,7 @@ static int luat_vfs_lfs2_nand_detect_legacy_layout(void* userdata) {
         return 0;
     }
     if (luat_vfs_lfs2_nand_base_info(userdata, "", &info) != 0) {
-        LLOGD("lfs2_nand: layout probe failed");
+        LFS2N_DEBUG_LOG("lfs2_nand: layout probe failed");
         return -1;
     }
     return 1;
@@ -360,10 +373,10 @@ static int luat_vfs_lfs2_nand_stream_may_change_space(FILE* stream) {
 }
 
 static int luat_vfs_lfs2_nand_mount(void** userdata, luat_fs_conf_t *conf) {
-    LLOGD("lfs2_nand mount start");
+    LFS2N_DEBUG_LOG("lfs2_nand mount start");
     if (!conf || !conf->busname) {
         *userdata = NULL;
-        LLOGD("lfs2_nand mount invalid conf");
+        LFS2N_DEBUG_LOG("lfs2_nand mount invalid conf");
         return -1;
     }
     *userdata = (void*)conf->busname;
@@ -371,37 +384,37 @@ static int luat_vfs_lfs2_nand_mount(void** userdata, luat_fs_conf_t *conf) {
     luat_lfs2_block_profile_reset();
 #endif
     if (!*userdata) {
-        LLOGD("lfs2_nand mount missing bus");
+        LFS2N_DEBUG_LOG("lfs2_nand mount missing bus");
         return -1;
     }
 
-    LLOGD("lfs2_nand mount detect layout");
+    LFS2N_DEBUG_LOG("lfs2_nand mount detect layout");
     int legacy_layout = luat_vfs_lfs2_nand_detect_legacy_layout(*userdata);
     if (legacy_layout < 0) {
         *userdata = NULL;
-        LLOGD("lfs2_nand mount detect layout failed");
+        LFS2N_DEBUG_LOG("lfs2_nand mount detect layout failed");
         return -1;
     }
     if (legacy_layout > 0) {
-        LLOGD("lfs2_nand mount legacy layout recover");
+        LFS2N_DEBUG_LOG("lfs2_nand mount legacy layout recover");
         if (luat_vfs_lfs2_nand_recover_layout(*userdata, conf) != 0) {
             *userdata = NULL;
-            LLOGD("lfs2_nand mount recover failed");
+            LFS2N_DEBUG_LOG("lfs2_nand mount recover failed");
             return -1;
         }
-        LLOGD("lfs2_nand mount recovered");
+        LFS2N_DEBUG_LOG("lfs2_nand mount recovered");
         return 0;
     }
-    LLOGD("lfs2_nand mount load metadata");
+    LFS2N_DEBUG_LOG("lfs2_nand mount load metadata");
     if (luat_vfs_lfs2_nand_load_space_meta(*userdata, &(luat_lfs2_nand_space_meta_t){0}) != 0) {
-        LLOGD("lfs2_nand mount load metadata failed, defer rebuild");
+        LFS2N_DEBUG_LOG("lfs2_nand mount load metadata failed, defer rebuild");
         // Do not block mount on full metadata rebuild; mark dirty and refresh lazily.
         g_lfs2_nand_space_meta_dirty = 1;
-        LLOGD("lfs2_nand mount done with dirty metadata");
+        LFS2N_DEBUG_LOG("lfs2_nand mount done with dirty metadata");
         return 0;
     }
     g_lfs2_nand_space_meta_dirty = 0;
-    LLOGD("lfs2_nand mount done");
+    LFS2N_DEBUG_LOG("lfs2_nand mount done");
     return 0;
 }
 
@@ -421,10 +434,10 @@ static int luat_vfs_lfs2_nand_umount(void* userdata, luat_fs_conf_t *conf) {
         luat_vfs_lfs2_nand_force_refresh_space_meta(userdata);
     }
     if (g_lfs2_nand_meta_refresh_count || g_lfs2_nand_cache_flush_count) {
-        LLOGD("profile summary: meta_refresh=%u total=%llu us, cache_flush=%u bytes=%llu total=%llu us",
-              g_lfs2_nand_meta_refresh_count, (unsigned long long)g_lfs2_nand_meta_refresh_us,
-              g_lfs2_nand_cache_flush_count, (unsigned long long)g_lfs2_nand_cache_flush_bytes,
-              (unsigned long long)g_lfs2_nand_cache_flush_us);
+        LFS2N_PERF_LOG("profile summary: meta_refresh=%u total=%llu us, cache_flush=%u bytes=%llu total=%llu us",
+                       g_lfs2_nand_meta_refresh_count, (unsigned long long)g_lfs2_nand_meta_refresh_us,
+                       g_lfs2_nand_cache_flush_count, (unsigned long long)g_lfs2_nand_cache_flush_bytes,
+                       (unsigned long long)g_lfs2_nand_cache_flush_us);
     }
     return luat_vfs_lfs2_nand_base_umount(userdata, conf);
 }
