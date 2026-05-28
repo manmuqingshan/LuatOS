@@ -204,7 +204,9 @@ static int luat_little_flash_get_info(lua_State *L){
 #ifdef LUAT_USE_FS_VFS
 #include "luat_fs.h"
 #include "lfs.h"
+#ifdef LUAT_USE_LFS2_NAND_COMPONENT
 #include "luat_lfs2_nand.h"
+#endif
 
 extern lfs_t* flash_lfs_lf(little_flash_t* flash, size_t offset, size_t maxsize);
 typedef struct {
@@ -212,25 +214,22 @@ typedef struct {
     const char* filesystem;
 } luat_lf_mount_backend_t;
 
-LUAT_WEAK void* luat_fs_lfs2_nand_default_bus(void* flash, size_t offset, size_t maxsize) {
-    (void)flash;
-    (void)offset;
-    (void)maxsize;
-    return NULL;
-}
-
-LUAT_WEAK void luat_lfs2_nand_vfs_init(void) {
-}
-
 static void* luat_little_flash_default_bus(void* flash, size_t offset, size_t maxsize) {
     return flash_lfs_lf((little_flash_t*)flash, offset, maxsize);
 }
 
 static void* luat_little_flash_named_bus(void* flash, size_t offset, size_t maxsize, const char* fs) {
+#ifdef LUAT_USE_LFS2_NAND_COMPONENT
     if (fs != NULL && strcmp(fs, "lfs2_nand") == 0) {
         luat_lfs2_nand_vfs_init();
         return luat_fs_lfs2_nand_default_bus(flash, offset, maxsize);
     }
+#else
+    (void)flash;
+    (void)offset;
+    (void)maxsize;
+    (void)fs;
+#endif
     return NULL;
 }
 
