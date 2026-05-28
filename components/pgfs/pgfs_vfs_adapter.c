@@ -1,8 +1,9 @@
 #include "luat_base.h"
+#include <string.h>
+#include "luat_pgfs.h"
 
 #ifdef LUAT_USE_PGFS_COMPONENT
 
-#include <string.h>
 #include "luat_fs.h"
 #include "pgfs_internal.h"
 
@@ -24,9 +25,7 @@ static int luat_vfs_pgfs_mount(void** fsdata, luat_fs_conf_t *conf) {
     }
     memcpy(s_pgfs_ctx.mount_point, conf->mount_point, mlen);
     s_pgfs_ctx.mount_point[mlen] = 0;
-    if (conf->busname != NULL) {
-        memcpy(&s_pgfs_ctx.flash_opts, conf->busname, sizeof(s_pgfs_ctx.flash_opts));
-    }
+    s_pgfs_ctx.flash_opts = (const pgfs_flash_opts_t *)conf->busname;
     s_pgfs_ctx.mounted = 1;
     *fsdata = &s_pgfs_ctx;
     return 0;
@@ -108,6 +107,12 @@ int luat_pgfs_info(const char *path, luat_fs_info_t *info) {
 
 #else
 
+const struct luat_vfs_filesystem vfs_fs_pgfs = {
+    .name = "pgfs",
+    .opts = {0},
+    .fopts = {0},
+};
+
 void* pgfs_default_bus(void* flash, size_t offset, size_t maxsize) {
     (void)flash;
     (void)offset;
@@ -116,6 +121,29 @@ void* pgfs_default_bus(void* flash, size_t offset, size_t maxsize) {
 }
 
 void pgfs_vfs_init(void) {
+}
+
+int luat_pgfs_vfs_register(void) {
+    return -1;
+}
+
+int luat_pgfs_mount(const char *mount_point, const pgfs_flash_opts_t *opts) {
+    (void)mount_point;
+    (void)opts;
+    return -1;
+}
+
+int luat_pgfs_umount(const char *mount_point) {
+    (void)mount_point;
+    return -1;
+}
+
+int luat_pgfs_info(const char *path, luat_fs_info_t *info) {
+    (void)path;
+    if (info != NULL) {
+        memset(info, 0, sizeof(*info));
+    }
+    return -1;
 }
 
 #endif

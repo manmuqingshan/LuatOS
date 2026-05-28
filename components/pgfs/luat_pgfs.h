@@ -7,10 +7,10 @@
 
 typedef struct pgfs_flash_opts {
     void *ctx;
-    int (*read)(void *ctx, uint32_t addr, void *buf, size_t len);
-    int (*write)(void *ctx, uint32_t addr, const void *buf, size_t len);
+    int (*read)(void *ctx, uint32_t addr, uint8_t *buf, size_t len);
+    int (*write)(void *ctx, uint32_t addr, const uint8_t *buf, size_t len);
     int (*erase)(void *ctx, uint32_t block_addr, uint32_t block_count);
-    int (*control)(void *ctx, int cmd, void *arg);
+    int (*control)(void *ctx, uint32_t cmd, void *arg);
 } pgfs_flash_opts_t;
 
 extern const struct luat_vfs_filesystem vfs_fs_pgfs;
