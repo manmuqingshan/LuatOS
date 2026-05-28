@@ -322,7 +322,7 @@ static int luat_little_flash_mount(lua_State *L) {
 /*
 PGFS runtime control helper
 @api lf.pgfsctl(cmd, value)
-@string cmd lock_mode|powercut_stage|corrupt_latest_cp|bad_block_once|run_c_tests
+@string cmd lock_mode|powercut_stage|corrupt_latest_cp|bad_block_once|reset_runtime|run_c_tests
 @string/bool value value for command
 @return bool success
 */
@@ -342,6 +342,9 @@ static int luat_little_flash_pgfsctl(lua_State *L) {
     }
     else if (strcmp(cmd, "bad_block_once") == 0) {
         ret = pgfs_control_inject_bad_block_once(lua_toboolean(L, 2));
+    }
+    else if (strcmp(cmd, "reset_runtime") == 0) {
+        ret = pgfs_control_reset_runtime();
     }
     else if (strcmp(cmd, "run_c_tests") == 0) {
         ret = pgfs_run_c_layer_tests();

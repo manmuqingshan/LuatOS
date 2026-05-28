@@ -103,6 +103,7 @@ static int luat_vfs_pgfs_mount(void** fsdata, luat_fs_conf_t *conf) {
     memcpy(s_pgfs_ctx.mount_point, conf->mount_point, mlen);
     s_pgfs_ctx.mount_point[mlen] = 0;
     s_pgfs_ctx.flash_opts = (const pgfs_flash_opts_t *)conf->busname;
+    s_pgfs_ctx.runtime_generation = 1;
     s_pgfs_ctx.data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
 
     ret = pgfs_checkpoint_load(&s_pgfs_ctx, &s_pgfs_ctx.checkpoint);
@@ -122,6 +123,7 @@ static int luat_vfs_pgfs_mount(void** fsdata, luat_fs_conf_t *conf) {
 static int luat_vfs_pgfs_umount(void* fsdata, luat_fs_conf_t *conf) {
     (void)fsdata;
     (void)conf;
+    pgfs_file_reset_all();
     memset(&s_pgfs_ctx, 0, sizeof(s_pgfs_ctx));
     return 0;
 }
@@ -137,6 +139,26 @@ static int luat_vfs_pgfs_info(void* fsdata, const char* path, luat_fs_info_t *co
 
 static int luat_vfs_pgfs_remove(void* fsdata, const char *filename) {
     return pgfs_file_remove((pgfs_mount_ctx_t*)fsdata, filename);
+}
+
+static int luat_vfs_pgfs_mkdir(void* fsdata, char const* _DirName) {
+    return pgfs_dir_mkdir((pgfs_mount_ctx_t*)fsdata, _DirName);
+}
+
+static int luat_vfs_pgfs_rmdir(void* fsdata, char const* _DirName) {
+    return pgfs_dir_rmdir((pgfs_mount_ctx_t*)fsdata, _DirName);
+}
+
+static int luat_vfs_pgfs_lsdir(void* fsdata, char const* _DirName, luat_fs_dirent_t* ents, size_t offset, size_t len) {
+    return pgfs_dir_lsdir((pgfs_mount_ctx_t*)fsdata, _DirName, ents, offset, len);
+}
+
+static void* luat_vfs_pgfs_opendir(void* fsdata, char const* _DirName) {
+    return pgfs_dir_opendir((pgfs_mount_ctx_t*)fsdata, _DirName);
+}
+
+static int luat_vfs_pgfs_closedir(void* fsdata, void* dir) {
+    return pgfs_dir_closedir((pgfs_mount_ctx_t*)fsdata, dir);
 }
 
 static FILE* luat_vfs_pgfs_fopen(void* fsdata, const char *filename, const char *mode) {
@@ -182,6 +204,11 @@ const struct luat_vfs_filesystem vfs_fs_pgfs = {
         .umount = luat_vfs_pgfs_umount,
         .info = luat_vfs_pgfs_info,
         .remove = luat_vfs_pgfs_remove,
+        .mkdir = luat_vfs_pgfs_mkdir,
+        .rmdir = luat_vfs_pgfs_rmdir,
+        .lsdir = luat_vfs_pgfs_lsdir,
+        .opendir = luat_vfs_pgfs_opendir,
+        .closedir = luat_vfs_pgfs_closedir,
     },
     .fopts = {
         .fopen = luat_vfs_pgfs_fopen,
@@ -301,6 +328,35 @@ int pgfs_control_inject_bad_block_once(int enable) {
     return 0;
 }
 
+int pgfs_control_reset_runtime(void) {
+    const pgfs_flash_opts_t* flash_opts = s_pgfs_ctx.flash_opts;
+    char mount_point[sizeof(s_pgfs_ctx.mount_point)] = {0};
+    uint8_t mounted = (uint8_t)s_pgfs_ctx.mounted;
+    uint32_t next_generation = s_pgfs_ctx.runtime_generation;
+    pgfs_checkpoint_t checkpoint = {0};
+    int loaded = -1;
+
+    memcpy(mount_point, s_pgfs_ctx.mount_point, sizeof(mount_point));
+    pgfs_file_reset_all();
+    memset(&s_pgfs_ctx, 0, sizeof(s_pgfs_ctx));
+    s_pgfs_ctx.runtime_generation = next_generation == 0 ? 1 : next_generation + 1;
+    s_pgfs_ctx.flash_opts = flash_opts;
+    memcpy(s_pgfs_ctx.mount_point, mount_point, sizeof(s_pgfs_ctx.mount_point));
+    s_pgfs_ctx.mounted = mounted;
+    s_pgfs_ctx.data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
+    if (s_pgfs_ctx.flash_opts != NULL) {
+        loaded = pgfs_checkpoint_load(&s_pgfs_ctx, &checkpoint);
+        if (loaded == 0) {
+            s_pgfs_ctx.checkpoint = checkpoint;
+            s_pgfs_ctx.checkpoint_loaded = 1;
+        }
+        else {
+            s_pgfs_ctx.checkpoint_loaded = 0;
+        }
+    }
+    return 0;
+}
+
 #else
 
 const struct luat_vfs_filesystem vfs_fs_pgfs = {
@@ -359,6 +415,10 @@ int pgfs_control_inject_corrupt_latest_cp(int enable) {
 
 int pgfs_control_inject_bad_block_once(int enable) {
     (void)enable;
+    return -1;
+}
+
+int pgfs_control_reset_runtime(void) {
     return -1;
 }
 
