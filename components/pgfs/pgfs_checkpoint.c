@@ -225,6 +225,10 @@ int pgfs_rebuild_checkpoint_from_replay(pgfs_mount_ctx_t* ctx) {
     if (ctx == NULL) {
         return -1;
     }
+    pgfs_file_reset_all();
+    if (pgfs_replay_data_log(ctx) != 0) {
+        return -1;
+    }
     if (ctx->flash_opts && ctx->flash_opts->control) {
         if (ctx->flash_opts->control(ctx->flash_opts->ctx, PGFS_CTRL_GET_GEOMETRY, &geo) == 0 && geo.erase_size) {
             ctx->checkpoint.total_blocks = geo.capacity / geo.erase_size;

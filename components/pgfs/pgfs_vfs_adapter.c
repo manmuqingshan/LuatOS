@@ -108,7 +108,14 @@ static int luat_vfs_pgfs_mount(void** fsdata, luat_fs_conf_t *conf) {
 
     ret = pgfs_checkpoint_load(&s_pgfs_ctx, &s_pgfs_ctx.checkpoint);
     if (ret != 0) {
-        ret = pgfs_checkpoint_store_next(&s_pgfs_ctx, NULL, &s_pgfs_ctx.checkpoint);
+        ret = pgfs_rebuild_checkpoint_from_replay(&s_pgfs_ctx);
+        if (ret != 0) {
+            memset(&s_pgfs_ctx, 0, sizeof(s_pgfs_ctx));
+            return -1;
+        }
+    }
+    else {
+        ret = pgfs_replay_data_log(&s_pgfs_ctx);
         if (ret != 0) {
             memset(&s_pgfs_ctx, 0, sizeof(s_pgfs_ctx));
             return -1;
@@ -354,9 +361,15 @@ int pgfs_control_reset_runtime(void) {
         if (loaded == 0) {
             s_pgfs_ctx.checkpoint = checkpoint;
             s_pgfs_ctx.checkpoint_loaded = 1;
+            if (pgfs_replay_data_log(&s_pgfs_ctx) != 0) {
+                return -1;
+            }
         }
         else {
-            s_pgfs_ctx.checkpoint_loaded = 0;
+            if (pgfs_rebuild_checkpoint_from_replay(&s_pgfs_ctx) != 0) {
+                return -1;
+            }
+            s_pgfs_ctx.checkpoint_loaded = 1;
         }
     }
     return 0;

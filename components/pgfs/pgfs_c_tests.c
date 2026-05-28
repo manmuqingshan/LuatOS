@@ -5,6 +5,14 @@
 #ifdef LUAT_USE_PGFS_COMPONENT
 
 #define PGFS_TEST_FLASH_SIZE 0x8000u
+#define PGFS_TEST_DATA_RECORD_MAGIC 0x50474644u
+
+typedef struct pgfs_test_data_record_hdr {
+    uint32_t magic;
+    uint32_t path_len;
+    uint32_t data_len;
+    uint32_t crc32;
+} pgfs_test_data_record_hdr_t;
 
 typedef struct {
     uint8_t mem[PGFS_TEST_FLASH_SIZE];
@@ -35,6 +43,34 @@ static void pgfs_test_build_sb(pgfs_superblock_t* sb, uint32_t seq, uint32_t cp_
     sb->checkpoint_crc = cp_crc;
     sb->crc32 = 0;
     sb->crc32 = pgfs_test_crc32(sb, sizeof(*sb));
+}
+
+static size_t pgfs_test_build_record(uint8_t* out, size_t outlen, const char* path, const char* data) {
+    pgfs_test_data_record_hdr_t hdr = {0};
+    size_t path_len = strlen(path);
+    size_t data_len = strlen(data);
+    size_t need = sizeof(hdr) + path_len + data_len;
+    if (out == NULL || outlen < need) {
+        return 0;
+    }
+    hdr.magic = PGFS_TEST_DATA_RECORD_MAGIC;
+    hdr.path_len = (uint32_t)path_len;
+    hdr.data_len = (uint32_t)data_len;
+    hdr.crc32 = pgfs_test_crc32(path, path_len);
+    if (data_len > 0) {
+        uint8_t* crc_buf = (uint8_t*)luat_heap_malloc(path_len + data_len);
+        if (crc_buf == NULL) {
+            return 0;
+        }
+        memcpy(crc_buf, path, path_len);
+        memcpy(crc_buf + path_len, data, data_len);
+        hdr.crc32 = pgfs_test_crc32(crc_buf, path_len + data_len);
+        luat_heap_free(crc_buf);
+    }
+    memcpy(out, &hdr, sizeof(hdr));
+    memcpy(out + sizeof(hdr), path, path_len);
+    memcpy(out + sizeof(hdr) + path_len, data, data_len);
+    return need;
 }
 
 static int pgfs_test_read(void* ctx, uint32_t addr, uint8_t* buf, size_t len) {
@@ -194,12 +230,63 @@ static int pgfs_test_directory_helpers(void) {
     return fail;
 }
 
+static int pgfs_test_replay_restores_file_contents(void) {
+    int fail = 0;
+    pgfs_test_flash_t flash = {0};
+    pgfs_flash_opts_t opts = {0};
+    pgfs_mount_ctx_t ctx = {0};
+    uint8_t record[256] = {0};
+    size_t record_len = 0;
+    FILE* f = NULL;
+    char buf[32] = {0};
+
+    memset(flash.mem, 0xFF, sizeof(flash.mem));
+    opts.ctx = &flash;
+    opts.read = pgfs_test_read;
+    opts.write = pgfs_test_write;
+    opts.erase = pgfs_test_erase;
+    opts.control = pgfs_test_control;
+    ctx.flash_opts = &opts;
+    ctx.runtime_generation = 1;
+    ctx.mounted = 1;
+
+    record_len = pgfs_test_build_record(record, sizeof(record), "docs/hello.txt", "persist_me");
+    if (record_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, PGFS_DATA_LOG_BASE_ADDR, record, record_len) != 0) {
+        return 1;
+    }
+
+    if (pgfs_replay_data_log(&ctx) != 0) {
+        return 1;
+    }
+    f = pgfs_file_open(&ctx, "/docs/hello.txt", "rb");
+    if (f == NULL) {
+        return 1;
+    }
+    if (pgfs_file_read(&ctx, buf, 1, sizeof("persist_me") - 1, f) != sizeof("persist_me") - 1) {
+        fail++;
+    }
+    if (memcmp(buf, "persist_me", sizeof("persist_me") - 1) != 0) {
+        fail++;
+    }
+    if (pgfs_file_close(&ctx, f) != 0) {
+        fail++;
+    }
+    if (ctx.data_log_write_addr <= PGFS_DATA_LOG_BASE_ADDR) {
+        fail++;
+    }
+    return fail;
+}
+
 int pgfs_run_c_layer_tests(void) {
     int fail = 0;
     fail += pgfs_test_pick_latest_valid_sb();
     fail += pgfs_test_checkpoint_roundtrip_and_fallback();
     fail += pgfs_test_lock_mode_counters();
     fail += pgfs_test_directory_helpers();
+    fail += pgfs_test_replay_restores_file_contents();
     return fail == 0 ? 0 : -1;
 }
 

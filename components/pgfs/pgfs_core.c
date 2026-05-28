@@ -522,6 +522,149 @@ static int pgfs_append_data_record(pgfs_mount_ctx_t* ctx, pgfs_file_t* f) {
     return 0;
 }
 
+static int pgfs_replay_flash_read(pgfs_mount_ctx_t* ctx, uint32_t addr, void* buf, size_t len) {
+    if (ctx == NULL || ctx->flash_opts == NULL || ctx->flash_opts->read == NULL || buf == NULL || len == 0) {
+        return -1;
+    }
+    return ctx->flash_opts->read(ctx->flash_opts->ctx, addr, (uint8_t*)buf, len);
+}
+
+int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
+    pgfs_flash_geometry_t geo = {0};
+    uint32_t addr = PGFS_DATA_LOG_BASE_ADDR;
+    uint32_t limit = 0;
+
+    if (ctx == NULL || ctx->flash_opts == NULL || ctx->flash_opts->read == NULL) {
+        return -1;
+    }
+
+    ctx->checkpoint.used_blocks = 0;
+    ctx->checkpoint.gc_live_bytes = 0;
+    ctx->checkpoint.gc_dead_bytes = 0;
+
+    if (ctx->flash_opts->control != NULL &&
+        ctx->flash_opts->control(ctx->flash_opts->ctx, PGFS_CTRL_GET_GEOMETRY, &geo) == 0 &&
+        geo.capacity > PGFS_DATA_LOG_BASE_ADDR) {
+        limit = geo.capacity;
+    }
+    else {
+        limit = 0;
+    }
+
+    while (1) {
+        pgfs_data_record_hdr_t hdr = {0};
+        uint8_t* path_buf = NULL;
+        uint8_t* data_buf = NULL;
+        char norm[sizeof(s_pgfs_files[0].path)] = {0};
+        char parent[sizeof(s_pgfs_dirs[0].path)] = {0};
+        pgfs_file_entry_t* entry = NULL;
+        size_t old_len = 0;
+        uint64_t record_len = 0;
+        uint64_t next_addr = 0;
+        uint32_t crc = 0;
+        size_t crc_len = 0;
+
+        if (limit != 0 && addr + sizeof(hdr) > limit) {
+            break;
+        }
+        if (pgfs_replay_flash_read(ctx, addr, &hdr, sizeof(hdr)) != 0) {
+            break;
+        }
+        if (hdr.magic != PGFS_DATA_RECORD_MAGIC || hdr.path_len == 0) {
+            break;
+        }
+        if (hdr.path_len >= sizeof(norm)) {
+            break;
+        }
+        record_len = (uint64_t)sizeof(hdr) + (uint64_t)hdr.path_len + (uint64_t)hdr.data_len;
+        next_addr = (uint64_t)addr + record_len;
+        if (record_len < sizeof(hdr) || (limit != 0 && next_addr > limit)) {
+            break;
+        }
+        path_buf = (uint8_t*)luat_heap_malloc((size_t)hdr.path_len + 1u);
+        if (path_buf == NULL) {
+            return -1;
+        }
+        data_buf = hdr.data_len == 0 ? NULL : (uint8_t*)luat_heap_malloc((size_t)hdr.data_len);
+        if (hdr.data_len != 0 && data_buf == NULL) {
+            luat_heap_free(path_buf);
+            return -1;
+        }
+        if (pgfs_replay_flash_read(ctx, addr + (uint32_t)sizeof(hdr), path_buf, hdr.path_len) != 0) {
+            luat_heap_free(path_buf);
+            luat_heap_free(data_buf);
+            break;
+        }
+        path_buf[hdr.path_len] = '\0';
+        if (hdr.data_len != 0 &&
+            pgfs_replay_flash_read(ctx, addr + (uint32_t)sizeof(hdr) + hdr.path_len, data_buf, hdr.data_len) != 0) {
+            luat_heap_free(path_buf);
+            luat_heap_free(data_buf);
+            break;
+        }
+        crc_len = (size_t)hdr.path_len + (size_t)hdr.data_len;
+        if (crc_len > 0) {
+            uint8_t* crc_buf = (uint8_t*)luat_heap_malloc(crc_len);
+            if (crc_buf == NULL) {
+                luat_heap_free(path_buf);
+                luat_heap_free(data_buf);
+                return -1;
+            }
+            memcpy(crc_buf, path_buf, hdr.path_len);
+            if (hdr.data_len != 0) {
+                memcpy(crc_buf + hdr.path_len, data_buf, hdr.data_len);
+            }
+            crc = pgfs_crc32_calc(crc_buf, crc_len);
+            luat_heap_free(crc_buf);
+        }
+        if (crc != hdr.crc32) {
+            luat_heap_free(path_buf);
+            luat_heap_free(data_buf);
+            break;
+        }
+        if (pgfs_path_normalize((const char*)path_buf, norm, sizeof(norm)) != 0 || norm[0] == '\0') {
+            luat_heap_free(path_buf);
+            luat_heap_free(data_buf);
+            break;
+        }
+        if (pgfs_path_parent(norm, parent, sizeof(parent)) != 0 || pgfs_dir_ensure_norm(parent) != 0) {
+            luat_heap_free(path_buf);
+            luat_heap_free(data_buf);
+            return -1;
+        }
+        entry = pgfs_alloc_file(norm);
+        if (entry == NULL) {
+            luat_heap_free(path_buf);
+            luat_heap_free(data_buf);
+            return -1;
+        }
+        old_len = entry->len;
+        if (hdr.data_len != 0) {
+            if (pgfs_file_reserve(entry, hdr.data_len) != 0) {
+                luat_heap_free(path_buf);
+                luat_heap_free(data_buf);
+                return -1;
+            }
+            memcpy(entry->data, data_buf, hdr.data_len);
+        }
+        entry->len = hdr.data_len;
+        ctx->checkpoint.gc_live_bytes += hdr.data_len;
+        if (old_len > 0) {
+            ctx->checkpoint.gc_dead_bytes += (uint32_t)old_len;
+        }
+        ctx->checkpoint.used_blocks += 1u;
+        ctx->data_log_write_addr = (uint32_t)next_addr;
+        luat_heap_free(path_buf);
+        luat_heap_free(data_buf);
+        addr = (uint32_t)next_addr;
+    }
+
+    if (ctx->data_log_write_addr < PGFS_DATA_LOG_BASE_ADDR) {
+        ctx->data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
+    }
+    return 0;
+}
+
 static int pgfs_apply_cache_to_entry(pgfs_file_t* f) {
     pgfs_file_entry_t* e = NULL;
     size_t old_len = 0;
