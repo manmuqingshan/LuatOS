@@ -99,6 +99,39 @@ void luat_lfs2_block_profile_log(const char* prefix) {
     }
 }
 
+int luat_lfs2_block_profile_read_snapshot(uint64_t* calls, uint64_t* bytes, uint64_t* total_us) {
+    const luat_lfs2_io_stat_t* st = &g_lfs2_io_stats[LUAT_LFS2_IO_READ];
+    if (calls) {
+        *calls = st->calls;
+    }
+    if (bytes) {
+        *bytes = st->bytes;
+    }
+    if (total_us) {
+        *total_us = st->total_us;
+    }
+    return 0;
+}
+
+int luat_lfs2_block_profile_read_snapshot_ex(uint64_t* read_calls, uint64_t* read_bytes, uint64_t* read_us,
+                                             uint64_t* prog_calls, uint64_t* prog_bytes, uint64_t* prog_us,
+                                             uint64_t* erase_calls, uint64_t* erase_bytes, uint64_t* erase_us,
+                                             uint64_t* sync_calls, uint64_t* sync_bytes, uint64_t* sync_us) {
+    if (read_calls) *read_calls = g_lfs2_io_stats[LUAT_LFS2_IO_READ].calls;
+    if (read_bytes) *read_bytes = g_lfs2_io_stats[LUAT_LFS2_IO_READ].bytes;
+    if (read_us) *read_us = g_lfs2_io_stats[LUAT_LFS2_IO_READ].total_us;
+    if (prog_calls) *prog_calls = g_lfs2_io_stats[LUAT_LFS2_IO_PROG].calls;
+    if (prog_bytes) *prog_bytes = g_lfs2_io_stats[LUAT_LFS2_IO_PROG].bytes;
+    if (prog_us) *prog_us = g_lfs2_io_stats[LUAT_LFS2_IO_PROG].total_us;
+    if (erase_calls) *erase_calls = g_lfs2_io_stats[LUAT_LFS2_IO_ERASE].calls;
+    if (erase_bytes) *erase_bytes = g_lfs2_io_stats[LUAT_LFS2_IO_ERASE].bytes;
+    if (erase_us) *erase_us = g_lfs2_io_stats[LUAT_LFS2_IO_ERASE].total_us;
+    if (sync_calls) *sync_calls = g_lfs2_io_stats[LUAT_LFS2_IO_SYNC].calls;
+    if (sync_bytes) *sync_bytes = g_lfs2_io_stats[LUAT_LFS2_IO_SYNC].bytes;
+    if (sync_us) *sync_us = g_lfs2_io_stats[LUAT_LFS2_IO_SYNC].total_us;
+    return 0;
+}
+
 // Read a block
 static int lf_block_device_read(const struct luat_lfs2_config *cfg, luat_lfs2_block_t block, luat_lfs2_off_t off, void *buffer, luat_lfs2_size_t size) {
     little_flash_t* flash = (little_flash_t*)cfg->context;

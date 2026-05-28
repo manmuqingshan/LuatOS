@@ -272,10 +272,108 @@ static int luat_lfs2_bd_prog(luat_lfs2_t *lfs,
 #endif
 
 #ifndef LFS_READONLY
-static int luat_lfs2_bd_erase(luat_lfs2_t *lfs, luat_lfs2_block_t block) {
+static int luat_lfs2_alloc(luat_lfs2_t *lfs, luat_lfs2_block_t *block);
+
+static int luat_lfs2_bd_erase_raw(luat_lfs2_t *lfs, luat_lfs2_block_t block) {
     LFS_ASSERT(block < lfs->block_count);
     int err = lfs->cfg->erase(lfs->cfg, block);
     LFS_ASSERT(err <= 0);
+    return err;
+}
+
+static void luat_lfs2_preerase_reset(luat_lfs2_t *lfs) {
+    if (!lfs) {
+        return;
+    }
+    lfs->preerase_reserve_count = 0;
+    lfs->preerase_reserve_head = 0;
+    lfs->preerase_reserve_tail = 0;
+    lfs->preerase_reserve_peak = 0;
+    memset(lfs->preerase_reserve, 0, sizeof(lfs->preerase_reserve));
+    memset(&lfs->preerase_stats, 0, sizeof(lfs->preerase_stats));
+}
+
+static int luat_lfs2_preerase_reserve_push(luat_lfs2_t *lfs, luat_lfs2_block_t block) {
+    if (!lfs || lfs->preerase_reserve_count >= (uint8_t)(sizeof(lfs->preerase_reserve) / sizeof(lfs->preerase_reserve[0]))) {
+        return -1;
+    }
+    lfs->preerase_reserve[lfs->preerase_reserve_tail] = block;
+    lfs->preerase_reserve_tail = (uint8_t)((lfs->preerase_reserve_tail + 1u) % (sizeof(lfs->preerase_reserve) / sizeof(lfs->preerase_reserve[0])));
+    lfs->preerase_reserve_count++;
+    if (lfs->preerase_reserve_count > lfs->preerase_reserve_peak) {
+        lfs->preerase_reserve_peak = lfs->preerase_reserve_count;
+    }
+    return 0;
+}
+
+static int luat_lfs2_preerase_reserve_pop(luat_lfs2_t *lfs, luat_lfs2_block_t *block) {
+    if (!lfs || !block || lfs->preerase_reserve_count == 0) {
+        return -1;
+    }
+    *block = lfs->preerase_reserve[lfs->preerase_reserve_head];
+    lfs->preerase_reserve_head = (uint8_t)((lfs->preerase_reserve_head + 1u) % (sizeof(lfs->preerase_reserve) / sizeof(lfs->preerase_reserve[0])));
+    lfs->preerase_reserve_count--;
+    return 0;
+}
+
+int luat_lfs2_preerase_refill(luat_lfs2_t *lfs, uint8_t budget) {
+    if (!lfs || !lfs->preerase_enabled || budget == 0) {
+        return 0;
+    }
+    while (budget-- > 0) {
+        luat_lfs2_block_t block = 0;
+        int err = 0;
+        if (lfs->preerase_reserve_count >= lfs->preerase_reserve_high) {
+            break;
+        }
+        err = luat_lfs2_alloc(lfs, &block);
+        if (err) {
+            lfs->preerase_stats.refill_fail_count++;
+            return err;
+        }
+        err = luat_lfs2_bd_erase_raw(lfs, block);
+        if (err) {
+            lfs->preerase_stats.refill_fail_count++;
+            if (err == LFS_ERR_CORRUPT) {
+                continue;
+            }
+            return err;
+        }
+        if (luat_lfs2_preerase_reserve_push(lfs, block) != 0) {
+            lfs->preerase_stats.refill_fail_count++;
+            return 0;
+        }
+        lfs->preerase_stats.refill_erase_count++;
+    }
+    return 0;
+}
+
+static int luat_lfs2_alloc_erased(luat_lfs2_t *lfs, luat_lfs2_block_t *block) {
+    int err = 0;
+    if (lfs && lfs->preerase_enabled && luat_lfs2_preerase_reserve_pop(lfs, block) == 0) {
+        lfs->preerase_stats.reserve_hit_count++;
+        return 0;
+    }
+    err = luat_lfs2_alloc(lfs, block);
+    if (err) {
+        return err;
+    }
+    err = luat_lfs2_bd_erase_raw(lfs, *block);
+    if (err) {
+        return err;
+    }
+    if (lfs && lfs->preerase_enabled) {
+        lfs->preerase_stats.foreground_erase_count++;
+        lfs->preerase_stats.emergency_fallback_count++;
+    }
+    return 0;
+}
+
+static int luat_lfs2_bd_erase(luat_lfs2_t *lfs, luat_lfs2_block_t block) {
+    int err = luat_lfs2_bd_erase_raw(lfs, block);
+    if (!err && lfs && lfs->preerase_enabled) {
+        lfs->preerase_stats.foreground_erase_count++;
+    }
     return err;
 }
 #endif
@@ -2893,15 +2991,10 @@ static int luat_lfs2_ctz_extend(luat_lfs2_t *lfs,
         luat_lfs2_block_t head, luat_lfs2_size_t size,
         luat_lfs2_block_t *block, luat_lfs2_off_t *off) {
     while (true) {
-        // go ahead and grab a block
         luat_lfs2_block_t nblock;
-        int err = luat_lfs2_alloc(lfs, &nblock);
-        if (err) {
-            return err;
-        }
+        int err = luat_lfs2_alloc_erased(lfs, &nblock);
 
         {
-            err = luat_lfs2_bd_erase(lfs, nblock);
             if (err) {
                 if (err == LFS_ERR_CORRUPT) {
                     goto relocate;
@@ -3232,12 +3325,7 @@ static int luat_lfs2_file_relocate(luat_lfs2_t *lfs, luat_lfs2_file_t *file) {
     while (true) {
         // just relocate what exists into new block
         luat_lfs2_block_t nblock;
-        int err = luat_lfs2_alloc(lfs, &nblock);
-        if (err) {
-            return err;
-        }
-
-        err = luat_lfs2_bd_erase(lfs, nblock);
+        int err = luat_lfs2_alloc_erased(lfs, &nblock);
         if (err) {
             if (err == LFS_ERR_CORRUPT) {
                 goto relocate;
@@ -4302,6 +4390,10 @@ static int luat_lfs2_init(luat_lfs2_t *lfs, const struct luat_lfs2_config *cfg) 
 #ifdef LFS_MIGRATE
     lfs->lfs1 = NULL;
 #endif
+    lfs->preerase_enabled = 0;
+    lfs->preerase_reserve_low = 0;
+    lfs->preerase_reserve_high = 0;
+    luat_lfs2_preerase_reset(lfs);
 
     return 0;
 
@@ -5956,6 +6048,47 @@ int luat_lfs2_unmount(luat_lfs2_t *lfs) {
 }
 
 #ifndef LFS_READONLY
+void luat_lfs2_preerase_configure(luat_lfs2_t *lfs, uint8_t enabled, uint8_t low_watermark, uint8_t high_watermark) {
+    if (!lfs) {
+        return;
+    }
+    if (!enabled) {
+        lfs->preerase_enabled = 0;
+        lfs->preerase_reserve_low = 0;
+        lfs->preerase_reserve_high = 0;
+        luat_lfs2_preerase_reset(lfs);
+        return;
+    }
+    if (high_watermark > (uint8_t)(sizeof(lfs->preerase_reserve) / sizeof(lfs->preerase_reserve[0]))) {
+        high_watermark = (uint8_t)(sizeof(lfs->preerase_reserve) / sizeof(lfs->preerase_reserve[0]));
+    }
+    if (high_watermark == 0) {
+        high_watermark = 1;
+    }
+    if (low_watermark >= high_watermark) {
+        low_watermark = (uint8_t)(high_watermark > 0 ? high_watermark - 1 : 0);
+    }
+    lfs->preerase_enabled = 1;
+    lfs->preerase_reserve_low = low_watermark;
+    lfs->preerase_reserve_high = high_watermark;
+    luat_lfs2_preerase_reset(lfs);
+}
+
+void luat_lfs2_preerase_get_stats(luat_lfs2_t *lfs, luat_lfs2_preerase_stats_t *out_stats) {
+    if (!out_stats) {
+        return;
+    }
+    memset(out_stats, 0, sizeof(*out_stats));
+    if (!lfs) {
+        return;
+    }
+    *out_stats = lfs->preerase_stats;
+    out_stats->reserve_peak_count = lfs->preerase_reserve_peak;
+    out_stats->reserve_current_count = lfs->preerase_reserve_count;
+}
+#endif
+
+#ifndef LFS_READONLY
 int luat_lfs2_remove(luat_lfs2_t *lfs, const char *path) {
     int err = LFS_LOCK(lfs->cfg);
     if (err) {
@@ -6460,4 +6593,3 @@ int luat_lfs2_migrate(luat_lfs2_t *lfs, const struct luat_lfs2_config *cfg) {
     return err;
 }
 #endif
-

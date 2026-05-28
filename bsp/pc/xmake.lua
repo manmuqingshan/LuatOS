@@ -59,6 +59,13 @@ local function add_thirdparty_files(...)
     end
 end
 
+local function add_define_from_env(name)
+    local value = os.getenv(name)
+    if value and value ~= "" then
+        add_defines(name .. "=" .. value)
+    end
+end
+
 -- set_policy("build.optimization.lto", true)
 -- set_warnings("all")
 set_optimize("fastest")
@@ -404,6 +411,18 @@ target("luatos-lua")
     add_includedirs(luatos.."components/little_flash/port",{public = true})
     add_files(luatos.."components/little_flash/**.c")
     add_defines("LUAT_USE_LFS2_NAND_COMPONENT")
+    add_define_from_env("LUAT_LFS2N_CACHE_POOL_BUDGET")
+    add_define_from_env("LUAT_LFS2N_CACHE_POOL_SLOTS")
+    add_define_from_env("LUAT_LFS2N_CACHE_POOL_CHUNK")
+    add_define_from_env("LUAT_LFS2N_FILE_CACHE_LIMIT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_FLUSH_CADENCE_US")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_PRESSURE_HIGH_PCT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_PRESSURE_LOW_PCT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_RESERVE_PCT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_RESERVE_URGENT_PCT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_RESERVE_DEFER_US")
+    add_define_from_env("LUAT_LFS2N_META_REFRESH_MIN_INTERVAL_US")
+    add_define_from_env("LUAT_LFS2N_META_REFRESH_MAX_DELAY_US")
     add_includedirs(luatos.."components/luat_lfs2_nand",{public = true})
     add_files(luatos.."components/luat_lfs2_nand/**.c")
 

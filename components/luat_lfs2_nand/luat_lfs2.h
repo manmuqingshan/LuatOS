@@ -431,6 +431,18 @@ typedef struct luat_lfs2_gstate {
     luat_lfs2_block_t pair[2];
 } luat_lfs2_gstate_t;
 
+#ifndef LFS_READONLY
+typedef struct {
+    uint32_t reserve_hit_count;
+    uint32_t foreground_erase_count;
+    uint32_t refill_erase_count;
+    uint32_t refill_fail_count;
+    uint32_t emergency_fallback_count;
+    uint32_t reserve_peak_count;
+    uint32_t reserve_current_count;
+} luat_lfs2_preerase_stats_t;
+#endif
+
 // The littlefs filesystem type
 typedef struct lfs {
     luat_lfs2_cache_t rcache;
@@ -466,6 +478,18 @@ typedef struct lfs {
 
 #ifdef LFS_MIGRATE
     struct lfs1 *lfs1;
+#endif
+
+#ifndef LFS_READONLY
+    uint8_t preerase_enabled;
+    uint8_t preerase_reserve_low;
+    uint8_t preerase_reserve_high;
+    uint8_t preerase_reserve_count;
+    uint8_t preerase_reserve_head;
+    uint8_t preerase_reserve_tail;
+    uint8_t preerase_reserve_peak;
+    luat_lfs2_block_t preerase_reserve[8];
+    luat_lfs2_preerase_stats_t preerase_stats;
 #endif
 } luat_lfs2_t;
 
@@ -733,6 +757,10 @@ luat_lfs2_ssize_t luat_lfs2_fs_size(luat_lfs2_t *lfs);
 int luat_lfs2_fs_traverse(luat_lfs2_t *lfs, int (*cb)(void*, luat_lfs2_block_t), void *data);
 
 #ifndef LFS_READONLY
+void luat_lfs2_preerase_configure(luat_lfs2_t *lfs, uint8_t enabled, uint8_t low_watermark, uint8_t high_watermark);
+void luat_lfs2_preerase_get_stats(luat_lfs2_t *lfs, luat_lfs2_preerase_stats_t *out_stats);
+int luat_lfs2_preerase_refill(luat_lfs2_t *lfs, uint8_t budget);
+
 // Attempt to make the filesystem consistent and ready for writing
 //
 // Calling this function is not required, consistency will be implicitly
