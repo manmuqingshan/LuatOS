@@ -35,7 +35,7 @@ static int luat_little_flash_init(lua_State *L){
             little_flash_spi_device->spi_config.mode = 0;
         }
         lf_flash = luat_heap_malloc(sizeof(little_flash_t));
-        memset(lf_flash, 0, sizeof(little_flash_t));
+        memset(lf_flash, 0, sizeof(lf_flash[0]));
         lf_flash->spi.user_data = little_flash_spi_device;
     }else{
         LLOGW("little_flash init spi_device is nil");
@@ -204,13 +204,23 @@ static int luat_little_flash_get_info(lua_State *L){
 #ifdef LUAT_USE_FS_VFS
 #include "luat_fs.h"
 #include "lfs.h"
-#include "../luat_lfs2_nand/luat_lfs2_nand.h"
+#include "luat_lfs2_nand.h"
 
 extern lfs_t* flash_lfs_lf(little_flash_t* flash, size_t offset, size_t maxsize);
 typedef struct {
     void* bus;
     const char* filesystem;
 } luat_lf_mount_backend_t;
+
+LUAT_WEAK void* luat_fs_lfs2_nand_default_bus(void* flash, size_t offset, size_t maxsize) {
+    (void)flash;
+    (void)offset;
+    (void)maxsize;
+    return NULL;
+}
+
+LUAT_WEAK void luat_lfs2_nand_vfs_init(void) {
+}
 
 static void* luat_little_flash_default_bus(void* flash, size_t offset, size_t maxsize) {
     return flash_lfs_lf((little_flash_t*)flash, offset, maxsize);
