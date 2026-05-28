@@ -90,6 +90,9 @@ end
 if os.getenv("LUAT_USE_GUI") == "y" then
     add_defines("LUAT_USE_GUI=1")
 end
+if os.getenv("LUAT_USE_UTEST") == "y" then
+    add_defines("LUAT_USE_UTEST=1")
+end
 
 if is_host("windows") then
     add_defines("LUAT_USE_WINDOWS")
@@ -262,6 +265,11 @@ target("luatos-lua")
     -- c_common
     add_includedirs(luatos.."components/common",{public = true})
     add_files(luatos.."components/common/*.c")
+
+    if os.getenv("LUAT_USE_UTEST") == "y" then
+        add_includedirs(luatos.."components/utest/include", {public = true})
+        add_files(luatos.."components/utest/**.c")
+    end
 
     -- coremark
     add_includedirs(luatos.."components/coremark",{public = true})
