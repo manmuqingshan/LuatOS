@@ -1,0 +1,174 @@
+#include "luat_base.h"
+#include "luat_crypto.h"
+#include "pgfs_internal.h"
+
+#ifdef LUAT_USE_PGFS_COMPONENT
+
+#define PGFS_TEST_FLASH_SIZE 0x8000u
+
+typedef struct {
+    uint8_t mem[PGFS_TEST_FLASH_SIZE];
+} pgfs_test_flash_t;
+
+static uint32_t pgfs_test_crc32(const void* data, size_t len) {
+    return luat_crc32(data, (uint32_t)len, 0xFFFFFFFFu, 0);
+}
+
+static void pgfs_test_build_cp(pgfs_checkpoint_t* cp, uint32_t seq, uint32_t total, uint32_t used) {
+    memset(cp, 0, sizeof(*cp));
+    cp->magic = PGFS_CHECKPOINT_MAGIC;
+    cp->version = PGFS_ONDISK_VERSION;
+    cp->seq = seq;
+    cp->total_blocks = total;
+    cp->used_blocks = used;
+    cp->crc32 = 0;
+    cp->crc32 = pgfs_test_crc32(cp, sizeof(*cp));
+}
+
+static void pgfs_test_build_sb(pgfs_superblock_t* sb, uint32_t seq, uint32_t cp_addr, uint32_t cp_crc) {
+    memset(sb, 0, sizeof(*sb));
+    sb->magic = PGFS_SUPERBLOCK_MAGIC;
+    sb->version = PGFS_ONDISK_VERSION;
+    sb->seq = seq;
+    sb->checkpoint_addr = cp_addr;
+    sb->checkpoint_len = sizeof(pgfs_checkpoint_t);
+    sb->checkpoint_crc = cp_crc;
+    sb->crc32 = 0;
+    sb->crc32 = pgfs_test_crc32(sb, sizeof(*sb));
+}
+
+static int pgfs_test_read(void* ctx, uint32_t addr, uint8_t* buf, size_t len) {
+    pgfs_test_flash_t* tf = (pgfs_test_flash_t*)ctx;
+    if (tf == NULL || buf == NULL || len == 0 || ((uint64_t)addr + (uint64_t)len) > PGFS_TEST_FLASH_SIZE) {
+        return -1;
+    }
+    memcpy(buf, tf->mem + addr, len);
+    return 0;
+}
+
+static int pgfs_test_write(void* ctx, uint32_t addr, const uint8_t* buf, size_t len) {
+    pgfs_test_flash_t* tf = (pgfs_test_flash_t*)ctx;
+    if (tf == NULL || buf == NULL || len == 0 || ((uint64_t)addr + (uint64_t)len) > PGFS_TEST_FLASH_SIZE) {
+        return -1;
+    }
+    memcpy(tf->mem + addr, buf, len);
+    return 0;
+}
+
+static int pgfs_test_erase(void* ctx, uint32_t block_addr, uint32_t block_count) {
+    pgfs_test_flash_t* tf = (pgfs_test_flash_t*)ctx;
+    uint32_t len = block_count;
+    if (tf == NULL || len == 0 || ((uint64_t)block_addr + (uint64_t)len) > PGFS_TEST_FLASH_SIZE) {
+        return -1;
+    }
+    memset(tf->mem + block_addr, 0xFF, len);
+    return 0;
+}
+
+static int pgfs_test_control(void* ctx, uint32_t cmd, void* arg) {
+    pgfs_flash_geometry_t* geo = (pgfs_flash_geometry_t*)arg;
+    (void)ctx;
+    if (cmd != PGFS_CTRL_GET_GEOMETRY || geo == NULL) {
+        return -1;
+    }
+    geo->capacity = PGFS_TEST_FLASH_SIZE;
+    geo->erase_size = 4096;
+    geo->prog_size = 256;
+    return 0;
+}
+
+static int pgfs_test_pick_latest_valid_sb(void) {
+    int fail = 0;
+    pgfs_superblock_t a = {0};
+    pgfs_superblock_t b = {0};
+    pgfs_superblock_t out = {0};
+    pgfs_checkpoint_t cp_a = {0};
+    pgfs_checkpoint_t cp_b = {0};
+
+    pgfs_test_build_cp(&cp_a, 1, 128, 11);
+    pgfs_test_build_cp(&cp_b, 2, 128, 22);
+    pgfs_test_build_sb(&a, 1, PGFS_CHECKPOINT_A_ADDR, cp_a.crc32);
+    pgfs_test_build_sb(&b, 2, PGFS_CHECKPOINT_B_ADDR, cp_b.crc32);
+
+    if (pgfs_pick_latest_valid_sb(&a, &b, &out) != 0 || out.seq != 2) {
+        fail++;
+    }
+    b.crc32 ^= 0xFFu;
+    if (pgfs_pick_latest_valid_sb(&a, &b, &out) != 0 || out.seq != 1) {
+        fail++;
+    }
+    a.crc32 ^= 0xAAu;
+    if (pgfs_pick_latest_valid_sb(&a, &b, &out) == 0) {
+        fail++;
+    }
+    return fail;
+}
+
+static int pgfs_test_checkpoint_roundtrip_and_fallback(void) {
+    int fail = 0;
+    pgfs_test_flash_t flash = {0};
+    pgfs_flash_opts_t opts = {0};
+    pgfs_mount_ctx_t ctx = {0};
+    pgfs_checkpoint_t next = {0};
+    pgfs_checkpoint_t loaded = {0};
+
+    memset(flash.mem, 0xFF, sizeof(flash.mem));
+    opts.ctx = &flash;
+    opts.read = pgfs_test_read;
+    opts.write = pgfs_test_write;
+    opts.erase = pgfs_test_erase;
+    opts.control = pgfs_test_control;
+    ctx.flash_opts = &opts;
+
+    if (pgfs_checkpoint_store_next(&ctx, NULL, &next) != 0 || next.seq != 1 || next.total_blocks == 0) {
+        fail++;
+    }
+    ctx.checkpoint = next;
+    if (pgfs_checkpoint_store_next(&ctx, &ctx.checkpoint, &next) != 0 || next.seq != 2) {
+        fail++;
+    }
+    if (pgfs_checkpoint_load(&ctx, &loaded) != 0 || loaded.seq != 2) {
+        fail++;
+    }
+    ctx.inject_corrupt_latest_cp = 1;
+    if (pgfs_checkpoint_load(&ctx, &loaded) != 0 || loaded.seq != 1) {
+        fail++;
+    }
+    return fail;
+}
+
+static int pgfs_test_lock_mode_counters(void) {
+    int fail = 0;
+    pgfs_mount_ctx_t ctx = {0};
+    ctx.lock_mode = PGFS_LOCK_MODE_ON;
+    if (pgfs_lock(&ctx) != 0 || pgfs_unlock(&ctx) != 0) {
+        fail++;
+    }
+    if (ctx.stats.lock_acquire_count != 1 || ctx.stats.lock_passthrough_count != 0) {
+        fail++;
+    }
+    ctx.lock_mode = PGFS_LOCK_MODE_OFF;
+    if (pgfs_lock(&ctx) != 0 || pgfs_unlock(&ctx) != 0) {
+        fail++;
+    }
+    if (ctx.stats.lock_passthrough_count != 1) {
+        fail++;
+    }
+    return fail;
+}
+
+int pgfs_run_c_layer_tests(void) {
+    int fail = 0;
+    fail += pgfs_test_pick_latest_valid_sb();
+    fail += pgfs_test_checkpoint_roundtrip_and_fallback();
+    fail += pgfs_test_lock_mode_counters();
+    return fail == 0 ? 0 : -1;
+}
+
+#else
+
+int pgfs_run_c_layer_tests(void) {
+    return -1;
+}
+
+#endif

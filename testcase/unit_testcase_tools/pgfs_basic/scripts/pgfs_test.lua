@@ -126,6 +126,18 @@ function pgfs_tests.test_controlled_powercut_before_checkpoint()
 
 end
 
+function pgfs_tests.test_control_invalid_args()
+    setup_flash()
+    assert(not lf.pgfsctl("lock_mode", "invalid"), "invalid lock_mode should fail")
+    assert(not lf.pgfsctl("powercut_stage", "invalid"), "invalid powercut_stage should fail")
+    assert(not lf.pgfsctl("unknown_cmd", true), "unknown pgfsctl command should fail")
+end
+
+function pgfs_tests.test_c_layer_selftests()
+    setup_flash()
+    assert(lf.pgfsctl("run_c_tests"), "pgfs C-layer selftests failed")
+end
+
 function pgfs_tests.test_info_fast_path_and_rebuild()
     local _, flash = setup_flash()
 
