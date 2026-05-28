@@ -105,4 +105,28 @@ function pgfs_tests.test_fclose_is_durable_boundary()
     end
 end
 
+function pgfs_tests.test_info_fast_path_and_rebuild()
+    local spi_device = spi.deviceSetup(0, 17, 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
+    assert(spi_device, "spi.deviceSetup failed")
+
+    local flash = lf.init(spi_device)
+    assert(flash, "lf.init failed")
+    assert(lf.erase(flash, 0, PGFS_ERASE_LEN), "lf.erase failed")
+    assert(lf.mount(flash, "/pgfs/", 0, 0, "pgfs"), "pgfs mount failed")
+
+    assert(io.writeFile("/pgfs/info_probe.txt", "ok"), "write probe failed")
+    local ok1, total1 = fs.fsstat("/pgfs/")
+    assert(ok1, "first fsstat failed")
+    assert(total1 and total1 > 0, "first fsstat total should be >0")
+
+    assert(lf.erase(flash, 0, PGFS_ERASE_LEN), "erase metadata area failed")
+    local ok2, total2 = fs.fsstat("/pgfs/")
+    assert(ok2, "second fsstat should rebuild and pass")
+    assert(total2 and total2 > 0, "second fsstat total should be >0")
+
+    if spi_device.close then
+        spi_device:close()
+    end
+end
+
 return pgfs_tests

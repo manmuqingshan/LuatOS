@@ -100,6 +100,8 @@ pgfs_mount_ctx_t* pgfs_get_mount_ctx(void);
 int pgfs_pick_latest_valid_sb(const pgfs_superblock_t* a, const pgfs_superblock_t* b, pgfs_superblock_t* out);
 int pgfs_checkpoint_load(void* fs, pgfs_checkpoint_t* cp);
 int pgfs_checkpoint_store_next(void* fs, const pgfs_checkpoint_t* current, pgfs_checkpoint_t* next);
+int pgfs_info_fast(pgfs_mount_ctx_t* ctx, luat_fs_info_t* out);
+int pgfs_rebuild_checkpoint_from_replay(pgfs_mount_ctx_t* ctx);
 
 int pgfs_cache_append(pgfs_file_t* f, const uint8_t* data, size_t len);
 int pgfs_cache_flush_to_log(pgfs_mount_ctx_t* ctx, pgfs_file_t* f);

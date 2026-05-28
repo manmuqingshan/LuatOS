@@ -198,4 +198,63 @@ int pgfs_checkpoint_store_next(void* fs, const pgfs_checkpoint_t* current, pgfs_
     return 0;
 }
 
+int pgfs_rebuild_checkpoint_from_replay(pgfs_mount_ctx_t* ctx) {
+    pgfs_checkpoint_t next = {0};
+    pgfs_flash_geometry_t geo = {0};
+    if (ctx == NULL) {
+        return -1;
+    }
+    if (ctx->flash_opts && ctx->flash_opts->control) {
+        if (ctx->flash_opts->control(ctx->flash_opts->ctx, PGFS_CTRL_GET_GEOMETRY, &geo) == 0 && geo.erase_size) {
+            ctx->checkpoint.total_blocks = geo.capacity / geo.erase_size;
+        }
+    }
+    ctx->checkpoint.magic = PGFS_CHECKPOINT_MAGIC;
+    ctx->checkpoint.version = PGFS_ONDISK_VERSION;
+    if (pgfs_checkpoint_store_next(ctx, &ctx->checkpoint, &next) != 0) {
+        return -1;
+    }
+    ctx->checkpoint = next;
+    ctx->checkpoint_loaded = 1;
+    return 0;
+}
+
+int pgfs_info_fast(pgfs_mount_ctx_t* ctx, luat_fs_info_t* out) {
+    pgfs_checkpoint_t latest = {0};
+    pgfs_flash_geometry_t geo = {0};
+    if (ctx == NULL || out == NULL) {
+        return -1;
+    }
+    memset(out, 0, sizeof(*out));
+    memcpy(out->filesystem, "pgfs", 5);
+    out->type = 0;
+
+    if (ctx->flash_opts && ctx->flash_opts->control) {
+        if (ctx->flash_opts->control(ctx->flash_opts->ctx, PGFS_CTRL_GET_GEOMETRY, &geo) == 0) {
+            out->block_size = geo.erase_size ? geo.erase_size : 4096;
+        }
+    }
+    if (out->block_size == 0) {
+        out->block_size = 4096;
+    }
+
+    if (pgfs_checkpoint_load(ctx, &latest) == 0) {
+        ctx->checkpoint = latest;
+        ctx->checkpoint_loaded = 1;
+        out->total_block = latest.total_blocks;
+        out->block_used = latest.used_blocks;
+        if (out->total_block == 0 && geo.erase_size) {
+            out->total_block = geo.capacity / geo.erase_size;
+        }
+        return 0;
+    }
+
+    if (pgfs_rebuild_checkpoint_from_replay(ctx) != 0) {
+        return -1;
+    }
+    out->total_block = ctx->checkpoint.total_blocks;
+    out->block_used = ctx->checkpoint.used_blocks;
+    return 0;
+}
+
 #endif

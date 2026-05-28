@@ -127,33 +127,11 @@ static int luat_vfs_pgfs_umount(void* fsdata, luat_fs_conf_t *conf) {
 
 static int luat_vfs_pgfs_info(void* fsdata, const char* path, luat_fs_info_t *conf) {
     pgfs_mount_ctx_t* ctx = (pgfs_mount_ctx_t*)fsdata;
-    pgfs_flash_geometry_t geo = {0};
     (void)path;
-    if (conf == NULL) {
+    if (ctx == NULL || conf == NULL) {
         return -1;
     }
-    memset(conf, 0, sizeof(*conf));
-    memcpy(conf->filesystem, "pgfs", strlen("pgfs") + 1);
-    conf->type = 0;
-    if (ctx && ctx->checkpoint_loaded) {
-        conf->total_block = ctx->checkpoint.total_blocks;
-        conf->block_used = ctx->checkpoint.used_blocks;
-    }
-    else {
-        conf->total_block = 0;
-        conf->block_used = 0;
-    }
-    conf->block_size = 4096;
-    if (ctx && ctx->flash_opts && ctx->flash_opts->control &&
-        ctx->flash_opts->control(ctx->flash_opts->ctx, PGFS_CTRL_GET_GEOMETRY, &geo) == 0) {
-        if (geo.erase_size) {
-            conf->block_size = geo.erase_size;
-        }
-        if (!ctx->checkpoint_loaded && geo.erase_size) {
-            conf->total_block = geo.capacity / geo.erase_size;
-        }
-    }
-    return 0;
+    return pgfs_info_fast(ctx, conf);
 }
 
 static FILE* luat_vfs_pgfs_fopen(void* fsdata, const char *filename, const char *mode) {
