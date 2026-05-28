@@ -111,12 +111,35 @@ local function run_baseline_write_perf_case(baseline)
 end
 
 local function lfs2n_spi_bus_id()
-    -- PC simulator currently uses SPI1 virtual NAND profile.
+    if os and os.getenv then
+        local v = os.getenv("LFS2N_SPI_BUS") or os.getenv("LF_SPI_BUS")
+        if v and v ~= "" then
+            local n = tonumber(v)
+            if n then
+                return n
+            end
+        end
+    end
     if hmeta and hmeta.model and hmeta.model() == "PC" then
         return 1
     end
-    -- Air1602/Air1601 hardware path uses SPI2 with CS on GPIO4.
     return 2
+end
+
+local function lfs2n_spi_cs_pin()
+    if os and os.getenv then
+        local v = os.getenv("LFS2N_SPI_CS") or os.getenv("LF_SPI_CS")
+        if v and v ~= "" then
+            local n = tonumber(v)
+            if n then
+                return n
+            end
+        end
+    end
+    if hmeta and hmeta.model and hmeta.model() == "PC" then
+        return 4
+    end
+    return 4
 end
 
 local function mount_lfs2n()
@@ -126,7 +149,7 @@ local function mount_lfs2n()
         return
     end
     local spi_id = lfs2n_spi_bus_id()
-    mounted_spi_dev = spi.deviceSetup(spi_id, 4, 0, 0, 8, 20000000, spi.MSB, 1, 0)
+    mounted_spi_dev = spi.deviceSetup(spi_id, lfs2n_spi_cs_pin(), 0, 0, 8, 20000000, spi.MSB, 1, 0)
     assert(mounted_spi_dev, "spi.deviceSetup failed")
     mounted_lfdev = lf.init(mounted_spi_dev)
     assert(mounted_lfdev, "lf.init failed")

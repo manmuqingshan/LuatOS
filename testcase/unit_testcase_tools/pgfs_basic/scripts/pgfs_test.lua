@@ -13,9 +13,35 @@ local s_spi_device = nil
 local s_flash = nil
 local s_mounted = false
 
+local function get_spi_bus()
+    if os and os.getenv then
+        local v = os.getenv("PGFS_SPI_BUS") or os.getenv("LF_SPI_BUS")
+        if v and v ~= "" then
+            local n = tonumber(v)
+            if n then
+                return n
+            end
+        end
+    end
+    return 0
+end
+
+local function get_spi_cs()
+    if os and os.getenv then
+        local v = os.getenv("PGFS_SPI_CS") or os.getenv("LF_SPI_CS")
+        if v and v ~= "" then
+            local n = tonumber(v)
+            if n then
+                return n
+            end
+        end
+    end
+    return 17
+end
+
 local function setup_flash()
     if not s_spi_device then
-        s_spi_device = spi.deviceSetup(0, 17, 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
+        s_spi_device = spi.deviceSetup(get_spi_bus(), get_spi_cs(), 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
         assert(s_spi_device, "spi.deviceSetup failed")
         s_flash = lf.init(s_spi_device)
         assert(s_flash, "lf.init failed")
@@ -68,7 +94,7 @@ function pgfs_tests.test_generation_fallback_prefers_latest_valid()
     assert(string.pack, "string.pack is unavailable")
     assert(crypto and crypto.crc32, "crypto.crc32 is unavailable")
 
-    local spi_device = spi.deviceSetup(0, 17, 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
+    local spi_device = spi.deviceSetup(get_spi_bus(), get_spi_cs(), 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
     assert(spi_device, "spi.deviceSetup failed")
     local flash = lf.init(spi_device)
     assert(flash, "lf.init failed")
