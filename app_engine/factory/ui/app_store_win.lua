@@ -1141,15 +1141,17 @@ local function on_create()
     sys.subscribe("APP_STORE_ICON_READY", on_icon_ready)
 
     sys.publish("APP_STORE_SYNC_INSTALLED")
-    -- 进入应用市场时重置存储校准，下次 get_app_list 重新读取各存储剩余空间
-    exapp.reset_storage_calibration()
-    -- 立即请求列表（网络已就绪时马上加载）
-    sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
-    -- 网络未就绪时等IP_READY后再重试一次（避免首次进入需手动刷新）
+    -- 延迟200ms加载数据，让LVGL窗口渲染先完成
+    sys.timerStart(function()
+        sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+    end, 200)
+    -- 网络未就绪时等IP_READY后再重试
     sys.taskInit(function()
         local ok = sys.waitUntil("IP_READY", 30000)
         if ok then
             sys.publish("APP_STORE_GET_LIST", current_category, current_sort, current_page, page_limit, current_query)
+            -- 进入应用市场时重置存储校准，下次 get_app_list 重新读取各存储剩余空间
+            exapp.reset_storage_calibration()
         end
     end)
 end
@@ -1175,6 +1177,7 @@ local function on_destroy()
 end
 
 local function on_get_focus()
+
     local apps, more = exapp.get_current_list()
     if apps then
         if current_category == "已安装" then
