@@ -81,4 +81,28 @@ function pgfs_tests.test_generation_fallback_prefers_latest_valid()
     end
 end
 
+function pgfs_tests.test_fclose_is_durable_boundary()
+    local spi_device = spi.deviceSetup(0, 17, 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
+    assert(spi_device, "spi.deviceSetup failed")
+
+    local flash = lf.init(spi_device)
+    assert(flash, "lf.init failed")
+
+    assert(lf.erase(flash, 0, PGFS_ERASE_LEN), "lf.erase failed")
+    assert(lf.mount(flash, "/pgfs/", 0, 0, "pgfs"), "pgfs mount failed")
+
+    local f = assert(io.open("/pgfs/durable.txt", "wb"))
+    assert(f:write("commit_me"), "write failed")
+    local before_close = io.readFile("/pgfs/durable.txt")
+    assert(before_close ~= "commit_me", "data should not be durable before close")
+    assert(f:close(), "close failed")
+
+    local after_close = io.readFile("/pgfs/durable.txt")
+    assert(after_close == "commit_me", "data must be durable after successful close")
+
+    if spi_device.close then
+        spi_device:close()
+    end
+end
+
 return pgfs_tests

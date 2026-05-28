@@ -102,6 +102,7 @@ static int luat_vfs_pgfs_mount(void** fsdata, luat_fs_conf_t *conf) {
     memcpy(s_pgfs_ctx.mount_point, conf->mount_point, mlen);
     s_pgfs_ctx.mount_point[mlen] = 0;
     s_pgfs_ctx.flash_opts = (const pgfs_flash_opts_t *)conf->busname;
+    s_pgfs_ctx.data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
 
     ret = pgfs_checkpoint_load(&s_pgfs_ctx, &s_pgfs_ctx.checkpoint);
     if (ret != 0) {
@@ -155,6 +156,42 @@ static int luat_vfs_pgfs_info(void* fsdata, const char* path, luat_fs_info_t *co
     return 0;
 }
 
+static FILE* luat_vfs_pgfs_fopen(void* fsdata, const char *filename, const char *mode) {
+    return pgfs_file_open((pgfs_mount_ctx_t*)fsdata, filename, mode);
+}
+
+static int luat_vfs_pgfs_fclose(void* fsdata, FILE* stream) {
+    return pgfs_file_close((pgfs_mount_ctx_t*)fsdata, stream);
+}
+
+static size_t luat_vfs_pgfs_fread(void* fsdata, void *ptr, size_t size, size_t nmemb, FILE *stream) {
+    return pgfs_file_read((pgfs_mount_ctx_t*)fsdata, ptr, size, nmemb, stream);
+}
+
+static size_t luat_vfs_pgfs_fwrite(void* fsdata, const void *ptr, size_t size, size_t nmemb, FILE *stream) {
+    return pgfs_file_write((pgfs_mount_ctx_t*)fsdata, ptr, size, nmemb, stream);
+}
+
+static int luat_vfs_pgfs_fseek(void* fsdata, FILE* stream, long int offset, int origin) {
+    return pgfs_file_seek((pgfs_mount_ctx_t*)fsdata, stream, offset, origin);
+}
+
+static int luat_vfs_pgfs_ftell(void* fsdata, FILE* stream) {
+    return pgfs_file_tell((pgfs_mount_ctx_t*)fsdata, stream);
+}
+
+static int luat_vfs_pgfs_feof(void* fsdata, FILE* stream) {
+    return pgfs_file_eof((pgfs_mount_ctx_t*)fsdata, stream);
+}
+
+static int luat_vfs_pgfs_ferror(void* fsdata, FILE *stream) {
+    return pgfs_file_error((pgfs_mount_ctx_t*)fsdata, stream);
+}
+
+static int luat_vfs_pgfs_fflush(void* fsdata, FILE *stream) {
+    return pgfs_file_flush((pgfs_mount_ctx_t*)fsdata, stream);
+}
+
 const struct luat_vfs_filesystem vfs_fs_pgfs = {
     .name = "pgfs",
     .opts = {
@@ -162,7 +199,17 @@ const struct luat_vfs_filesystem vfs_fs_pgfs = {
         .umount = luat_vfs_pgfs_umount,
         .info = luat_vfs_pgfs_info,
     },
-    .fopts = {0},
+    .fopts = {
+        .fopen = luat_vfs_pgfs_fopen,
+        .fseek = luat_vfs_pgfs_fseek,
+        .ftell = luat_vfs_pgfs_ftell,
+        .fclose = luat_vfs_pgfs_fclose,
+        .feof = luat_vfs_pgfs_feof,
+        .ferror = luat_vfs_pgfs_ferror,
+        .fread = luat_vfs_pgfs_fread,
+        .fwrite = luat_vfs_pgfs_fwrite,
+        .fflush = luat_vfs_pgfs_fflush,
+    },
 };
 
 void* pgfs_default_bus(void* flash, size_t offset, size_t maxsize) {

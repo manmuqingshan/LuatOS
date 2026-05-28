@@ -11,6 +11,7 @@
 #define PGFS_SUPERBLOCK_B_ADDR       0x1000u
 #define PGFS_CHECKPOINT_A_ADDR       0x2000u
 #define PGFS_CHECKPOINT_B_ADDR       0x3000u
+#define PGFS_DATA_LOG_BASE_ADDR      0x4000u
 
 #define PGFS_CTRL_GET_GEOMETRY       1u
 
@@ -61,7 +62,34 @@ typedef struct pgfs_mount_ctx {
     uint8_t checkpoint_loaded;
     uint8_t reserved[3];
     pgfs_checkpoint_t checkpoint;
+    uint32_t data_log_write_addr;
 } pgfs_mount_ctx_t;
+
+typedef struct pgfs_file_cache {
+    uint8_t *data;
+    size_t len;
+    size_t cap;
+} pgfs_file_cache_t;
+
+typedef struct pgfs_file_entry {
+    uint8_t used;
+    uint8_t reserved[3];
+    char path[96];
+    uint8_t *data;
+    size_t len;
+    size_t cap;
+} pgfs_file_entry_t;
+
+typedef struct pgfs_file {
+    pgfs_mount_ctx_t *ctx;
+    pgfs_file_entry_t *entry;
+    size_t pos;
+    uint8_t mode_write;
+    uint8_t mode_read;
+    uint8_t eof;
+    uint8_t err;
+    pgfs_file_cache_t cache;
+} pgfs_file_t;
 
 #if defined(_MSC_VER)
 #pragma pack(pop)
@@ -72,5 +100,20 @@ pgfs_mount_ctx_t* pgfs_get_mount_ctx(void);
 int pgfs_pick_latest_valid_sb(const pgfs_superblock_t* a, const pgfs_superblock_t* b, pgfs_superblock_t* out);
 int pgfs_checkpoint_load(void* fs, pgfs_checkpoint_t* cp);
 int pgfs_checkpoint_store_next(void* fs, const pgfs_checkpoint_t* current, pgfs_checkpoint_t* next);
+
+int pgfs_cache_append(pgfs_file_t* f, const uint8_t* data, size_t len);
+int pgfs_cache_flush_to_log(pgfs_mount_ctx_t* ctx, pgfs_file_t* f);
+int pgfs_lock(pgfs_mount_ctx_t* ctx);
+int pgfs_unlock(pgfs_mount_ctx_t* ctx);
+
+FILE* pgfs_file_open(pgfs_mount_ctx_t* ctx, const char *filename, const char *mode);
+int pgfs_file_close(pgfs_mount_ctx_t* ctx, FILE* stream);
+size_t pgfs_file_read(pgfs_mount_ctx_t* ctx, void *ptr, size_t size, size_t nmemb, FILE *stream);
+size_t pgfs_file_write(pgfs_mount_ctx_t* ctx, const void *ptr, size_t size, size_t nmemb, FILE *stream);
+int pgfs_file_seek(pgfs_mount_ctx_t* ctx, FILE* stream, long int offset, int origin);
+int pgfs_file_tell(pgfs_mount_ctx_t* ctx, FILE* stream);
+int pgfs_file_eof(pgfs_mount_ctx_t* ctx, FILE* stream);
+int pgfs_file_error(pgfs_mount_ctx_t* ctx, FILE* stream);
+int pgfs_file_flush(pgfs_mount_ctx_t* ctx, FILE* stream);
 
 #endif
