@@ -5,7 +5,7 @@
 
 #ifdef LUAT_USE_PGFS_COMPONENT
 
-#define PGFS_MAX_FILES 32
+#define PGFS_MAX_FILES 512
 #define PGFS_DATA_RECORD_MAGIC 0x50474644u
 
 typedef struct pgfs_data_record_hdr {
@@ -70,6 +70,33 @@ static pgfs_file_entry_t* pgfs_alloc_file(const char* path) {
         }
     }
     return NULL;
+}
+
+void pgfs_file_reset_all(void) {
+    size_t i = 0;
+    for (i = 0; i < PGFS_MAX_FILES; i++) {
+        if (s_pgfs_files[i].data) {
+            luat_heap_free(s_pgfs_files[i].data);
+        }
+        memset(&s_pgfs_files[i], 0, sizeof(s_pgfs_files[i]));
+    }
+}
+
+int pgfs_file_remove(pgfs_mount_ctx_t* ctx, const char *filename) {
+    pgfs_file_entry_t* e = NULL;
+    (void)ctx;
+    if (filename == NULL) {
+        return -1;
+    }
+    e = pgfs_find_file(filename);
+    if (e == NULL) {
+        return -1;
+    }
+    if (e->data) {
+        luat_heap_free(e->data);
+    }
+    memset(e, 0, sizeof(*e));
+    return 0;
 }
 
 static int pgfs_file_reserve(pgfs_file_entry_t* e, size_t need) {
@@ -138,15 +165,23 @@ static int pgfs_append_data_record(pgfs_mount_ctx_t* ctx, pgfs_file_t* f) {
 
 static int pgfs_apply_cache_to_entry(pgfs_file_t* f) {
     pgfs_file_entry_t* e = NULL;
+    size_t old_len = 0;
     if (f == NULL || f->entry == NULL || f->cache.len == 0) {
         return 0;
     }
     e = f->entry;
+    old_len = e->len;
     if (pgfs_file_reserve(e, f->cache.len) != 0) {
         return -1;
     }
     memcpy(e->data, f->cache.data, f->cache.len);
     e->len = f->cache.len;
+    if (f->ctx) {
+        f->ctx->checkpoint.gc_live_bytes += (uint32_t)f->cache.len;
+        if (old_len > 0) {
+            f->ctx->checkpoint.gc_dead_bytes += (uint32_t)old_len;
+        }
+    }
     return 0;
 }
 
@@ -185,6 +220,7 @@ FILE* pgfs_file_open(pgfs_mount_ctx_t* ctx, const char *filename, const char *mo
 int pgfs_file_close(pgfs_mount_ctx_t* ctx, FILE* stream) {
     pgfs_file_t* f = (pgfs_file_t*)stream;
     int ret = 0;
+    uint32_t seg_id = 0;
     if (ctx == NULL || f == NULL) {
         return -1;
     }
@@ -192,11 +228,14 @@ int pgfs_file_close(pgfs_mount_ctx_t* ctx, FILE* stream) {
         return -1;
     }
     if (f->mode_write) {
+        (void)pgfs_gc_step(ctx, 4096, 2000);
+        (void)pgfs_alloc_segment(ctx, &seg_id);
         if (pgfs_cache_flush_to_log(ctx, f) != 0) {
             ret = -1;
             goto finish;
         }
         if (pgfs_append_data_record(ctx, f) != 0) {
+            (void)pgfs_mark_block_retired(ctx, seg_id);
             ret = -1;
             goto finish;
         }
@@ -329,3 +368,4 @@ int pgfs_file_flush(pgfs_mount_ctx_t* ctx, FILE* stream) {
 }
 
 #endif
+    uint32_t seg_id = 0;

@@ -15,13 +15,15 @@ local function crc32_raw(data)
 end
 
 local function build_checkpoint(seq, total_blocks, used_blocks)
-    local body_with_zero_crc = string.pack("<I4I2I2I4I4I4I4I4",
+    local body_with_zero_crc = string.pack("<I4I2I2I4I4I4I4I4I4I4",
         PGFS_CP_MAGIC,
         PGFS_VERSION,
         0,
         seq,
         total_blocks,
         used_blocks,
+        0,
+        0,
         0,
         0)
     local crc = crc32_raw(body_with_zero_crc)

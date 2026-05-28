@@ -95,6 +95,7 @@ static int luat_vfs_pgfs_mount(void** fsdata, luat_fs_conf_t *conf) {
         return -1;
     }
     memset(&s_pgfs_ctx, 0, sizeof(s_pgfs_ctx));
+    pgfs_file_reset_all();
     mlen = strlen(conf->mount_point);
     if (mlen >= sizeof(s_pgfs_ctx.mount_point)) {
         mlen = sizeof(s_pgfs_ctx.mount_point) - 1;
@@ -132,6 +133,10 @@ static int luat_vfs_pgfs_info(void* fsdata, const char* path, luat_fs_info_t *co
         return -1;
     }
     return pgfs_info_fast(ctx, conf);
+}
+
+static int luat_vfs_pgfs_remove(void* fsdata, const char *filename) {
+    return pgfs_file_remove((pgfs_mount_ctx_t*)fsdata, filename);
 }
 
 static FILE* luat_vfs_pgfs_fopen(void* fsdata, const char *filename, const char *mode) {
@@ -176,6 +181,7 @@ const struct luat_vfs_filesystem vfs_fs_pgfs = {
         .mount = luat_vfs_pgfs_mount,
         .umount = luat_vfs_pgfs_umount,
         .info = luat_vfs_pgfs_info,
+        .remove = luat_vfs_pgfs_remove,
     },
     .fopts = {
         .fopen = luat_vfs_pgfs_fopen,

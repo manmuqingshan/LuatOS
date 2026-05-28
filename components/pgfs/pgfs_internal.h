@@ -42,6 +42,8 @@ typedef struct pgfs_checkpoint {
     uint32_t total_blocks;
     uint32_t used_blocks;
     uint32_t flags;
+    uint32_t gc_live_bytes;
+    uint32_t gc_dead_bytes;
     uint32_t crc32;
 }
 #if !defined(_MSC_VER)
@@ -63,6 +65,7 @@ typedef struct pgfs_mount_ctx {
     uint8_t reserved[3];
     pgfs_checkpoint_t checkpoint;
     uint32_t data_log_write_addr;
+    uint32_t gc_next_seg_id;
 } pgfs_mount_ctx_t;
 
 typedef struct pgfs_file_cache {
@@ -117,5 +120,18 @@ int pgfs_file_tell(pgfs_mount_ctx_t* ctx, FILE* stream);
 int pgfs_file_eof(pgfs_mount_ctx_t* ctx, FILE* stream);
 int pgfs_file_error(pgfs_mount_ctx_t* ctx, FILE* stream);
 int pgfs_file_flush(pgfs_mount_ctx_t* ctx, FILE* stream);
+void pgfs_file_reset_all(void);
+int pgfs_file_remove(pgfs_mount_ctx_t* ctx, const char *filename);
+
+typedef struct pgfs_seg_summary {
+    uint32_t live_bytes;
+    uint32_t dead_bytes;
+    uint32_t erase_count;
+    uint32_t flags;
+} pgfs_seg_summary_t;
+
+int pgfs_alloc_segment(pgfs_mount_ctx_t* ctx, uint32_t* seg_id);
+int pgfs_gc_step(pgfs_mount_ctx_t* ctx, uint32_t byte_budget, uint32_t time_budget_us);
+int pgfs_mark_block_retired(pgfs_mount_ctx_t* ctx, uint32_t block_id);
 
 #endif
