@@ -11,6 +11,7 @@ local function setup_flash()
         assert(s_flash, "lf.init failed")
     end
     assert(lf.erase(s_flash, 0, 0x4000), "lf.erase failed")
+    sys.wait(30)
     if not s_mounted then
         assert(lf.mount(s_flash, "/pgfs/", 0, 0, "pgfs"), "pgfs mount failed")
         s_mounted = true
