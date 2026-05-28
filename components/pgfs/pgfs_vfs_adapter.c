@@ -197,6 +197,10 @@ static int luat_vfs_pgfs_fflush(void* fsdata, FILE *stream) {
     return pgfs_file_flush((pgfs_mount_ctx_t*)fsdata, stream);
 }
 
+static int luat_vfs_pgfs_getc(void* fsdata, FILE* stream) {
+    return pgfs_file_getc((pgfs_mount_ctx_t*)fsdata, stream);
+}
+
 const struct luat_vfs_filesystem vfs_fs_pgfs = {
     .name = "pgfs",
     .opts = {
@@ -220,6 +224,7 @@ const struct luat_vfs_filesystem vfs_fs_pgfs = {
         .fread = luat_vfs_pgfs_fread,
         .fwrite = luat_vfs_pgfs_fwrite,
         .fflush = luat_vfs_pgfs_fflush,
+        .getc = luat_vfs_pgfs_getc,
     },
 };
 

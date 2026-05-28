@@ -139,6 +139,7 @@ int pgfs_unlock(pgfs_mount_ctx_t* ctx);
 FILE* pgfs_file_open(pgfs_mount_ctx_t* ctx, const char *filename, const char *mode);
 int pgfs_file_close(pgfs_mount_ctx_t* ctx, FILE* stream);
 size_t pgfs_file_read(pgfs_mount_ctx_t* ctx, void *ptr, size_t size, size_t nmemb, FILE *stream);
+int pgfs_file_getc(pgfs_mount_ctx_t* ctx, FILE* stream);
 size_t pgfs_file_write(pgfs_mount_ctx_t* ctx, const void *ptr, size_t size, size_t nmemb, FILE *stream);
 int pgfs_file_seek(pgfs_mount_ctx_t* ctx, FILE* stream, long int offset, int origin);
 int pgfs_file_tell(pgfs_mount_ctx_t* ctx, FILE* stream);
