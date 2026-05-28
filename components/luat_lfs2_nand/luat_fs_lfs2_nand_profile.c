@@ -1,6 +1,6 @@
 #include "luat_lfs2_nand.h"
 
-#include "lfs.h"
+#include "luat_lfs2.h"
 #include "luat_fs.h"
 #include "luat_mem.h"
 #include "luat_mcu.h"
@@ -15,31 +15,35 @@
 #define LFS2_NAND_META_SLOT0 ".lfs2_nand_space.meta0"
 #define LFS2_NAND_META_SLOT1 ".lfs2_nand_space.meta1"
 
-extern int luat_vfs_lfs2_mkfs(void* userdata, luat_fs_conf_t *conf);
-extern int luat_vfs_lfs2_umount(void* userdata, luat_fs_conf_t *conf);
-extern int luat_vfs_lfs2_mkdir(void* userdata, char const* _DirName);
-extern int luat_vfs_lfs2_rmdir(void* userdata, char const* _DirName);
-extern int luat_vfs_lfs2_lsdir(void* userdata, char const* _DirName, luat_fs_dirent_t* ents, size_t offset, size_t len);
-extern int luat_vfs_lfs2_remove(void* userdata, const char *filename);
-extern int luat_vfs_lfs2_rename(void* userdata, const char *old_filename, const char *new_filename);
-extern size_t luat_vfs_lfs2_fsize(void* userdata, const char *filename);
-extern int luat_vfs_lfs2_fexist(void* userdata, const char *filename);
-extern int luat_vfs_lfs2_info(void* userdata, const char* path, luat_fs_info_t *conf);
-extern int luat_vfs_lfs2_truncate(void* userdata, const char *filename, size_t len);
-extern void* luat_vfs_lfs2_opendir(void* userdata, const char *_DirName);
-extern int luat_vfs_lfs2_closedir(void* userdata, void* dir);
-extern FILE* luat_vfs_lfs2_fopen(void* userdata, const char *filename, const char *mode);
-extern int luat_vfs_lfs2_getc(void* userdata, FILE* stream);
-extern int luat_vfs_lfs2_fseek(void* userdata, FILE* stream, long int offset, int origin);
-extern int luat_vfs_lfs2_ftell(void* userdata, FILE* stream);
-extern int luat_vfs_lfs2_fclose(void* userdata, FILE* stream);
-extern int luat_vfs_lfs2_feof(void* userdata, FILE* stream);
-extern int luat_vfs_lfs2_ferror(void* userdata, FILE *stream);
-extern size_t luat_vfs_lfs2_fread(void* userdata, void *ptr, size_t size, size_t nmemb, FILE *stream);
-extern size_t luat_vfs_lfs2_fwrite(void* userdata, const void *ptr, size_t size, size_t nmemb, FILE *stream);
-extern int luat_vfs_lfs2_fflush(void* userdata, FILE *stream);
+extern int luat_vfs_lfs2_nand_base_mkfs(void* userdata, luat_fs_conf_t *conf);
+extern int luat_vfs_lfs2_nand_base_umount(void* userdata, luat_fs_conf_t *conf);
+extern int luat_vfs_lfs2_nand_base_mkdir(void* userdata, char const* _DirName);
+extern int luat_vfs_lfs2_nand_base_rmdir(void* userdata, char const* _DirName);
+extern int luat_vfs_lfs2_nand_base_lsdir(void* userdata, char const* _DirName, luat_fs_dirent_t* ents, size_t offset, size_t len);
+extern int luat_vfs_lfs2_nand_base_remove(void* userdata, const char *filename);
+extern int luat_vfs_lfs2_nand_base_rename(void* userdata, const char *old_filename, const char *new_filename);
+extern size_t luat_vfs_lfs2_nand_base_fsize(void* userdata, const char *filename);
+extern int luat_vfs_lfs2_nand_base_fexist(void* userdata, const char *filename);
+extern int luat_vfs_lfs2_nand_base_info(void* userdata, const char* path, luat_fs_info_t *conf);
+extern int luat_vfs_lfs2_nand_base_truncate(void* userdata, const char *filename, size_t len);
+extern void* luat_vfs_lfs2_nand_base_opendir(void* userdata, const char *_DirName);
+extern int luat_vfs_lfs2_nand_base_closedir(void* userdata, void* dir);
+extern FILE* luat_vfs_lfs2_nand_base_fopen(void* userdata, const char *filename, const char *mode);
+extern int luat_vfs_lfs2_nand_base_getc(void* userdata, FILE* stream);
+extern int luat_vfs_lfs2_nand_base_fseek(void* userdata, FILE* stream, long int offset, int origin);
+extern int luat_vfs_lfs2_nand_base_ftell(void* userdata, FILE* stream);
+extern int luat_vfs_lfs2_nand_base_fclose(void* userdata, FILE* stream);
+extern int luat_vfs_lfs2_nand_base_feof(void* userdata, FILE* stream);
+extern int luat_vfs_lfs2_nand_base_ferror(void* userdata, FILE *stream);
+extern size_t luat_vfs_lfs2_nand_base_fread(void* userdata, void *ptr, size_t size, size_t nmemb, FILE *stream);
+extern size_t luat_vfs_lfs2_nand_base_fwrite(void* userdata, const void *ptr, size_t size, size_t nmemb, FILE *stream);
+extern int luat_vfs_lfs2_nand_base_fflush(void* userdata, FILE *stream);
+#ifdef LUAT_USE_LITTLE_FLASH
+extern void luat_lfs2_block_profile_reset(void);
+extern void luat_lfs2_block_profile_log(const char* prefix);
+#endif
 
-extern lfs_t* flash_lfs_lf(void* flash, size_t offset, size_t maxsize);
+extern luat_lfs2_t* flash_lfs_lf(void* flash, size_t offset, size_t maxsize);
 
 typedef struct {
     void* userdata;
@@ -99,7 +103,7 @@ static int luat_vfs_lfs2_nand_meta_scan(void* ctx, uint32_t* used, uint32_t* tot
     if (!meta_ctx || !used || !total) {
         return -1;
     }
-    if (luat_vfs_lfs2_info(meta_ctx->userdata, "", &info) != 0) {
+    if (luat_vfs_lfs2_nand_base_info(meta_ctx->userdata, "", &info) != 0) {
         return -1;
     }
     *used = (uint32_t)info.block_used;
@@ -115,12 +119,12 @@ static int luat_vfs_lfs2_nand_meta_read_slot(void* ctx, uint32_t slot, luat_lfs2
     if (!meta_ctx || !out) {
         return -1;
     }
-    fd = luat_vfs_lfs2_fopen(meta_ctx->userdata, luat_vfs_lfs2_nand_meta_slot_path(slot), "rb");
+    fd = luat_vfs_lfs2_nand_base_fopen(meta_ctx->userdata, luat_vfs_lfs2_nand_meta_slot_path(slot), "rb");
     if (!fd) {
         return -1;
     }
-    read_len = luat_vfs_lfs2_fread(meta_ctx->userdata, out, 1, sizeof(*out), fd);
-    luat_vfs_lfs2_fclose(meta_ctx->userdata, fd);
+    read_len = luat_vfs_lfs2_nand_base_fread(meta_ctx->userdata, out, 1, sizeof(*out), fd);
+    luat_vfs_lfs2_nand_base_fclose(meta_ctx->userdata, fd);
     return (read_len == sizeof(*out)) ? 0 : -1;
 }
 
@@ -134,13 +138,13 @@ static int luat_vfs_lfs2_nand_meta_write_slot(void* ctx, uint32_t slot, const lu
     if (!meta_ctx || !meta) {
         return -1;
     }
-    fd = luat_vfs_lfs2_fopen(meta_ctx->userdata, luat_vfs_lfs2_nand_meta_slot_path(slot), "wb");
+    fd = luat_vfs_lfs2_nand_base_fopen(meta_ctx->userdata, luat_vfs_lfs2_nand_meta_slot_path(slot), "wb");
     if (!fd) {
         return -1;
     }
-    write_len = luat_vfs_lfs2_fwrite(meta_ctx->userdata, meta, 1, sizeof(*meta), fd);
-    flush_rc = luat_vfs_lfs2_fflush(meta_ctx->userdata, fd);
-    close_rc = luat_vfs_lfs2_fclose(meta_ctx->userdata, fd);
+    write_len = luat_vfs_lfs2_nand_base_fwrite(meta_ctx->userdata, meta, 1, sizeof(*meta), fd);
+    flush_rc = luat_vfs_lfs2_nand_base_fflush(meta_ctx->userdata, fd);
+    close_rc = luat_vfs_lfs2_nand_base_fclose(meta_ctx->userdata, fd);
     return (write_len == sizeof(*meta) && flush_rc == 0 && close_rc == 0) ? 0 : -1;
 }
 
@@ -278,7 +282,7 @@ static int luat_vfs_lfs2_nand_cache_flush(void* userdata, luat_vfs_lfs2_nand_wri
     if (!slot || slot->stream == NULL || slot->len == 0) {
         return 0;
     }
-    wrote = luat_vfs_lfs2_fwrite(userdata, slot->data, 1, slot->len, slot->stream);
+    wrote = luat_vfs_lfs2_nand_base_fwrite(userdata, slot->data, 1, slot->len, slot->stream);
     if (wrote != slot->len) {
         return -1;
     }
@@ -286,7 +290,14 @@ static int luat_vfs_lfs2_nand_cache_flush(void* userdata, luat_vfs_lfs2_nand_wri
     g_lfs2_nand_cache_flush_count++;
     g_lfs2_nand_cache_flush_us += cost_us;
     g_lfs2_nand_cache_flush_bytes += slot->len;
+    LLOGD("LFS2_TRACE_CACHE_FLUSH flush_idx=%u bytes=%u cost_us=%llu",
+          (unsigned int)g_lfs2_nand_cache_flush_count,
+          (unsigned int)slot->len,
+          (unsigned long long)cost_us);
     luat_vfs_lfs2_nand_log_slow("cache_flush", "writeback", cost_us);
+#ifdef LUAT_USE_LITTLE_FLASH
+    luat_lfs2_block_profile_log("LFS2N_IO_SUMMARY");
+#endif
     slot->len = 0;
     luat_vfs_lfs2_nand_mark_space_dirty();
     return 0;
@@ -314,7 +325,7 @@ static int luat_vfs_lfs2_nand_load_space_meta(void* userdata, luat_lfs2_nand_spa
 
 static int luat_vfs_lfs2_nand_recover_layout(void* userdata, luat_fs_conf_t *conf) {
     LLOGD("lfs2_nand: legacy/incompatible layout detected, formatting and remounting");
-    if (luat_vfs_lfs2_mkfs(userdata, conf) != 0) {
+    if (luat_vfs_lfs2_nand_base_mkfs(userdata, conf) != 0) {
         LLOGD("lfs2_nand: recovery mkfs failed");
         return -1;
     }
@@ -327,11 +338,11 @@ static int luat_vfs_lfs2_nand_recover_layout(void* userdata, luat_fs_conf_t *con
 
 static int luat_vfs_lfs2_nand_detect_legacy_layout(void* userdata) {
     luat_fs_info_t info = {0};
-    if (luat_vfs_lfs2_fexist(userdata, LFS2_NAND_META_SLOT0) ||
-        luat_vfs_lfs2_fexist(userdata, LFS2_NAND_META_SLOT1)) {
+    if (luat_vfs_lfs2_nand_base_fexist(userdata, LFS2_NAND_META_SLOT0) ||
+        luat_vfs_lfs2_nand_base_fexist(userdata, LFS2_NAND_META_SLOT1)) {
         return 0;
     }
-    if (luat_vfs_lfs2_info(userdata, "", &info) != 0) {
+    if (luat_vfs_lfs2_nand_base_info(userdata, "", &info) != 0) {
         LLOGD("lfs2_nand: layout probe failed");
         return -1;
     }
@@ -339,7 +350,7 @@ static int luat_vfs_lfs2_nand_detect_legacy_layout(void* userdata) {
 }
 
 static int luat_vfs_lfs2_nand_stream_may_change_space(FILE* stream) {
-    lfs_file_t* file = (lfs_file_t*)stream;
+    luat_lfs2_file_t* file = (luat_lfs2_file_t*)stream;
     if (!file) {
         return 0;
     }
@@ -356,6 +367,9 @@ static int luat_vfs_lfs2_nand_mount(void** userdata, luat_fs_conf_t *conf) {
         return -1;
     }
     *userdata = (void*)conf->busname;
+#ifdef LUAT_USE_LITTLE_FLASH
+    luat_lfs2_block_profile_reset();
+#endif
     if (!*userdata) {
         LLOGD("lfs2_nand mount missing bus");
         return -1;
@@ -392,7 +406,7 @@ static int luat_vfs_lfs2_nand_mount(void** userdata, luat_fs_conf_t *conf) {
 }
 
 static int luat_vfs_lfs2_nand_mkfs(void* userdata, luat_fs_conf_t *conf) {
-    int ret = luat_vfs_lfs2_mkfs(userdata, conf);
+    int ret = luat_vfs_lfs2_nand_base_mkfs(userdata, conf);
     if (ret == 0) {
         if (luat_vfs_lfs2_nand_refresh_space_meta(userdata, "mkfs") == 0) {
             g_lfs2_nand_space_meta_dirty = 0;
@@ -412,11 +426,11 @@ static int luat_vfs_lfs2_nand_umount(void* userdata, luat_fs_conf_t *conf) {
               g_lfs2_nand_cache_flush_count, (unsigned long long)g_lfs2_nand_cache_flush_bytes,
               (unsigned long long)g_lfs2_nand_cache_flush_us);
     }
-    return luat_vfs_lfs2_umount(userdata, conf);
+    return luat_vfs_lfs2_nand_base_umount(userdata, conf);
 }
 
 static int luat_vfs_lfs2_nand_mkdir(void* userdata, char const* _DirName) {
-    int ret = luat_vfs_lfs2_mkdir(userdata, _DirName);
+    int ret = luat_vfs_lfs2_nand_base_mkdir(userdata, _DirName);
     if (ret == 0) {
         luat_vfs_lfs2_nand_mark_space_dirty();
     }
@@ -424,7 +438,7 @@ static int luat_vfs_lfs2_nand_mkdir(void* userdata, char const* _DirName) {
 }
 
 static int luat_vfs_lfs2_nand_rmdir(void* userdata, char const* _DirName) {
-    int ret = luat_vfs_lfs2_rmdir(userdata, _DirName);
+    int ret = luat_vfs_lfs2_nand_base_rmdir(userdata, _DirName);
     if (ret == 0) {
         luat_vfs_lfs2_nand_mark_space_dirty();
     }
@@ -432,11 +446,11 @@ static int luat_vfs_lfs2_nand_rmdir(void* userdata, char const* _DirName) {
 }
 
 static int luat_vfs_lfs2_nand_lsdir(void* userdata, char const* _DirName, luat_fs_dirent_t* ents, size_t offset, size_t len) {
-    return luat_vfs_lfs2_lsdir(userdata, _DirName, ents, offset, len);
+    return luat_vfs_lfs2_nand_base_lsdir(userdata, _DirName, ents, offset, len);
 }
 
 static int luat_vfs_lfs2_nand_remove(void* userdata, const char *filename) {
-    int ret = luat_vfs_lfs2_remove(userdata, filename);
+    int ret = luat_vfs_lfs2_nand_base_remove(userdata, filename);
     if (ret == 0) {
         luat_vfs_lfs2_nand_mark_space_dirty();
     }
@@ -444,7 +458,7 @@ static int luat_vfs_lfs2_nand_remove(void* userdata, const char *filename) {
 }
 
 static int luat_vfs_lfs2_nand_rename(void* userdata, const char *old_filename, const char *new_filename) {
-    int ret = luat_vfs_lfs2_rename(userdata, old_filename, new_filename);
+    int ret = luat_vfs_lfs2_nand_base_rename(userdata, old_filename, new_filename);
     if (ret == 0) {
         luat_vfs_lfs2_nand_mark_space_dirty();
     }
@@ -452,15 +466,15 @@ static int luat_vfs_lfs2_nand_rename(void* userdata, const char *old_filename, c
 }
 
 static size_t luat_vfs_lfs2_nand_fsize(void* userdata, const char *filename) {
-    return luat_vfs_lfs2_fsize(userdata, filename);
+    return luat_vfs_lfs2_nand_base_fsize(userdata, filename);
 }
 
 static int luat_vfs_lfs2_nand_fexist(void* userdata, const char *filename) {
-    return luat_vfs_lfs2_fexist(userdata, filename);
+    return luat_vfs_lfs2_nand_base_fexist(userdata, filename);
 }
 
 static int luat_vfs_lfs2_nand_info(void* userdata, const char* path, luat_fs_info_t *conf) {
-    lfs_t* fs = (lfs_t*)userdata;
+    luat_lfs2_t* fs = (luat_lfs2_t*)userdata;
     luat_lfs2_nand_space_meta_t meta = {0};
     (void)path;
     if (!fs || !conf) {
@@ -483,7 +497,7 @@ static int luat_vfs_lfs2_nand_info(void* userdata, const char* path, luat_fs_inf
 }
 
 static int luat_vfs_lfs2_nand_truncate(void* userdata, const char *filename, size_t len) {
-    int ret = luat_vfs_lfs2_truncate(userdata, filename, len);
+    int ret = luat_vfs_lfs2_nand_base_truncate(userdata, filename, len);
     if (ret == 0) {
         luat_vfs_lfs2_nand_mark_space_dirty();
     }
@@ -491,15 +505,15 @@ static int luat_vfs_lfs2_nand_truncate(void* userdata, const char *filename, siz
 }
 
 static void* luat_vfs_lfs2_nand_opendir(void* userdata, const char *_DirName) {
-    return luat_vfs_lfs2_opendir(userdata, _DirName);
+    return luat_vfs_lfs2_nand_base_opendir(userdata, _DirName);
 }
 
 static int luat_vfs_lfs2_nand_closedir(void* userdata, void* dir) {
-    return luat_vfs_lfs2_closedir(userdata, dir);
+    return luat_vfs_lfs2_nand_base_closedir(userdata, dir);
 }
 
 static FILE* luat_vfs_lfs2_nand_fopen(void* userdata, const char *filename, const char *mode) {
-    return luat_vfs_lfs2_fopen(userdata, filename, mode);
+    return luat_vfs_lfs2_nand_base_fopen(userdata, filename, mode);
 }
 
 static int luat_vfs_lfs2_nand_getc(void* userdata, FILE* stream) {
@@ -507,7 +521,7 @@ static int luat_vfs_lfs2_nand_getc(void* userdata, FILE* stream) {
     if (slot && luat_vfs_lfs2_nand_cache_flush(userdata, slot) != 0) {
         return -1;
     }
-    return luat_vfs_lfs2_getc(userdata, stream);
+    return luat_vfs_lfs2_nand_base_getc(userdata, stream);
 }
 
 static int luat_vfs_lfs2_nand_fseek(void* userdata, FILE* stream, long int offset, int origin) {
@@ -515,7 +529,7 @@ static int luat_vfs_lfs2_nand_fseek(void* userdata, FILE* stream, long int offse
     if (slot && luat_vfs_lfs2_nand_cache_flush(userdata, slot) != 0) {
         return -1;
     }
-    return luat_vfs_lfs2_fseek(userdata, stream, offset, origin);
+    return luat_vfs_lfs2_nand_base_fseek(userdata, stream, offset, origin);
 }
 
 static int luat_vfs_lfs2_nand_ftell(void* userdata, FILE* stream) {
@@ -523,7 +537,7 @@ static int luat_vfs_lfs2_nand_ftell(void* userdata, FILE* stream) {
     if (slot && luat_vfs_lfs2_nand_cache_flush(userdata, slot) != 0) {
         return -1;
     }
-    return luat_vfs_lfs2_ftell(userdata, stream);
+    return luat_vfs_lfs2_nand_base_ftell(userdata, stream);
 }
 
 static int luat_vfs_lfs2_nand_fclose(void* userdata, FILE* stream) {
@@ -534,7 +548,7 @@ static int luat_vfs_lfs2_nand_fclose(void* userdata, FILE* stream) {
         luat_vfs_lfs2_nand_cache_release(stream);
         return -1;
     }
-    ret = luat_vfs_lfs2_fclose(userdata, stream);
+    ret = luat_vfs_lfs2_nand_base_fclose(userdata, stream);
     if (ret == 0 && should_mark_dirty) {
         luat_vfs_lfs2_nand_mark_space_dirty();
     }
@@ -543,11 +557,11 @@ static int luat_vfs_lfs2_nand_fclose(void* userdata, FILE* stream) {
 }
 
 static int luat_vfs_lfs2_nand_feof(void* userdata, FILE* stream) {
-    return luat_vfs_lfs2_feof(userdata, stream);
+    return luat_vfs_lfs2_nand_base_feof(userdata, stream);
 }
 
 static int luat_vfs_lfs2_nand_ferror(void* userdata, FILE *stream) {
-    return luat_vfs_lfs2_ferror(userdata, stream);
+    return luat_vfs_lfs2_nand_base_ferror(userdata, stream);
 }
 
 static size_t luat_vfs_lfs2_nand_fread(void* userdata, void *ptr, size_t size, size_t nmemb, FILE *stream) {
@@ -555,25 +569,25 @@ static size_t luat_vfs_lfs2_nand_fread(void* userdata, void *ptr, size_t size, s
     if (slot && luat_vfs_lfs2_nand_cache_flush(userdata, slot) != 0) {
         return 0;
     }
-    return luat_vfs_lfs2_fread(userdata, ptr, size, nmemb, stream);
+    return luat_vfs_lfs2_nand_base_fread(userdata, ptr, size, nmemb, stream);
 }
 
 static size_t luat_vfs_lfs2_nand_fwrite(void* userdata, const void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    lfs_file_t* file = (lfs_file_t*)stream;
+    luat_lfs2_file_t* file = (luat_lfs2_file_t*)stream;
     luat_vfs_lfs2_nand_write_cache_t* slot;
     size_t total = size * nmemb;
     if (!file || total == 0) {
         return 0;
     }
     if (!luat_vfs_lfs2_nand_stream_may_change_space(stream)) {
-        return luat_vfs_lfs2_fwrite(userdata, ptr, size, nmemb, stream);
+        return luat_vfs_lfs2_nand_base_fwrite(userdata, ptr, size, nmemb, stream);
     }
     slot = luat_vfs_lfs2_nand_cache_find(stream);
     if (!slot) {
         slot = luat_vfs_lfs2_nand_cache_alloc(stream);
     }
     if (!slot) {
-        size_t wrote = luat_vfs_lfs2_fwrite(userdata, ptr, size, nmemb, stream);
+        size_t wrote = luat_vfs_lfs2_nand_base_fwrite(userdata, ptr, size, nmemb, stream);
         if (wrote == total) {
             luat_vfs_lfs2_nand_mark_space_dirty();
         }
@@ -584,7 +598,7 @@ static size_t luat_vfs_lfs2_nand_fwrite(void* userdata, const void *ptr, size_t 
             return 0;
         }
         {
-            size_t wrote = luat_vfs_lfs2_fwrite(userdata, ptr, size, nmemb, stream);
+            size_t wrote = luat_vfs_lfs2_nand_base_fwrite(userdata, ptr, size, nmemb, stream);
             if (wrote == total) {
                 luat_vfs_lfs2_nand_mark_space_dirty();
             }
@@ -596,7 +610,7 @@ static size_t luat_vfs_lfs2_nand_fwrite(void* userdata, const void *ptr, size_t 
             return 0;
         }
         {
-            size_t wrote = luat_vfs_lfs2_fwrite(userdata, ptr, size, nmemb, stream);
+            size_t wrote = luat_vfs_lfs2_nand_base_fwrite(userdata, ptr, size, nmemb, stream);
             if (wrote == total) {
                 luat_vfs_lfs2_nand_mark_space_dirty();
             }
@@ -614,7 +628,7 @@ static int luat_vfs_lfs2_nand_fflush(void* userdata, FILE *stream) {
     if (slot && luat_vfs_lfs2_nand_cache_flush(userdata, slot) != 0) {
         return -1;
     }
-    ret = luat_vfs_lfs2_fflush(userdata, stream);
+    ret = luat_vfs_lfs2_nand_base_fflush(userdata, stream);
     if (ret == 0 && luat_vfs_lfs2_nand_stream_may_change_space(stream)) {
         luat_vfs_lfs2_nand_mark_space_dirty();
     }

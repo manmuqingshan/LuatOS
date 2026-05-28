@@ -180,6 +180,7 @@ target("luatos-lua")
     remove_files(luatos .. "luat/vfs/luat_fs_onefile.c")
     -- lfs
     add_includedirs(luatos.."components/lfs")
+    add_includedirs(luatos.."components/luat_lfs2_nand")
     add_thirdparty_files(luatos.."components/lfs/*.c")
 
     -- add_files(luatos.."components/sfd/*.c")
