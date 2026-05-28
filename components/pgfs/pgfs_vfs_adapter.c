@@ -15,7 +15,7 @@ pgfs_mount_ctx_t* pgfs_get_mount_ctx(void) {
 
 static int luat_vfs_pgfs_mount(void** fsdata, luat_fs_conf_t *conf) {
     size_t mlen = 0;
-    if (fsdata == NULL || conf == NULL || conf->mount_point == NULL) {
+    if (fsdata == NULL || conf == NULL || conf->mount_point == NULL || conf->busname == NULL) {
         return -1;
     }
     memset(&s_pgfs_ctx, 0, sizeof(s_pgfs_ctx));
