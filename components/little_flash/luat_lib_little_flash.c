@@ -223,7 +223,7 @@ static void* luat_little_flash_default_bus(void* flash, size_t offset, size_t ma
 
 static void* luat_little_flash_named_bus(void* flash, size_t offset, size_t maxsize, const char* fs) {
 #ifdef LUAT_USE_LFS2_NAND_COMPONENT
-    if (fs != NULL && strcmp(fs, "lfs2_nand") == 0) {
+    if (fs != NULL && strcmp(fs, "lfsn") == 0) {
         luat_lfs2_nand_vfs_init();
         return luat_fs_lfs2_nand_default_bus(flash, offset, maxsize);
     }
@@ -284,7 +284,7 @@ static const char* luat_little_flash_mount_fs_selector(lua_State *L, int index) 
 @string mount_point 挂载目录名
 @int    起始偏移量,默认0
 @int    总大小, 默认是整个flash
-@table/string opts 可选, 文件系统选择. nil/"lfs2"为默认; 可传"lfs2_nand"/"pgfs"或{fs="lfs2_nand"}、{fs="pgfs"}
+@table/string opts 可选, 文件系统选择. nil/"lfs2"为默认; 可传"lfsn"/"pgfs"或{fs="lfsn"}、{fs="pgfs"}
 @return bool 成功返回true
 @usage
 log.info("lf.mount",lf.mount(little_flash_device,"/little_flash"))

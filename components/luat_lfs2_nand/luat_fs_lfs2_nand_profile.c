@@ -22,9 +22,9 @@
 #define LFS2N_DEBUG_LOG(...) do { if (LUAT_LFS2N_DEBUG_LOG) { LLOGD(__VA_ARGS__); } } while (0)
 #define LFS2N_PERF_LOG(...)  do { if (LUAT_LFS2N_PERF_LOG)  { LLOGD(__VA_ARGS__); } } while (0)
 
-#define NAND_FS_NAME "lfs2_nand"
-#define LFS2_NAND_META_SLOT0 ".lfs2_nand_space.meta0"
-#define LFS2_NAND_META_SLOT1 ".lfs2_nand_space.meta1"
+#define NAND_FS_NAME "lfsn"
+#define LFS2_NAND_META_SLOT0 ".lfsn_space.meta0"
+#define LFS2_NAND_META_SLOT1 ".lfsn_space.meta1"
 
 extern int luat_vfs_lfs2_nand_base_mkfs(void* userdata, luat_fs_conf_t *conf);
 extern int luat_vfs_lfs2_nand_base_umount(void* userdata, luat_fs_conf_t *conf);
@@ -50,11 +50,11 @@ extern size_t luat_vfs_lfs2_nand_base_fread(void* userdata, void *ptr, size_t si
 extern size_t luat_vfs_lfs2_nand_base_fwrite(void* userdata, const void *ptr, size_t size, size_t nmemb, FILE *stream);
 extern int luat_vfs_lfs2_nand_base_fflush(void* userdata, FILE *stream);
 #ifdef LUAT_USE_LITTLE_FLASH
-extern void luat_lfs2_block_profile_reset(void);
-extern void luat_lfs2_block_profile_log(const char* prefix);
+extern void luat_lfs2n_block_profile_reset(void);
+extern void luat_lfs2n_block_profile_log(const char* prefix);
 #endif
 
-extern luat_lfs2_t* flash_lfs_lf(void* flash, size_t offset, size_t maxsize);
+extern luat_lfs2_t* luat_lfs2_nand_flash_lfs_lf(void* flash, size_t offset, size_t maxsize);
 
 typedef struct {
     void* userdata;
@@ -308,7 +308,7 @@ static int luat_vfs_lfs2_nand_cache_flush(void* userdata, luat_vfs_lfs2_nand_wri
     luat_vfs_lfs2_nand_log_slow("cache_flush", "writeback", cost_us);
 #ifdef LUAT_USE_LITTLE_FLASH
     if (LUAT_LFS2N_PERF_LOG) {
-        luat_lfs2_block_profile_log("LFS2N_IO_SUMMARY");
+        luat_lfs2n_block_profile_log("LFS2N_IO_SUMMARY");
     }
 #endif
     slot->len = 0;
@@ -381,7 +381,7 @@ static int luat_vfs_lfs2_nand_mount(void** userdata, luat_fs_conf_t *conf) {
     }
     *userdata = (void*)conf->busname;
 #ifdef LUAT_USE_LITTLE_FLASH
-    luat_lfs2_block_profile_reset();
+    luat_lfs2n_block_profile_reset();
 #endif
     if (!*userdata) {
         LFS2N_DEBUG_LOG("lfs2_nand mount missing bus");
@@ -683,7 +683,7 @@ const struct luat_vfs_filesystem vfs_fs_lfs2_nand = {
 };
 
 void* luat_fs_lfs2_nand_default_bus(void* flash, size_t offset, size_t maxsize) {
-    return flash_lfs_lf(flash, offset, maxsize);
+    return luat_lfs2_nand_flash_lfs_lf(flash, offset, maxsize);
 }
 
 void luat_lfs2_nand_vfs_init(void) {

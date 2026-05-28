@@ -130,7 +130,7 @@ local function mount_lfs2n()
     assert(mounted_spi_dev, "spi.deviceSetup failed")
     mounted_lfdev = lf.init(mounted_spi_dev)
     assert(mounted_lfdev, "lf.init failed")
-    local ok = lf.mount(mounted_lfdev, "/lfs2n/", 0, 0, "lfs2_nand")
+    local ok = lf.mount(mounted_lfdev, "/lfs2n/", 0, 0, "lfsn")
     assert(ok, "lf.mount(/lfs2n) failed")
     mounted_lfs2n = true
     return mounted_lfdev
