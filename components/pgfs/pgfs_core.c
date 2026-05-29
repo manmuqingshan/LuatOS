@@ -481,8 +481,10 @@ static int pgfs_file_reserve(pgfs_file_entry_t* e, size_t need) {
 
 static int pgfs_append_data_record(pgfs_mount_ctx_t* ctx, pgfs_file_t* f) {
     pgfs_data_record_hdr_t hdr = {0};
-    uint8_t* crc_buf = NULL;
-    size_t crc_len = 0;
+    uint8_t* rec_buf = NULL;
+    size_t rec_len = 0;
+    uint64_t end_addr = 0;
+    pgfs_flash_geometry_t geo = {0};
     uint32_t addr = 0;
     if (ctx == NULL || f == NULL || f->entry == NULL || f->cache.len == 0 ||
         ctx->flash_opts == NULL || ctx->flash_opts->write == NULL) {
@@ -496,29 +498,31 @@ static int pgfs_append_data_record(pgfs_mount_ctx_t* ctx, pgfs_file_t* f) {
     hdr.magic = PGFS_DATA_RECORD_MAGIC;
     hdr.path_len = (uint32_t)strlen(f->entry->path);
     hdr.data_len = (uint32_t)f->cache.len;
-    crc_len = (size_t)hdr.path_len + f->cache.len;
-    crc_buf = (uint8_t*)luat_heap_malloc(crc_len);
-    if (crc_buf == NULL) {
+    rec_len = sizeof(hdr) + (size_t)hdr.path_len + (size_t)hdr.data_len;
+    rec_buf = (uint8_t*)luat_heap_malloc(rec_len);
+    if (rec_buf == NULL) {
         return -1;
     }
-    memcpy(crc_buf, f->entry->path, hdr.path_len);
-    memcpy(crc_buf + hdr.path_len, f->cache.data, f->cache.len);
-    hdr.crc32 = pgfs_crc32_calc(crc_buf, crc_len);
-    luat_heap_free(crc_buf);
+    memcpy(rec_buf + sizeof(hdr), f->entry->path, hdr.path_len);
+    memcpy(rec_buf + sizeof(hdr) + hdr.path_len, f->cache.data, f->cache.len);
+    hdr.crc32 = pgfs_crc32_calc(rec_buf + sizeof(hdr), (size_t)hdr.path_len + (size_t)hdr.data_len);
+    memcpy(rec_buf, &hdr, sizeof(hdr));
 
     addr = ctx->data_log_write_addr;
-    if (ctx->flash_opts->write(ctx->flash_opts->ctx, addr, (const uint8_t*)&hdr, sizeof(hdr)) != 0) {
+    end_addr = (uint64_t)addr + (uint64_t)rec_len;
+    if (ctx->flash_opts->control != NULL &&
+        ctx->flash_opts->control(ctx->flash_opts->ctx, PGFS_CTRL_GET_GEOMETRY, &geo) == 0 &&
+        geo.capacity > PGFS_DATA_LOG_BASE_ADDR &&
+        end_addr > geo.capacity) {
+        luat_heap_free(rec_buf);
         return -1;
     }
-    addr += (uint32_t)sizeof(hdr);
-    if (ctx->flash_opts->write(ctx->flash_opts->ctx, addr, (const uint8_t*)f->entry->path, hdr.path_len) != 0) {
+    if (ctx->flash_opts->write(ctx->flash_opts->ctx, addr, rec_buf, rec_len) != 0) {
+        luat_heap_free(rec_buf);
         return -1;
     }
-    addr += hdr.path_len;
-    if (ctx->flash_opts->write(ctx->flash_opts->ctx, addr, f->cache.data, f->cache.len) != 0) {
-        return -1;
-    }
-    ctx->data_log_write_addr = addr + (uint32_t)f->cache.len;
+    luat_heap_free(rec_buf);
+    ctx->data_log_write_addr = (uint32_t)end_addr;
     return 0;
 }
 

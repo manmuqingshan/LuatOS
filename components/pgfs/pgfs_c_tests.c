@@ -1,6 +1,7 @@
 #include "luat_base.h"
 #include "luat_crypto.h"
 #include "pgfs_internal.h"
+#include "luat_mem.h"
 
 #ifdef LUAT_USE_PGFS_COMPONENT
 

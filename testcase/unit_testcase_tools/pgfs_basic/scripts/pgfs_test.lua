@@ -12,6 +12,14 @@ local PGFS_VERSION = 1
 local s_spi_device = nil
 local s_flash = nil
 local s_mounted = false
+local s_power_ready = false
+
+local function is_pc()
+    if hmeta and hmeta.model then
+        return hmeta.model() == "PC"
+    end
+    return false
+end
 
 local function get_spi_bus()
     if os and os.getenv then
@@ -23,7 +31,10 @@ local function get_spi_bus()
             end
         end
     end
-    return 0
+    if is_pc() then
+        return 0
+    end
+    return 2
 end
 
 local function get_spi_cs()
@@ -36,11 +47,26 @@ local function get_spi_cs()
             end
         end
     end
-    return 17
+    if is_pc() then
+        return 17
+    end
+    return 4
+end
+
+local function ensure_flash_power()
+    if s_power_ready or is_pc() then
+        return
+    end
+    if gpio and gpio.setup then
+        gpio.setup(50, 1)
+        sys.wait(20)
+    end
+    s_power_ready = true
 end
 
 local function setup_flash()
     if not s_spi_device then
+        ensure_flash_power()
         s_spi_device = spi.deviceSetup(get_spi_bus(), get_spi_cs(), 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
         assert(s_spi_device, "spi.deviceSetup failed")
         s_flash = lf.init(s_spi_device)
@@ -94,10 +120,7 @@ function pgfs_tests.test_generation_fallback_prefers_latest_valid()
     assert(string.pack, "string.pack is unavailable")
     assert(crypto and crypto.crc32, "crypto.crc32 is unavailable")
 
-    local spi_device = spi.deviceSetup(get_spi_bus(), get_spi_cs(), 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
-    assert(spi_device, "spi.deviceSetup failed")
-    local flash = lf.init(spi_device)
-    assert(flash, "lf.init failed")
+    local _, flash = setup_flash()
     assert(lf.erase(flash, 0, PGFS_ERASE_LEN), "lf.erase failed")
 
     local cp_a, cp_a_crc = build_checkpoint(1, 128, 11)
@@ -112,10 +135,8 @@ function pgfs_tests.test_generation_fallback_prefers_latest_valid()
     assert(lf.write(flash, PGFS_SUPERBLOCK_A_ADDR, sb_a), "write sb_a failed")
     assert(lf.write(flash, PGFS_SUPERBLOCK_B_ADDR, sb_b_corrupt), "write sb_b failed")
 
-    local mounted = lf.mount(flash, "/pgfs_gen/", 0, 0, "pgfs")
-    assert(mounted, "pgfs mount should fallback to valid generation")
-
-    local ok, total_blocks, used_blocks, block_size, fs_type = fs.fsstat("/pgfs_gen/")
+    assert(lf.pgfsctl("reset_runtime"), "reset_runtime after generation inject failed")
+    local ok, total_blocks, used_blocks, block_size, fs_type = fs.fsstat("/pgfs/")
     assert(ok, "fs.fsstat(/pgfs/) failed")
     assert(fs_type == "pgfs", "expected pgfs fs type")
     assert(total_blocks == 128, "expected fallback generation total_blocks=128")

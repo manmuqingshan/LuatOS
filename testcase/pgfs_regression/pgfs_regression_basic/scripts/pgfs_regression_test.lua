@@ -2,6 +2,14 @@ local pgfs_regression = {}
 local s_spi_device = nil
 local s_flash = nil
 local s_mounted = false
+local s_power_ready = false
+
+local function is_pc()
+    if hmeta and hmeta.model then
+        return hmeta.model() == "PC"
+    end
+    return false
+end
 
 local function get_spi_bus()
     if os and os.getenv then
@@ -13,7 +21,10 @@ local function get_spi_bus()
             end
         end
     end
-    return 0
+    if is_pc() then
+        return 0
+    end
+    return 2
 end
 
 local function get_spi_cs()
@@ -26,11 +37,26 @@ local function get_spi_cs()
             end
         end
     end
-    return 17
+    if is_pc() then
+        return 17
+    end
+    return 4
+end
+
+local function ensure_flash_power()
+    if s_power_ready or is_pc() then
+        return
+    end
+    if gpio and gpio.setup then
+        gpio.setup(50, 1)
+        sys.wait(20)
+    end
+    s_power_ready = true
 end
 
 local function setup_flash()
     if not s_spi_device then
+        ensure_flash_power()
         s_spi_device = spi.deviceSetup(get_spi_bus(), get_spi_cs(), 0, 0, 8, 2 * 1000 * 1000, spi.MSB, 1, 0)
         assert(s_spi_device, "spi.deviceSetup failed")
         s_flash = lf.init(s_spi_device)
