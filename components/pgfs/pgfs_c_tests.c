@@ -38,6 +38,7 @@ typedef struct {
     uint32_t fail_read_len;
     uint32_t inject_nonff_addr;
     uint32_t inject_nonff_len;
+    uint32_t capacity_override;
 } pgfs_test_flash_t;
 
 static uint32_t pgfs_test_crc32(const void* data, size_t len) {
@@ -195,11 +196,12 @@ static int pgfs_test_erase(void* ctx, uint32_t block_addr, uint32_t block_count)
 
 static int pgfs_test_control(void* ctx, uint32_t cmd, void* arg) {
     pgfs_flash_geometry_t* geo = (pgfs_flash_geometry_t*)arg;
+    pgfs_test_flash_t* tf = (pgfs_test_flash_t*)ctx;
     (void)ctx;
     if (cmd != PGFS_CTRL_GET_GEOMETRY || geo == NULL) {
         return -1;
     }
-    geo->capacity = PGFS_TEST_FLASH_SIZE;
+    geo->capacity = (tf != NULL && tf->capacity_override != 0) ? tf->capacity_override : PGFS_TEST_FLASH_SIZE;
     geo->erase_size = 4096;
     geo->prog_size = 256;
     return 0;
@@ -863,6 +865,141 @@ static int pgfs_test_batch_commit_persists_after_replay(void) {
     return fail;
 }
 
+static int pgfs_test_replay_skips_blank_prefix_to_relocated_log(void) {
+    int fail = 0;
+    pgfs_test_flash_t flash = {0};
+    pgfs_flash_opts_t opts = {0};
+    pgfs_mount_ctx_t ctx = {0};
+    uint8_t record[256] = {0};
+    size_t rec_len = 0;
+    uint32_t addr = PGFS_DATA_LOG_BASE_ADDR + 4096u;
+    uint32_t batch_id = 8;
+    FILE* f_read = NULL;
+    char buf[64] = {0};
+
+    memset(flash.mem, 0xFF, sizeof(flash.mem));
+    opts.ctx = &flash;
+    opts.read = pgfs_test_read;
+    opts.write = pgfs_test_write;
+    opts.erase = pgfs_test_erase;
+    opts.control = pgfs_test_control;
+
+    rec_len = pgfs_test_build_batch_data_record(record, sizeof(record), batch_id, "batch/relocated.txt", "relocated");
+    if (rec_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, addr, record, rec_len) != 0) {
+        return 1;
+    }
+    addr = pgfs_test_align_prog(addr + (uint32_t)rec_len);
+
+    rec_len = pgfs_test_build_batch_commit_record(record, sizeof(record), batch_id, 1);
+    if (rec_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, addr, record, rec_len) != 0) {
+        return 1;
+    }
+
+    ctx.flash_opts = &opts;
+    ctx.runtime_generation = 1;
+    ctx.mounted = 1;
+    ctx.data_log_base_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_prepared_until = PGFS_DATA_LOG_BASE_ADDR;
+
+    if (pgfs_replay_data_log(&ctx) != 0) {
+        fail++;
+    }
+    f_read = pgfs_file_open(&ctx, "/batch/relocated.txt", "rb");
+    if (f_read == NULL) {
+        fail++;
+    }
+    else {
+        memset(buf, 0, sizeof(buf));
+        if (pgfs_file_read(&ctx, buf, 1, 9, f_read) != 9) {
+            fail++;
+        }
+        if (memcmp(buf, "relocated", 9) != 0) {
+            fail++;
+        }
+        if (pgfs_file_close(&ctx, f_read) != 0) {
+            fail++;
+        }
+    }
+    return fail;
+}
+
+static int pgfs_test_replay_skips_unknown_prefix_to_relocated_log(void) {
+    int fail = 0;
+    pgfs_test_flash_t flash = {0};
+    pgfs_flash_opts_t opts = {0};
+    pgfs_mount_ctx_t ctx = {0};
+    uint8_t record[256] = {0};
+    size_t rec_len = 0;
+    uint32_t addr = PGFS_DATA_LOG_BASE_ADDR + 4096u;
+    uint32_t batch_id = 9;
+    uint32_t unknown_magic = 0x12345678u;
+    FILE* f_read = NULL;
+    char buf[64] = {0};
+
+    memset(flash.mem, 0xFF, sizeof(flash.mem));
+    opts.ctx = &flash;
+    opts.read = pgfs_test_read;
+    opts.write = pgfs_test_write;
+    opts.erase = pgfs_test_erase;
+    opts.control = pgfs_test_control;
+
+    if (pgfs_test_write(&flash, PGFS_DATA_LOG_BASE_ADDR, (const uint8_t*)&unknown_magic, sizeof(unknown_magic)) != 0) {
+        return 1;
+    }
+
+    rec_len = pgfs_test_build_batch_data_record(record, sizeof(record), batch_id, "batch/unknown_prefix.txt", "unknown_ok");
+    if (rec_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, addr, record, rec_len) != 0) {
+        return 1;
+    }
+    addr = pgfs_test_align_prog(addr + (uint32_t)rec_len);
+
+    rec_len = pgfs_test_build_batch_commit_record(record, sizeof(record), batch_id, 1);
+    if (rec_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, addr, record, rec_len) != 0) {
+        return 1;
+    }
+
+    ctx.flash_opts = &opts;
+    ctx.runtime_generation = 1;
+    ctx.mounted = 1;
+    ctx.data_log_base_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_prepared_until = PGFS_DATA_LOG_BASE_ADDR;
+
+    if (pgfs_replay_data_log(&ctx) != 0) {
+        fail++;
+    }
+    f_read = pgfs_file_open(&ctx, "/batch/unknown_prefix.txt", "rb");
+    if (f_read == NULL) {
+        fail++;
+    }
+    else {
+        memset(buf, 0, sizeof(buf));
+        if (pgfs_file_read(&ctx, buf, 1, 10, f_read) != 10) {
+            fail++;
+        }
+        if (memcmp(buf, "unknown_ok", 10) != 0) {
+            fail++;
+        }
+        if (pgfs_file_close(&ctx, f_read) != 0) {
+            fail++;
+        }
+    }
+    return fail;
+}
+
 static int pgfs_test_replay_batch_commit_marker_boundary(void) {
     int fail = 0;
     pgfs_test_flash_t flash = {0};
@@ -1032,7 +1169,6 @@ static int pgfs_test_replay_skips_bad_block_and_recovers_next_block(void) {
     opts.erase = pgfs_test_erase;
     opts.control = pgfs_test_control;
 
-    /* Record 1 at data log base. */
     rec1_len = pgfs_test_build_record(rec1, sizeof(rec1), "nand/before_bad.txt", "hello_before");
     if (rec1_len == 0) {
         return 1;
@@ -1040,14 +1176,14 @@ static int pgfs_test_replay_skips_bad_block_and_recovers_next_block(void) {
     if (pgfs_test_write(&flash, PGFS_DATA_LOG_BASE_ADDR, rec1, rec1_len) != 0) {
         return 1;
     }
-    rec1_storage = pgfs_test_align_prog((uint32_t)rec1_len); /* =256, aligned to prog_size */
+    rec1_storage = pgfs_test_align_prog((uint32_t)rec1_len);
 
     /* Simulate ECC failure starting right after record 1 (mid-block). */
     flash.fail_read_addr = PGFS_DATA_LOG_BASE_ADDR + rec1_storage;
     flash.fail_read_len = 256;
 
     /* Record 2 written to the NEXT erase block (erase_size=4096). */
-    rec2_start = PGFS_DATA_LOG_BASE_ADDR + 4096u; /* = next erase unit */
+    rec2_start = PGFS_DATA_LOG_BASE_ADDR + 4096u;
     rec2_len = pgfs_test_build_record(rec2, sizeof(rec2), "nand/after_bad.txt", "hello_after");
     if (rec2_len == 0) {
         return 1;
@@ -1083,7 +1219,6 @@ static int pgfs_test_replay_skips_bad_block_and_recovers_next_block(void) {
     memset(buf, 0, sizeof(buf));
     f = pgfs_file_open(&ctx, "/nand/after_bad.txt", "rb");
     if (f == NULL) {
-        /* This is the key regression: without the skip fix, this file is invisible. */
         fail++;
     }
     else {
@@ -1094,8 +1229,231 @@ static int pgfs_test_replay_skips_bad_block_and_recovers_next_block(void) {
         pgfs_file_close(&ctx, f);
     }
 
-    /* write_addr should have advanced past record 2 */
     if (ctx.data_log_write_addr <= rec2_start) {
+        fail++;
+    }
+    return fail;
+}
+
+/* Verify that replay can jump over multiple consecutive bad blocks and still
+ * recover files written later in the log. */
+static int pgfs_test_replay_skips_multiple_bad_blocks_and_recovers_later_block(void) {
+    int fail = 0;
+    pgfs_test_flash_t flash = {0};
+    pgfs_flash_opts_t opts = {0};
+    pgfs_mount_ctx_t ctx = {0};
+    uint8_t rec1[256] = {0};
+    uint8_t rec2[256] = {0};
+    size_t rec1_len = 0;
+    size_t rec2_len = 0;
+    uint32_t rec1_storage = 0;
+    uint32_t rec2_start = 0;
+    FILE* f = NULL;
+    char buf[32] = {0};
+
+    memset(flash.mem, 0xFF, sizeof(flash.mem));
+    opts.ctx = &flash;
+    opts.read = pgfs_test_read;
+    opts.write = pgfs_test_write;
+    opts.erase = pgfs_test_erase;
+    opts.control = pgfs_test_control;
+
+    rec1_len = pgfs_test_build_record(rec1, sizeof(rec1), "nand/multi_before_bad.txt", "hello_before");
+    if (rec1_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, PGFS_DATA_LOG_BASE_ADDR, rec1, rec1_len) != 0) {
+        return 1;
+    }
+    rec1_storage = pgfs_test_align_prog((uint32_t)rec1_len);
+
+    flash.fail_read_addr = PGFS_DATA_LOG_BASE_ADDR + rec1_storage;
+    flash.fail_read_len = 4096u * 2u;
+
+    rec2_start = PGFS_DATA_LOG_BASE_ADDR + 4096u * 3u;
+    rec2_len = pgfs_test_build_record(rec2, sizeof(rec2), "nand/multi_after_bad.txt", "hello_after");
+    if (rec2_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, rec2_start, rec2, rec2_len) != 0) {
+        return 1;
+    }
+
+    ctx.flash_opts = &opts;
+    ctx.runtime_generation = 1;
+    ctx.mounted = 1;
+    ctx.data_log_base_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_prepared_until = PGFS_DATA_LOG_BASE_ADDR;
+
+    if (pgfs_replay_data_log(&ctx) != 0) {
+        return 1;
+    }
+
+    f = pgfs_file_open(&ctx, "/nand/multi_before_bad.txt", "rb");
+    if (f == NULL) {
+        fail++;
+    }
+    else {
+        if (pgfs_file_read(&ctx, buf, 1, sizeof("hello_before") - 1, f) != sizeof("hello_before") - 1 ||
+            memcmp(buf, "hello_before", sizeof("hello_before") - 1) != 0) {
+            fail++;
+        }
+        pgfs_file_close(&ctx, f);
+    }
+
+    memset(buf, 0, sizeof(buf));
+    f = pgfs_file_open(&ctx, "/nand/multi_after_bad.txt", "rb");
+    if (f == NULL) {
+        fail++;
+    }
+    else {
+        if (pgfs_file_read(&ctx, buf, 1, sizeof("hello_after") - 1, f) != sizeof("hello_after") - 1 ||
+            memcmp(buf, "hello_after", sizeof("hello_after") - 1) != 0) {
+            fail++;
+        }
+        pgfs_file_close(&ctx, f);
+    }
+
+    if (ctx.data_log_write_addr <= rec2_start) {
+        fail++;
+    }
+    return fail;
+}
+
+/* Verify replay can resync within the same erase block after a bad page and still
+ * find a later batch commit marker in that block. */
+static int pgfs_test_replay_resyncs_in_block_after_read_failure(void) {
+    int fail = 0;
+    pgfs_test_flash_t flash = {0};
+    pgfs_flash_opts_t opts = {0};
+    pgfs_mount_ctx_t ctx = {0};
+    uint8_t record[256] = {0};
+    size_t rec_len = 0;
+    uint32_t batch_id = 11;
+    uint32_t addr = PGFS_DATA_LOG_BASE_ADDR;
+    uint32_t hole_addr = 0;
+    uint32_t commit_addr = 0;
+    FILE* f_read = NULL;
+    char buf[64] = {0};
+
+    memset(flash.mem, 0xFF, sizeof(flash.mem));
+    opts.ctx = &flash;
+    opts.read = pgfs_test_read;
+    opts.write = pgfs_test_write;
+    opts.erase = pgfs_test_erase;
+    opts.control = pgfs_test_control;
+
+    rec_len = pgfs_test_build_batch_data_record(record, sizeof(record), batch_id, "batch/resync_in_block.txt", "resync_ok");
+    if (rec_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, addr, record, rec_len) != 0) {
+        return 1;
+    }
+    hole_addr = pgfs_test_align_prog(addr + (uint32_t)rec_len);
+    commit_addr = hole_addr + 256u;
+
+    rec_len = pgfs_test_build_batch_commit_record(record, sizeof(record), batch_id, 1);
+    if (rec_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, commit_addr, record, rec_len) != 0) {
+        return 1;
+    }
+
+    flash.fail_read_addr = hole_addr;
+    flash.fail_read_len = sizeof(uint32_t);
+
+    ctx.flash_opts = &opts;
+    ctx.runtime_generation = 1;
+    ctx.mounted = 1;
+    ctx.data_log_base_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_prepared_until = PGFS_DATA_LOG_BASE_ADDR;
+
+    if (pgfs_replay_data_log(&ctx) != 0) {
+        return 1;
+    }
+    f_read = pgfs_file_open(&ctx, "/batch/resync_in_block.txt", "rb");
+    if (f_read == NULL) {
+        fail++;
+    }
+    else {
+        memset(buf, 0, sizeof(buf));
+        if (pgfs_file_read(&ctx, buf, 1, 9, f_read) != 9 || memcmp(buf, "resync_ok", 9) != 0) {
+            fail++;
+        }
+        if (pgfs_file_close(&ctx, f_read) != 0) {
+            fail++;
+        }
+    }
+    return fail;
+}
+
+/* Verify that replay stops cleanly on a truncated tail and preserves the prefix. */
+static int pgfs_test_replay_stops_at_truncated_tail_and_keeps_prefix(void) {
+    int fail = 0;
+    pgfs_test_flash_t flash = {0};
+    pgfs_flash_opts_t opts = {0};
+    pgfs_mount_ctx_t ctx = {0};
+    uint8_t rec1[256] = {0};
+    uint8_t rec2_magic[32] = {0};
+    size_t rec1_len = 0;
+    uint32_t rec1_storage = 0;
+    uint32_t rec2_start = 0;
+    FILE* f = NULL;
+    char buf[32] = {0};
+    uint32_t magic = PGFS_TEST_DATA_RECORD_MAGIC;
+
+    memset(flash.mem, 0xFF, sizeof(flash.mem));
+    opts.ctx = &flash;
+    opts.read = pgfs_test_read;
+    opts.write = pgfs_test_write;
+    opts.erase = pgfs_test_erase;
+    opts.control = pgfs_test_control;
+
+    rec1_len = pgfs_test_build_record(rec1, sizeof(rec1), "nand/truncated_prefix.txt", "hello_prefix");
+    if (rec1_len == 0) {
+        return 1;
+    }
+    if (pgfs_test_write(&flash, PGFS_DATA_LOG_BASE_ADDR, rec1, rec1_len) != 0) {
+        return 1;
+    }
+    rec1_storage = pgfs_test_align_prog((uint32_t)rec1_len);
+    rec2_start = PGFS_DATA_LOG_BASE_ADDR + rec1_storage;
+
+    memset(rec2_magic, 0xFF, sizeof(rec2_magic));
+    memcpy(rec2_magic, &magic, sizeof(magic));
+    if (pgfs_test_write(&flash, rec2_start, rec2_magic, sizeof(magic)) != 0) {
+        return 1;
+    }
+    flash.capacity_override = rec2_start + 4u;
+
+    ctx.flash_opts = &opts;
+    ctx.runtime_generation = 1;
+    ctx.mounted = 1;
+    ctx.data_log_base_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_write_addr = PGFS_DATA_LOG_BASE_ADDR;
+    ctx.data_log_prepared_until = PGFS_DATA_LOG_BASE_ADDR;
+
+    if (pgfs_replay_data_log(&ctx) != 0) {
+        return 1;
+    }
+
+    f = pgfs_file_open(&ctx, "/nand/truncated_prefix.txt", "rb");
+    if (f == NULL) {
+        fail++;
+    }
+    else {
+        if (pgfs_file_read(&ctx, buf, 1, sizeof("hello_prefix") - 1, f) != sizeof("hello_prefix") - 1 ||
+            memcmp(buf, "hello_prefix", sizeof("hello_prefix") - 1) != 0) {
+            fail++;
+        }
+        pgfs_file_close(&ctx, f);
+    }
+
+    if (ctx.data_log_write_addr != rec2_start) {
         fail++;
     }
     return fail;
@@ -1111,12 +1469,17 @@ int pgfs_run_c_layer_tests(void) {
     PGFS_RUN_CTEST(pgfs_test_directory_helpers);
     PGFS_RUN_CTEST(pgfs_test_replay_restores_file_contents);
     PGFS_RUN_CTEST(pgfs_test_replay_skips_bad_block_and_recovers_next_block);
+    PGFS_RUN_CTEST(pgfs_test_replay_skips_multiple_bad_blocks_and_recovers_later_block);
+    PGFS_RUN_CTEST(pgfs_test_replay_resyncs_in_block_after_read_failure);
+    PGFS_RUN_CTEST(pgfs_test_replay_stops_at_truncated_tail_and_keeps_prefix);
     PGFS_RUN_CTEST(pgfs_test_close_succeeds_when_probe_read_fails_on_unaligned_append);
     PGFS_RUN_CTEST(pgfs_test_close_succeeds_when_probe_nonff_on_unaligned_append);
     PGFS_RUN_CTEST(pgfs_test_close_advances_to_next_erase_block_when_unaligned_head_is_programmed);
     PGFS_RUN_CTEST(pgfs_test_checkpoint_batch_close_and_pending_commit);
     PGFS_RUN_CTEST(pgfs_test_batch_api_boundaries);
     PGFS_RUN_CTEST(pgfs_test_batch_commit_persists_after_replay);
+    PGFS_RUN_CTEST(pgfs_test_replay_skips_blank_prefix_to_relocated_log);
+    PGFS_RUN_CTEST(pgfs_test_replay_skips_unknown_prefix_to_relocated_log);
     PGFS_RUN_CTEST(pgfs_test_replay_batch_commit_marker_boundary);
     PGFS_RUN_CTEST(pgfs_test_info_fastpath_uses_runtime_checkpoint);
 #undef PGFS_RUN_CTEST

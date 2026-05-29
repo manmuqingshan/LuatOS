@@ -1,6 +1,7 @@
 #include "luat_base.h"
 #include "pgfs_internal.h"
 #include "luat_mem.h"
+#include "luat_mcu.h"
 #include "luat_crypto.h"
 #define LUAT_LOG_TAG "pgfs"
 #include "luat_log.h"
@@ -1160,6 +1161,85 @@ static int pgfs_replay_pending_apply(pgfs_mount_ctx_t* ctx, pgfs_replay_pending_
     return 0;
 }
 
+static int pgfs_replay_pending_has_entries(const pgfs_replay_pending_entry_t* pending) {
+    size_t i = 0;
+    if (pending == NULL) {
+        return 0;
+    }
+    for (i = 0; i < PGFS_MAX_BATCH_PENDING; i++) {
+        if (pending[i].used) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pgfs_replay_try_resync_in_block(pgfs_mount_ctx_t* ctx,
+                                           uint32_t addr,
+                                           uint32_t limit,
+                                           const pgfs_flash_geometry_t* geo,
+                                           uint32_t* out_addr) {
+    uint32_t prog = 1u;
+    uint32_t block_end = 0u;
+    uint32_t probe = 0u;
+    if (ctx == NULL || geo == NULL || out_addr == NULL || geo->erase_size == 0u) {
+        return -1;
+    }
+    if (geo->prog_size > 0u) {
+        prog = geo->prog_size;
+    }
+    block_end = pgfs_align_up_u32(addr + 1u, geo->erase_size);
+    if (block_end <= addr) {
+        return -1;
+    }
+    if (limit != 0u && block_end > limit) {
+        block_end = limit;
+    }
+    probe = addr + prog;
+    while (probe + sizeof(uint32_t) <= block_end) {
+        uint32_t probe_magic = 0u;
+        if (pgfs_replay_flash_read(ctx, probe, &probe_magic, sizeof(probe_magic)) == 0) {
+            if (probe_magic == PGFS_DATA_RECORD_MAGIC ||
+                probe_magic == PGFS_BATCH_DATA_RECORD_MAGIC ||
+                probe_magic == PGFS_BATCH_COMMIT_RECORD_MAGIC) {
+                *out_addr = probe;
+                return 0;
+            }
+        }
+        if (probe > 0xFFFFFFFFu - prog) {
+            break;
+        }
+        probe += prog;
+    }
+    return -1;
+}
+
+static int pgfs_replay_recover_after_corrupt_record(pgfs_mount_ctx_t* ctx,
+                                                     uint32_t addr,
+                                                     uint32_t limit,
+                                                     const pgfs_flash_geometry_t* geo,
+                                                     uint32_t* out_addr) {
+    uint32_t next_block = 0u;
+    if (ctx == NULL || geo == NULL || out_addr == NULL) {
+        return 0;
+    }
+    if (pgfs_replay_try_resync_in_block(ctx, addr, limit, geo, out_addr) == 0) {
+        LLOGW("replay resync after corrupt record at addr=%u -> %u",
+              (unsigned int)addr, (unsigned int)*out_addr);
+        return 1;
+    }
+    if (geo->erase_size > 0u) {
+        next_block = pgfs_align_up_u32(addr + 1u, geo->erase_size);
+        if (next_block > addr && (limit == 0u || next_block < limit)) {
+            LLOGW("replay skip block after corrupt record at addr=%u next_block=%u",
+                  (unsigned int)addr, (unsigned int)next_block);
+            *out_addr = next_block;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
     pgfs_flash_geometry_t geo = {0};
     uint32_t base = pgfs_data_log_base_addr(ctx);
@@ -1184,7 +1264,6 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
     else {
         limit = 0;
     }
-
     while (1) {
         uint32_t magic = 0;
         uint32_t path_len = 0;
@@ -1210,6 +1289,16 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
         if (pgfs_replay_flash_read(ctx, addr, &magic, sizeof(magic)) != 0) {
             /* ECC failure or hardware read error: skip to next block boundary so records
              * written to later blocks are not lost (e.g., NAND bad-page at end of block). */
+            if (pgfs_replay_pending_has_entries(pending) || (limit != 0u && geo.erase_size > 0u &&
+                pgfs_align_up_u32(addr + 1u, geo.erase_size) >= limit)) {
+                uint32_t resync_addr = 0u;
+                if (pgfs_replay_try_resync_in_block(ctx, addr, limit, &geo, &resync_addr) == 0) {
+                    LLOGW("replay resync after read failure at addr=%u -> %u",
+                          (unsigned int)addr, (unsigned int)resync_addr);
+                    addr = resync_addr;
+                    continue;
+                }
+            }
             if (geo.erase_size > 0) {
                 uint32_t next_block = pgfs_align_up_u32(addr + 1u, geo.erase_size);
                 if (next_block > addr && (limit == 0u || next_block < limit)) {
@@ -1227,6 +1316,9 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
                 break;
             }
             if (pgfs_replay_flash_read(ctx, addr, &hdr, sizeof(hdr)) != 0) {
+                if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                    continue;
+                }
                 break;
             }
             path_len = hdr.path_len;
@@ -1240,6 +1332,9 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
                 break;
             }
             if (pgfs_replay_flash_read(ctx, addr, &hdr, sizeof(hdr)) != 0) {
+                if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                    continue;
+                }
                 break;
             }
             path_len = hdr.path_len;
@@ -1248,6 +1343,9 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
             crc32 = hdr.crc32;
             hdr_len = sizeof(hdr);
             if (batch_id == 0) {
+                if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                    continue;
+                }
                 break;
             }
         }
@@ -1258,10 +1356,16 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
                 break;
             }
             if (pgfs_replay_flash_read(ctx, addr, &hdr, sizeof(hdr)) != 0) {
+                if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                    continue;
+                }
                 break;
             }
             hdr_crc = pgfs_crc32_calc(&hdr, sizeof(hdr) - sizeof(hdr.crc32));
             if (hdr.magic != PGFS_BATCH_COMMIT_RECORD_MAGIC || hdr.batch_id == 0 || hdr_crc != hdr.crc32) {
+                if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                    continue;
+                }
                 break;
             }
             record_len = sizeof(hdr);
@@ -1282,14 +1386,45 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
             continue;
         }
         else {
+            if (pgfs_replay_pending_has_entries(pending) || (limit != 0u && geo.erase_size > 0u &&
+                pgfs_align_up_u32(addr + 1u, geo.erase_size) >= limit)) {
+                uint32_t resync_addr = 0u;
+                if (pgfs_replay_try_resync_in_block(ctx, addr, limit, &geo, &resync_addr) == 0) {
+                    LLOGW("replay resync after unknown region at addr=%u magic=%08x -> %u",
+                          (unsigned int)addr, (unsigned int)magic, (unsigned int)resync_addr);
+                    addr = resync_addr;
+                    continue;
+                }
+            }
+            if (geo.erase_size > 0) {
+                uint32_t next_block = pgfs_align_up_u32(addr + 1u, geo.erase_size);
+                if (next_block > addr && (limit == 0u || next_block < limit)) {
+                    if (magic == 0xFFFFFFFFu || magic == 0x00000000u) {
+                        LLOGW("replay skip blank block at addr=%u next_block=%u",
+                              (unsigned int)addr, (unsigned int)next_block);
+                    }
+                    else {
+                        LLOGW("replay skip unknown region at addr=%u magic=%08x next_block=%u",
+                              (unsigned int)addr, (unsigned int)magic, (unsigned int)next_block);
+                    }
+                    addr = next_block;
+                    continue;
+                }
+            }
             break;
         }
         if (path_len == 0 || path_len >= sizeof(norm)) {
+            if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                continue;
+            }
             break;
         }
         record_len = (uint64_t)hdr_len + (uint64_t)path_len + (uint64_t)data_len;
         storage_len = pgfs_record_storage_len(ctx, (size_t)record_len);
         if (record_len < hdr_len || storage_len < (size_t)record_len) {
+            if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                continue;
+            }
             break;
         }
         next_addr = (uint64_t)addr + (uint64_t)storage_len;
@@ -1310,6 +1445,9 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
         if (pgfs_replay_flash_read(ctx, addr + (uint32_t)hdr_len, path_buf, path_len) != 0) {
             luat_heap_free(path_buf);
             luat_heap_free(data_buf);
+            if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                continue;
+            }
             break;
         }
         path_buf[path_len] = '\0';
@@ -1317,6 +1455,9 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
             pgfs_replay_flash_read(ctx, addr + (uint32_t)hdr_len + path_len, data_buf, data_len) != 0) {
             luat_heap_free(path_buf);
             luat_heap_free(data_buf);
+            if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                continue;
+            }
             break;
         }
         crc_len = (size_t)path_len + (size_t)data_len;
@@ -1338,11 +1479,17 @@ int pgfs_replay_data_log(pgfs_mount_ctx_t* ctx) {
         if (crc != crc32) {
             luat_heap_free(path_buf);
             luat_heap_free(data_buf);
+            if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                continue;
+            }
             break;
         }
         if (pgfs_path_normalize((const char*)path_buf, norm, sizeof(norm)) != 0 || norm[0] == '\0') {
             luat_heap_free(path_buf);
             luat_heap_free(data_buf);
+            if (pgfs_replay_recover_after_corrupt_record(ctx, addr, limit, &geo, &addr)) {
+                continue;
+            }
             break;
         }
         if (magic == PGFS_DATA_RECORD_MAGIC) {

@@ -410,12 +410,14 @@ int pgfs_control_reset_runtime(void) {
         if (loaded == 0) {
             s_pgfs_ctx.checkpoint = checkpoint;
             s_pgfs_ctx.checkpoint_loaded = 1;
-            if (pgfs_replay_data_log(&s_pgfs_ctx) != 0) {
+            loaded = pgfs_replay_data_log(&s_pgfs_ctx);
+            if (loaded != 0) {
                 return -1;
             }
         }
         else {
-            if (pgfs_rebuild_checkpoint_from_replay(&s_pgfs_ctx) != 0) {
+            loaded = pgfs_rebuild_checkpoint_from_replay(&s_pgfs_ctx);
+            if (loaded != 0) {
                 return -1;
             }
             s_pgfs_ctx.checkpoint_loaded = 1;
