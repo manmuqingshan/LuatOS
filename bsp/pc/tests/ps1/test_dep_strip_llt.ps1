@@ -1,6 +1,6 @@
 ﻿# test_dep_strip_llt.ps1
 # 集成测试: 验证 --llt= 与位置参数目录在依赖裁剪(dep_strip)模式下的联合分析
-# 运行方式: cd bsp/pc && .\test_dep_strip_llt.ps1
+# 运行方式: cd bsp/pc && .\tests\ps1\test_dep_strip_llt.ps1
 # 需要先构建 GUI 版本: .\build_windows_64bit_msvc_gui.bat
 
 param(
@@ -227,4 +227,3 @@ Pass "test3: main.lua 存在"
 
 Write-Host ""
 Write-Host "所有测试通过!" -ForegroundColor Green
-
