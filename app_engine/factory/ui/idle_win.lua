@@ -469,7 +469,7 @@ local function start_charge_anim(from_level)
             charge_anim_value = charge_start_level
         end
         battery_bar:set_value(charge_anim_value)
-    end, 50)
+    end, 100)
 end
 
 local function on_status_battery(data)
