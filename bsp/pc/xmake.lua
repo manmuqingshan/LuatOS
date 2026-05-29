@@ -59,6 +59,13 @@ local function add_thirdparty_files(...)
     end
 end
 
+local function add_define_from_env(name)
+    local value = os.getenv(name)
+    if value and value ~= "" then
+        add_defines(name .. "=" .. value)
+    end
+end
+
 -- set_policy("build.optimization.lto", true)
 -- set_warnings("all")
 set_optimize("fastest")
@@ -82,6 +89,9 @@ end
 
 if os.getenv("LUAT_USE_GUI") == "y" then
     add_defines("LUAT_USE_GUI=1")
+end
+if os.getenv("LUAT_USE_UTEST") == "y" then
+    add_defines("LUAT_USE_UTEST=1")
 end
 
 if is_host("windows") then
@@ -180,7 +190,15 @@ target("luatos-lua")
     remove_files(luatos .. "luat/vfs/luat_fs_onefile.c")
     -- lfs
     add_includedirs(luatos.."components/lfs")
+    add_includedirs(luatos.."components/luat_lfs2_nand")
     add_thirdparty_files(luatos.."components/lfs/*.c")
+
+    -- lfsv3 (littlefs v3) - only core files; bd/ runners/ tests/ are excluded
+    add_includedirs(luatos.."components/lfsv3")
+    add_thirdparty_files(luatos.."components/lfsv3/lfs3.c")
+    add_thirdparty_files(luatos.."components/lfsv3/lfs3_util.c")
+    add_defines("LFS3_NO_DEBUG")  -- suppress per-operation debug prints
+    add_defines("LFS3_NO_INFO")   -- suppress "Formatting/Mounted littlefs" info lines
 
     -- add_files(luatos.."components/sfd/*.c")
     -- lua-cjson
@@ -254,6 +272,11 @@ target("luatos-lua")
     -- c_common
     add_includedirs(luatos.."components/common",{public = true})
     add_files(luatos.."components/common/*.c")
+
+    if os.getenv("LUAT_USE_UTEST") == "y" then
+        add_includedirs(luatos.."components/utest/include", {public = true})
+        add_files(luatos.."components/utest/**.c")
+    end
 
     -- coremark
     add_includedirs(luatos.."components/coremark",{public = true})
@@ -402,6 +425,23 @@ target("luatos-lua")
     add_includedirs(luatos.."components/little_flash/inc",{public = true})
     add_includedirs(luatos.."components/little_flash/port",{public = true})
     add_files(luatos.."components/little_flash/**.c")
+    add_defines("LUAT_USE_LFS2_NAND_COMPONENT")
+    add_define_from_env("LUAT_LFS2N_CACHE_POOL_BUDGET")
+    add_define_from_env("LUAT_LFS2N_CACHE_POOL_SLOTS")
+    add_define_from_env("LUAT_LFS2N_CACHE_POOL_CHUNK")
+    add_define_from_env("LUAT_LFS2N_FILE_CACHE_LIMIT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_FLUSH_CADENCE_US")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_PRESSURE_HIGH_PCT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_PRESSURE_LOW_PCT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_RESERVE_PCT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_RESERVE_URGENT_PCT")
+    add_define_from_env("LUAT_LFS2N_WRITEBACK_RESERVE_DEFER_US")
+    add_define_from_env("LUAT_LFS2N_META_REFRESH_MIN_INTERVAL_US")
+    add_define_from_env("LUAT_LFS2N_META_REFRESH_MAX_DELAY_US")
+    add_includedirs(luatos.."components/luat_lfs2_nand",{public = true})
+    add_files(luatos.."components/luat_lfs2_nand/**.c")
+    add_includedirs(luatos.."components/pgfs",{public = true})
+    add_files(luatos.."components/pgfs/**.c")
 
     -- 添加mreport
     -- add_includedirs(luatos.."components/mreport/include",{public = true})

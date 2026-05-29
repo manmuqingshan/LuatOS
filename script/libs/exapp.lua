@@ -167,13 +167,13 @@ local storage_calibrated = false
 -- order: 默认优先级序号（越小越优先）
 local STORAGE_DEFS = {
     sd_tf        = { mount_point = "/sd/",          label = "外挂TF卡",     order = 1 },
-    little_flash = { mount_point = "/little_flash/", label = "外挂NOR Flash", order = 2 },
+    little_flash = { mount_point = "/little_flash/", label = "外挂NAND Flash", order = 2 },
     nand_flash   = { mount_point = "/little_flash/", label = "外挂NAND Flash",order = 3 },
     internal     = { mount_point = "/",              label = "内置文件系统", order = 4 },
 }
 
 -- 当前生效的存储优先级配置（type_key 数组，高优先级在前）
--- 默认值：TF > NOR Flash > NAND Flash > 内置
+-- 默认值：TF > NAND Flash > 内置
 local storage_priority = { "sd_tf", "little_flash", "nand_flash", "internal" }
 
 -- 存储介质可用状态（init 时探测）
@@ -265,9 +265,15 @@ local function get_storage_free_kb(mount_point)
         local free_kb = total_kb - used_kb
         log.info("exapp", "fsstat", mount_point, "total_kb:", string.format("%.1f", total_kb),
             "free_kb:", string.format("%.1f", free_kb))
-        -- total_kb == 0 说明是虚拟文件系统（PC 模拟器、未挂载路径），返回极大值让校验通过
+        -- total_kb == 0：PC模拟器无真实存储限制返回极大值，真实硬件记录原始数据便于排查
         if total_kb == 0 then
-            return 999999
+            log.warn("exapp", "fsstat returned 0 blocks for", mount_point,
+                "bsuccess", success, "total_blk", total_blocks, "used_blk", used_blocks, "blk_sz", block_size,
+                "bsp", rtos.bsp())
+            if rtos.bsp() == "PC" then
+                return 999999
+            end
+            return nil
         end
         return free_kb
     end
@@ -300,17 +306,31 @@ local function get_estimated_free_kb(mount_point)
     if storage_calibrated and storage_space_cache[mount_point] then
         local cache = storage_space_cache[mount_point]
         local estimated_free = cache.free_kb - cache.estimated_used_kb
-        return math.max(0, estimated_free)
+        local result = math.max(0, estimated_free)
+
+        return result
     end
-    return get_storage_free_kb(mount_point)
+    local direct = get_storage_free_kb(mount_point)
+    return direct
 end
 
--- 记录已安装应用消耗的预估空间（仅在校准模式下累积，用于后续安装的剩余空间判断）
+-- 记录已安装应用消耗的预估空间
 local function record_install_usage(mount_point, size_kb)
     if storage_calibrated and storage_space_cache[mount_point] and size_kb then
         storage_space_cache[mount_point].estimated_used_kb =
             storage_space_cache[mount_point].estimated_used_kb + size_kb
         log.info("exapp", "record install usage", mount_point,
+            "app", string.format("%.1f", size_kb), "KB",
+            "total_est", string.format("%.1f", storage_space_cache[mount_point].estimated_used_kb), "KB")
+    end
+end
+
+-- 卸载时归还预估空间（读取meta.json获取实际安装大小，无需重新io.fsstat）
+local function record_uninstall_usage(mount_point, size_kb)
+    if storage_calibrated and storage_space_cache[mount_point] and size_kb then
+        storage_space_cache[mount_point].estimated_used_kb =
+            math.max(0, storage_space_cache[mount_point].estimated_used_kb - size_kb)
+        log.info("exapp", "record uninstall usage", mount_point,
             "app", string.format("%.1f", size_kb), "KB",
             "total_est", string.format("%.1f", storage_space_cache[mount_point].estimated_used_kb), "KB")
     end
@@ -351,36 +371,59 @@ end
 
     选择逻辑：
     1. 遍历 storage_priority 数组（按用户配置的优先级顺序）
-    2. 对每个候选位置，检查两个条件：
+    2. 对每个候选位置：
        a. storage_available[type_key] == true（介质已挂载且可用）
        b. 如果提供了 app_size_kb，检查剩余空间是否足够
-    3. 返回第一个满足所有条件的位置
-    4. 全部不满足则返回 nil + 原因描述
+       c. 如果无法获取剩余空间(free_kb==nil)，跳过该位置（不盲目信任）
+    3. 返回第一个明确空间足够的位置
+    4. 若全部位置都无法确认空间足够，回退到第一个可用的位置（即使空间未知）
+    5. 全部不可用则返回 nil + 原因描述
 ]]
 local function select_storage_location(app_size_kb)
     local reasons = {}
+    local first_available = nil  -- 兜底：第一个可用的存储（空间未知时使用）
 
     for _, type_key in ipairs(storage_priority) do
-        -- 条件1：介质是否可用
         if not storage_available[type_key] then
             reasons[#reasons + 1] = STORAGE_DEFS[type_key].label .. "未就绪"
-        -- 条件2：空间是否足够（如果提供了预估大小）
         elseif app_size_kb then
             local mount_point = STORAGE_DEFS[type_key].mount_point
             local free_kb = get_estimated_free_kb(mount_point)
-            if free_kb and tonumber(app_size_kb) and free_kb < app_size_kb then
-                reasons[#reasons + 1] = string.format(
-                    "%s空间不足(需%.0fKB, 剩%.0fKB)",
-                    STORAGE_DEFS[type_key].label, app_size_kb, free_kb
-                )
-            else
-                log.info("storage_select", "selected", STORAGE_DEFS[type_key].label)
-                return type_key, STORAGE_DEFS[type_key].mount_point, nil
+            local is_first = (not first_available)  -- 在赋值前保存，供后续elseif判断
+            if free_kb then
+                -- 记录第一个可用位置作为兜底
+                if is_first then
+                    first_available = {type_key, mount_point}
+                end
+                -- 安装后需保留至少 MIN_FREE_SPACE_KB 防止FAT簇开销导致超额
+                local needed = app_size_kb + MIN_FREE_SPACE_KB
+                if free_kb >= needed then
+                    log.info("storage_select", "selected", STORAGE_DEFS[type_key].label, "free", free_kb, "KB", "need", needed, "KB")
+                    return type_key, mount_point, nil
+                else
+                    reasons[#reasons + 1] = string.format(
+                        "%s空间不足(需%.0fKB, 剩%.0fKB)",
+                        STORAGE_DEFS[type_key].label, needed, free_kb
+                    )
+                end
+            elseif is_first then
+                -- 最高优先级存储无法获取空间信息（io.fsstat返回total_kb==0），不盲目跳过
+                -- 直接信任并选择，若实际空间不足会在后续下载/解压阶段报明确错误
+                log.warn("storage_select", "selecting", STORAGE_DEFS[type_key].label, "(space unknown, fsstat returned 0 blocks, trusting)")
+                return type_key, mount_point, nil
             end
+            -- free_kb为nil且非最高优先级 → 无法确定空间，跳过继续尝试下一个
+            log.info("storage_select", "skipped", STORAGE_DEFS[type_key].label, "(space unknown)")
         else
             log.info("storage_select", "selected", STORAGE_DEFS[type_key].label)
             return type_key, STORAGE_DEFS[type_key].mount_point, nil
         end
+    end
+
+    -- 无明确空间足够的位置，回退到第一个可用的
+    if first_available then
+        log.warn("storage_select", "fallback to", STORAGE_DEFS[first_available[1]].label, "(space unknown)")
+        return first_available[1], first_available[2], nil
     end
 
     local reason = #reasons > 0
@@ -508,8 +551,16 @@ end
     - 触发垃圾回收
     - 检测内存泄漏（比较清理后内存与基准值）
 ]]
-local function sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
+local function sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base, sandbox_container)
     log.info("sandbox_cleanup", "start cleanup:", app_path)
+
+    -- 先销毁UI沙箱容器（会自动递归销毁所有子组件）
+    if sandbox_container then
+        local ok, err = pcall(sandbox_container.destroy, sandbox_container)
+        if not ok then
+            log.warn("sandbox_cleanup", "container destroy failed:", err)
+        end
+    end
 
     unsubscribe_all()
 
@@ -535,6 +586,66 @@ local function sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
         -- end
     end
     log.info("sandbox_cleanup", "cleanup completed:", app_path)
+end
+
+-- 递归拷贝目录（用于更新时跨存储迁移data目录）
+-- 仅拷贝文件，跳过无法读取的项
+local function copy_data_dir(src_dir, dst_dir)
+    if not io.dexist(src_dir) then return false end
+    if not io.dexist(dst_dir) then
+        local ok = io.mkdir(dst_dir)
+        if not ok then
+            log.warn("copy_data_dir", "cannot create dst dir:", dst_dir)
+            return false
+        end
+    end
+    local ret, list = io.lsdir(src_dir, 100, 0)
+    if not ret then return false end
+    for _, item in ipairs(list) do
+        local src_path = src_dir .. item.name
+        local dst_path = dst_dir .. item.name
+        if item.type == 1 then
+            copy_data_dir(src_path .. "/", dst_path .. "/")
+        else
+            -- 读取源文件内容，写入目标文件
+            local data = io.readFile(src_path)
+            if data then
+                io.writeFile(dst_path, data)
+            else
+                log.warn("copy_data_dir", "cannot read:", src_path)
+            end
+        end
+    end
+    return true
+end
+
+-- 递归拷贝目录（用于更新时跨存储迁移data目录）
+local function copy_data_dir(src_dir, dst_dir)
+    if not io.dexist(src_dir) then return false end
+    if not io.dexist(dst_dir) then
+        local ok = io.mkdir(dst_dir)
+        if not ok then
+            log.warn("copy_data_dir", "cannot create dst dir:", dst_dir)
+            return false
+        end
+    end
+    local ret, list = io.lsdir(src_dir, 100, 0)
+    if not ret then return false end
+    for _, item in ipairs(list) do
+        local src_path = src_dir .. item.name
+        local dst_path = dst_dir .. item.name
+        if item.type == 1 then
+            copy_data_dir(src_path .. "/", dst_path .. "/")
+        else
+            local data = io.readFile(src_path)
+            if data then
+                io.writeFile(dst_path, data)
+            else
+                log.warn("copy_data_dir", "cannot read:", src_path)
+            end
+        end
+    end
+    return true
 end
 
 -- 递归删除目录（用于云端卸载）
@@ -653,6 +764,10 @@ local function app_task(app_path)
         package = { loaded = {} }
     }, { __index = _G })
 
+    -- UI沙箱容器：声明为nil，稍后在ctx初始化后用airui创建
+    -- 闭包会捕获此upvalue，创建后所有install_component都能访问到
+    local sandbox_container = nil
+
     -- ==============================================
     -- 创建沙箱专用的exapp对象
     -- 功能：提供应用内的关闭接口
@@ -710,7 +825,7 @@ local function app_task(app_path)
         "exftp", "exgnss", "exlcd", "exmodbus_rtu_ascii", "exmodbus_tcp" ,
         "exmodbus", "exmtn", "exmux", "exnetif", "exremotecam", "exremotefile",
         "exril_5101", "exsip", "exsipclient", "exsipproto", "extalk", "extp",
-        "exvib", "exvib1", "ex", "gc032a", "gc0310", "httpdns", "httpplus",
+        "exvib", "exvib1", "exwin", "gc032a", "gc0310", "httpdns", "httpplus",
         "lbsLoc", "lbsLoc2", "libnet", "netLed", "udpsrv",
         "xmodem", "sys", "sysplus"
     }
@@ -725,16 +840,20 @@ local function app_task(app_path)
         end
 
         -- 检查是否属于 LuatOS 扩展库
-        -- 处理顺序：_G[name] -> 实时require -> _G[name] -> 应用目录加载
+        -- 处理顺序：_G[name]存在时走沙箱包装版 -> 实时require -> 应用目录加载
+        -- 注意：返回 my_env[name] 而非 _G[name]，确保应用代码拿到的是经过沙箱包装的版本
+        -- 关键：以 _G[name] 是否存在为分界，_G[name] 不存在时不走 my_env[name]，
+        -- 因为 my_env[name] 可能只是空包装壳（__index 指向空表），需回退到文件加载
         if ext_libs[name] then
-            local global_mod = _G[name]
-            if global_mod then
-                my_env.package.loaded[name] = global_mod
-                my_env.log.info("require from _G: " .. name)
-                return global_mod
+            if _G[name] then
+                -- 全局模块存在，使用沙箱包装版本，保证路径翻译等安全策略生效
+                local sandbox_mod = my_env[name] or _G[name]
+                my_env.package.loaded[name] = sandbox_mod
+                my_env.log.info("require from sandbox _G: " .. name)
+                return sandbox_mod
             end
 
-            -- 实时在全局环境中 require
+            -- 全局模块不存在，尝试实时 require
             local ok, result = pcall(require, name)
             if ok then
                 my_env.package.loaded[name] = result
@@ -786,6 +905,20 @@ local function app_task(app_path)
 
         -- 缓存已加载的模块
         my_env.package.loaded[name] = mod
+
+        -- 如果是扩展库且沙箱有对应的包装器（my_env[name]），
+        -- 更新包装器的 __index 指向新加载的模块，并返回包装器而非原始模块，
+        -- 确保 play_start 等路径翻译包装器在 app 调用时生效
+        if ext_libs[name] then
+            local sandbox_wrapper = my_env[name]
+            if type(sandbox_wrapper) == "table" then
+                local mt = getmetatable(sandbox_wrapper)
+                if mt then
+                    mt.__index = mod
+                    return sandbox_wrapper
+                end
+            end
+        end
 
         return mod
     end
@@ -1268,15 +1401,35 @@ local function app_task(app_path)
 
     -- 列出目录内容
     -- 使用 resolve_dir 进行目录映射，确保目录路径正确解析
+    -- 当扫描 /luadb/（应用根目录）时，自动合并 res/ 子目录下的文件
     my_env.io.lsdir = function(path, ...)
+        -- 自动补末尾 /，resolve_dir 要求目录路径以 / 结尾
+        if type(path) == "string" and path:sub(-1) ~= "/" then
+            path = path .. "/"
+        end
         local resolved = resolve_dir(path)
         if resolved then
             local success, data = io.lsdir(resolved, ...)
             if success and type(data) == "table" and path:sub(1,7) == "/luadb/" then
                 local new_data = {}
                 for i, item in ipairs(data) do
+                    -- 过滤掉 data 目录（应用私有数据）
                     if item.name ~= "data" then
-                        table.insert(new_data, item)
+                        -- 扫描根目录时，过滤掉 res 目录条目本身（其内容将合并进来）
+                        if not (path == "/luadb/" and item.name == "res") then
+                            table.insert(new_data, item)
+                        end
+                    end
+                end
+                -- 扫描应用根目录 /luadb/ 时，自动合并 res/ 子目录的文件
+                -- 这样写 /luadb/xxx 的非 Lua 文件不需要显式带 res/ 前缀就能被列出
+                if path == "/luadb/" then
+                    local res_dir = app_path .. "res/"
+                    local res_success, res_data = io.lsdir(res_dir, ...)
+                    if res_success and res_data then
+                        for _, item in ipairs(res_data) do
+                            table.insert(new_data, item)
+                        end
                     end
                 end
                 return success, new_data
@@ -1442,6 +1595,23 @@ local function app_task(app_path)
     my_env.libfota2.request = function(...)
         my_env.log.error("libfota2", "沙箱环境不允许FOTA升级操作")
         return -1
+    end
+
+    -- libfota3 库（两步协议FOTA）
+    -- 禁止应用使用固件升级功能，阻断check/download/report_result
+    local libfota3_lib = safe_global("libfota3")
+    my_env.libfota3 = setmetatable({}, { __index = libfota3_lib })
+    my_env.libfota3.check = function(...)
+        my_env.log.error("libfota3", "沙箱环境不允许FOTA升级操作")
+        return nil, "禁止操作"
+    end
+    my_env.libfota3.download = function(...)
+        my_env.log.error("libfota3", "沙箱环境不允许FOTA升级操作")
+        return false, "禁止操作"
+    end
+    my_env.libfota3.report_result = function(...)
+        my_env.log.error("libfota3", "沙箱环境不允许FOTA升级操作")
+        return false, "禁止操作"
     end
 
     -- pm 库
@@ -1633,6 +1803,23 @@ local function app_task(app_path)
     end
 
     local ctx = init_context()
+
+    -- ==============================================
+    -- 创建UI沙箱主容器（100%透明，填满屏幕）
+    -- 所有app的顶层UI组件都会被重定向到这个容器内
+    -- ==============================================
+    sandbox_container = ui.container({
+        x = 0, y = 0,
+        w = ctx.screen_w, h = ctx.screen_h,
+        color = 0xffffff, color_opacity = 0,  -- 100%透明
+    })
+    if sandbox_container then
+        -- 用沙箱容器替换airui.screen，app中parent=airui.screen实际指向此容器
+        my_env.airui.screen = sandbox_container
+        my_env.log.info("exapp", "UI sandbox container created", ctx.screen_w, ctx.screen_h)
+    else
+        my_env.log.error("exapp", "failed to create UI sandbox container")
+    end
 
     local function scale_x_fn(v)
         if type(v) ~= "number" or not ctx.adapt_enabled then return v end
@@ -2110,6 +2297,12 @@ local function app_task(app_path)
         my_env.airui[component_name] = function(...)
             local args = {...}
             if type(args[1]) == "table" then
+                -- === UI沙箱：将顶层组件的parent重定向到沙箱容器 ===
+                -- parent为nil（未指定）或指向全局screen时，统一挂到sandbox_container下
+                -- 组件内部明确指定了父容器的（如嵌套container），保持原有parent不变
+                if sandbox_container and (args[1].parent == nil or args[1].parent == ui.screen) then
+                    args[1].parent = sandbox_container
+                end
                 -- 如果parent是包装对象，提取原始对象
                 if args[1].parent then
                     if type(args[1].parent) == "table" and args[1].parent.__raw then
@@ -2161,9 +2354,13 @@ local function app_task(app_path)
     my_env.exaudio = setmetatable({}, { __index = exaudio_lib })
 
     -- 处理 config.content 参数，支持单个路径或路径数组
+    -- 注意：通过 getmetatable 动态获取基模块，而非捕获 exaudio_lib 闭包
+    -- 这样当 _G.exaudio 不存在、app 自带模块通过 require 加载后，
+    -- 只需更新 __index 即可让包装器指向正确的基模块
     my_env.exaudio.play_start = function(...)
         local args = {...}
         local config = args[1]
+        local base = getmetatable(my_env.exaudio).__index
 
         if type(config) == "table" and config.type == 0 then
             local new_config = cp(config)
@@ -2178,13 +2375,24 @@ local function app_task(app_path)
                 new_config.content = resolved
             end
 
-            return exaudio_lib.play_start(new_config)
+            return base.play_start(new_config)
         end
 
-        return exaudio_lib.play_start(...)
+        return base.play_start(...)
     end
 
-    my_env.exaudio.record_start = wrap_config(exaudio_lib.record_start, "path", 1, true, false)
+    my_env.exaudio.record_start = function(...)
+        local args = {...}
+        local base = getmetatable(my_env.exaudio).__index
+        if type(args[1]) == "table" and type(args[1].path) == "string" then
+            local new_config = cp(args[1])
+            local resolved = resolve_write(args[1].path)
+            if not resolved then return false end
+            new_config.path = resolved
+            return base.record_start(new_config, select(2, ...))
+        end
+        return base.record_start(...)
+    end
 
     -- excamera 库
     -- 功能：包装 excamera.open 和 excamera.video，支持视频文件路径转换
@@ -2379,7 +2587,7 @@ local function app_task(app_path)
     -- 加载失败，记录错误并清理沙箱
     if not f then
         my_env.log.error("app_task", "failed to load main.lua:", err)
-        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
+        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base, sandbox_container)
         return
     end
 
@@ -2398,7 +2606,7 @@ local function app_task(app_path)
     -- 应用异常退出，执行清理
     if not ok then
         my_env.log.error("app_task", "app crashed, starting cleanup:", app_path, result)
-        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
+        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base, sandbox_container)
         return
     end
 
@@ -2407,7 +2615,7 @@ local function app_task(app_path)
     -- 等待应用关闭请求
     local ret, rdata = sys.waitUntil(app_path .."_close_req")
     if rdata == "yes" then
-        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base)
+        sandbox_cleanup(app_path, my_env, unsubscribe_all, mem_base, sandbox_container)
         log.info("app co quit", app_path)
     end
 end
@@ -2804,6 +3012,7 @@ local function scan(base_dir, storage_type)
 
                 -- 保存应用信息，包含 install_time 和 storage 信息
                 local app_name = app_dir.name
+                local size_kb = tonumber(meta_data.origin_size_kb) or 0
                 installed_info[app_name] = {
                     cn_name = meta_data.app_name_cn or "unknown",
                     path = base_dir .. app_dir.name .. "/",
@@ -2814,7 +3023,8 @@ local function scan(base_dir, storage_type)
                     installed = true,
                     has_update = false,
                     zip_size_kb = tonumber(meta_data.zip_size_kb) or 0,
-                    origin_size_kb = tonumber(meta_data.origin_size_kb) or 0,
+                    origin_size_kb = size_kb,
+                    installed_size_kb = size_kb,
                     total_downloads = tonumber(meta_data.total_downloads) or 0,
                     install_time = meta_data.install_time,
                     storage_type = storage_type,
@@ -3247,14 +3457,10 @@ function exapp.get_app_list(params)
     local size = params.size or PAGE_LIMIT
     local query = params.query or ""
 
+
     if category ~= "已安装" and not network_ready then
         sys.publish("APP_STORE_ERROR", "当前无网络，请先连接WiFi")
         return false
-    end
-
-    -- 每次进入应用市场时校准一次存储空间（后续下载不再重复 io.fsstat）
-    if category ~= "已安装" and not storage_calibrated then
-        calibrate_storage()
     end
 
     if category == "已安装" then
@@ -3319,10 +3525,16 @@ function exapp.get_app_list(params)
             total_pages = total_pages_now,
             total = total
         })
+
         return true
     end
 
+
     sys.taskInit(function()
+        -- 异步校准存储空间（io.fsstat可能耗时，放入协程避免阻塞UI）
+        if not storage_calibrated then
+            calibrate_storage()
+        end
         local request_params = build_params(category, sort, page, size, query)
         local apps, err, total, current_page, total_pages, page_size = http_request(request_params)
         if not apps then
@@ -3397,7 +3609,7 @@ local function http_error_msg(code)
 end
 
 -- 下载文件
-local function download_file(url, dest_path, aid)
+local function download_file(url, dest_path, aid, target_mount)
     log.info("exapp", "downloading", url, "->", dest_path)
     -- 尝试从服务器返回字段获取 zip 大小信息（若服务端支持）
     local app_entry = nil
@@ -3417,23 +3629,23 @@ local function download_file(url, dest_path, aid)
         local o = tonumber(tostring(app_entry.origin_size_kb)) or 0
         if o > 0 then origin_size_kb_val = o end
     end
-    -- 校验1：根文件系统空间必须满足解压后大小（加20% buffer）
-    -- 注意：此处检查的是根文件系统(/)而非安装目标挂载点。
-    -- 安装目标由调用方(install_remote_app)通过 select_storage_location 决定，
-    -- 并在解压前对目标挂载点做精确空间校验。
-    local fs_free_kb = get_estimated_free_kb("/") or 0
-    if origin_size_kb_val > 0 then
-        local needed_kb = math.ceil(origin_size_kb_val * 1.3)
-        if fs_free_kb > 0 and needed_kb > fs_free_kb then
-            log.error("exapp", "not enough fs space for", aid, "need", needed_kb, "free", fs_free_kb)
-            sys.publish("APP_STORE_ERROR", "文件系统空间不足无法安装")
-            return false
-        elseif fs_free_kb == 0 then
-            -- free 为 0，可能 fsstat 失败或文件系统确实满了
-            log.warn("exapp", "cannot determine root fs free space for", aid, "need", needed_kb, "proceeding with mount-point check")
+    -- 校验1：目标挂载点空间（/ram/路径跳过，已由调用方用PSRAM预检）
+    local is_ram_dest = dest_path:sub(1, 5) == "/ram/"
+    if not is_ram_dest then
+        local check_mount = target_mount or "/"
+        local fs_free_kb = get_estimated_free_kb(check_mount) or 0
+        if origin_size_kb_val > 0 then
+            local needed_kb = math.ceil(origin_size_kb_val * 1.3 + MIN_FREE_SPACE_KB)
+            if fs_free_kb > 0 and needed_kb > fs_free_kb then
+                log.error("exapp", "not enough fs space on", check_mount, "for", aid, "need", needed_kb, "free", fs_free_kb)
+                sys.publish("APP_STORE_ERROR", "目标存储空间不足无法安装")
+                return false
+            elseif fs_free_kb == 0 then
+                log.warn("exapp", "cannot determine fs free space on", check_mount, "for", aid, "need", needed_kb, "proceeding")
+            end
         end
     end
-    -- 校验2：RAM空间满足压缩包大小（用于暂存下载）
+    -- 校验2：RAM/PSRAM空间满足压缩包暂存大小
     if zip_size_kb_val > 0 then
         local total, used = rtos.meminfo("sys")
         local ram_free_kb = (total - used) / 1024
@@ -3670,7 +3882,7 @@ end
 -- 安装应用
 exapp.install_remote_app("app_hello", "https://example.com/app.zip", "Hello App", "工具", "recommend")
 ]]
-function exapp.install_remote_app(aid, url, app_name, category, sort)
+function exapp.install_remote_app(aid, url, app_name, category, sort, _target_root)
     if not network_ready then
         sys.publish("APP_STORE_ERROR", "当前无网络，请先连接WiFi")
         return
@@ -3699,22 +3911,27 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
             end
         end
 
-        -- 2. 安装时重新探测外部存储状态（首次安装或校准失效时探测，已校准则跳过）
-        if not storage_calibrated then
-            storage_available.sd_tf = probe_storage("/sd/")
-            storage_available.little_flash = probe_storage("/little_flash/")
-        end
+        -- 2. 安装时始终探测外部存储状态（校准可能已过时，如TF卡被拔出）
+        storage_available.sd_tf = probe_storage("/sd/")
+        storage_available.little_flash = probe_storage("/little_flash/")
 
-        -- 3. 选择合适的存储位置
-        local storage_type, mount_point, reason = select_storage_location(estimated_size_kb)
-        if not storage_type then
-            sys.publish("APP_STORE_ERROR", reason or "没有可用的存储位置")
-            sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
-            report_result(aid, "没有可用的存储位置")
-            return
+        -- 3. 选择合适的存储位置（_target_root非nil时跳过自动选择）
+        local storage_type, mount_point, reason, root_path
+        if _target_root then
+            -- 更新迁移场景：使用指定的目标路径
+            mount_point, storage_type = infer_mount_point(_target_root .. "/")
+            root_path = _target_root
+            log.info("exapp", "install to specified root:", root_path, "mount:", mount_point, "type:", storage_type)
+        else
+            storage_type, mount_point, reason = select_storage_location(estimated_size_kb)
+            if not storage_type then
+                sys.publish("APP_STORE_ERROR", reason or "没有可用的存储位置")
+                sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
+                report_result(aid, "没有可用的存储位置")
+                return
+            end
+            root_path = mount_point .. "app_store"
         end
-
-        local root_path = mount_point .. "app_store"
         if not io.dexist(root_path) then
             local mk_ok = io.mkdir(root_path)
             if not mk_ok then
@@ -3725,14 +3942,35 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
             end
         end
 
-        local temp_path = string.format(TEMP_DOWNLOAD_PATH, aid)
+        -- 临时文件：优先/ram/（内存盘速度快），空间不足时回退到目标文件系统
+        -- PSRAM需满足 zip_size×1.3（含缓冲），否则下载到目标文件系统
+        local zip_need_kb = 300  -- 默认兜底值
+        if remote_app_list and remote_app_list.apps then
+            for _, it in ipairs(remote_app_list.apps) do
+                if tostring(it.aid) == tostring(aid) then
+                    local z = tonumber(it.zip_size_kb)
+                    if z and z > 0 then
+                        zip_need_kb = math.ceil(z * 1.3)
+                    elseif estimated_size_kb then
+                        zip_need_kb = math.ceil(estimated_size_kb * 0.3)
+                    end
+                    break
+                end
+            end
+        elseif estimated_size_kb then
+            zip_need_kb = math.ceil(estimated_size_kb * 0.3)
+        end
+        local temp_path = "/ram/app_" .. aid .. ".zip"
+        -- /ram/由PSRAM内存提供，使用rtos.meminfo检查而非io.fsstat
+        local psram_total, psram_used = rtos.meminfo("psram")
+        local psram_free_kb = psram_total and psram_used and ((psram_total - psram_used) / 1024) or nil
+        if psram_free_kb and zip_need_kb > psram_free_kb then
+            temp_path = mount_point .. "temp_" .. aid .. ".zip"
+            log.info("exapp", "/ram/ full, fallback to filesystem temp", temp_path, "ram_free_kb", math.floor(psram_free_kb), "need", zip_need_kb)
+        end
         sys.publish("APP_STORE_PROGRESS", aid, 0, "开始下载")
 
-        -- 预下载容量校验：若zip_size_kb大于 /ram 空间，直接失败
-        -- (在 download_file 中还会再做一次详细校验)
-
-        -- 进行下载前对 zip_size 的容量校验，若不通过则直接退出
-        local download_ok, download_err = download_file(url, temp_path, aid)
+        local download_ok, download_err = download_file(url, temp_path, aid, mount_point)
         if not download_ok then
             local err_msg = download_err or "下载失败"
             sys.publish("APP_STORE_ERROR", err_msg)
@@ -3741,25 +3979,14 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
             return
         end
 
-        -- 最低空闲空间保护：剩余空间不足100KB时不允许安装（防止FAT簇开销导致超额消耗）
-        local min_free_check_kb = get_estimated_free_kb(mount_point)
-        if min_free_check_kb and min_free_check_kb < MIN_FREE_SPACE_KB then
-            os.remove(temp_path)
-            log.error("exapp", "minimum free space check failed on", mount_point, "for", aid, "free", min_free_check_kb, "min", MIN_FREE_SPACE_KB)
-            sys.publish("APP_STORE_ERROR", "文件系统空间不足无法安装(剩余" .. math.floor(min_free_check_kb) .. "KB)")
-            sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
-            report_result(aid, "文件系统空间不足无法安装")
-            return
-        end
-
-        -- 解压前容量校验：对选中的目标挂载点做精确空间检查
+        -- 解压前容量校验（含100KB最低余量，与select_storage_location保持一致）
         -- download_file 中只检查了根文件系统(/)，但安装目标可能是 /sd/ 或 /little_flash/
         if estimated_size_kb then
+            local safe_needed = estimated_size_kb + MIN_FREE_SPACE_KB
             local target_free_kb = get_estimated_free_kb(mount_point)
-            if target_free_kb and target_free_kb < estimated_size_kb then
-                -- 空间不足，清理已下载的压缩包
+            if target_free_kb and target_free_kb < safe_needed then
                 os.remove(temp_path)
-                log.error("exapp", "not enough space on", mount_point, "for", aid, "need", estimated_size_kb, "free", target_free_kb)
+                log.error("exapp", "not enough space on", mount_point, "for", aid, "need", safe_needed, "free", target_free_kb)
                 sys.publish("APP_STORE_ERROR", "文件系统空间不足无法安装")
                 sys.publish("APP_STORE_ACTION_DONE", aid, "install", false)
                 report_result(aid, "文件系统空间不足无法安装")
@@ -3767,7 +3994,7 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
             elseif not target_free_kb then
                 log.warn("exapp", "cannot determine free space for", mount_point, aid, "proceeding without size check")
             else
-                log.info("exapp", "pre-extract space check passed for", aid, "on", mount_point, "need", estimated_size_kb, "free", target_free_kb)
+                log.info("exapp", "pre-extract space check passed for", aid, "on", mount_point, "need", safe_needed, "free", target_free_kb)
             end
         end
 
@@ -3840,6 +4067,7 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
                         local new_content = json.encode(meta_data)
                         io.writeFile(meta_path, new_content)
 
+                        local size_kb = tonumber(meta_data.origin_size_kb) or 0
                         installed_info[aid] = {
                             appid = meta_data.appid,
                             cn_name = meta_data.app_name_cn or app_name or aid,
@@ -3851,7 +4079,8 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
                             installed = true,
                             has_update = false,
                             zip_size_kb = meta_data.zip_size_kb,
-                            origin_size_kb = meta_data.origin_size_kb,
+                            origin_size_kb = size_kb,
+                            installed_size_kb = size_kb,
                             total_downloads = meta_data.total_downloads,
                             install_time = install_time,
                             storage_type = storage_type,
@@ -3860,7 +4089,8 @@ function exapp.install_remote_app(aid, url, app_name, category, sort)
                         }
                         installed_cnt = installed_cnt + 1
                         installed_total_count = installed_cnt
-                        -- 记录该应用对预估空间的消耗，供本会话后续安装的空间判断
+                        -- 按1.3倍记录空间消耗（保守估计，避免多次安装后缓存低估导致装不下）
+                        -- 卸载时按installed_size_kb的实际值归还，保证长期准确性
                         record_install_usage(mount_point, estimated_size_kb)
                         sys.publish("APP_STORE_INSTALLED_UPDATED", installed_info)
                     end
@@ -3918,6 +4148,10 @@ function exapp.uninstall_remote_app(aid, category, sort)
         return
     end
 
+    -- 使用缓存中的安装大小归还预估空间（init/install时已从meta.json读取并存储）
+    local uninstall_size_kb = app_info.installed_size_kb
+    local uninstall_mount = app_info.mount_point or "/"
+
     sys.publish("APP_STORE_PROGRESS", aid, 0, "卸载中")
     local success = rmdir_recursive(target_path)
 
@@ -3948,6 +4182,11 @@ function exapp.uninstall_remote_app(aid, category, sort)
             fskv.del(key)
         end
         log.info("uninstall", "cleared", #keys_to_delete, "fskv entries for", aid)
+
+        -- 归还卸载应用的预估空间（基于meta.json中的origin_size_kb，无需重读io.fsstat）
+        if uninstall_size_kb then
+            record_uninstall_usage(uninstall_mount, uninstall_size_kb)
+        end
 
         installed_info[aid] = nil
         installed_cnt = installed_cnt - 1
@@ -4001,44 +4240,85 @@ function exapp.update_remote_app(aid, url, app_name, category, sort)
     end
 
     local old_path = installed_info[aid].path
+    local old_mount = installed_info[aid].mount_point or "/"
+    local old_type = installed_info[aid].storage_type or "internal"
     sys.publish("APP_STORE_PROGRESS", aid, 0, "准备更新")
 
-    -- 先解压前检查空间（避免空间不足时已删旧版本）
+    -- 计算所需空间（含100KB最低余量），确定安装目标位置
     local origin_size = tonumber(installed_info[aid].origin_size_kb)
-    if origin_size and origin_size > 0 then
-        local mount_point = installed_info[aid].mount_point or "/"
-        local needed = math.ceil(origin_size * 1.3)
-        local target_free_kb = get_estimated_free_kb(mount_point)
-        if target_free_kb and needed > target_free_kb then
-            log.error("exapp", "not enough space on", mount_point, "for update", aid, "need", needed, "free", target_free_kb)
-            sys.publish("APP_STORE_ERROR", "空间不足，无法更新")
-            sys.publish("APP_STORE_ACTION_DONE", aid, "update", false)
-            report_result(aid, "空间不足无法更新")
-            return
-        elseif not target_free_kb then
-            log.warn("exapp", "cannot determine free space on", mount_point, "for update", aid, "proceeding anyway")
+    local needed = origin_size and origin_size > 0 and math.ceil(origin_size * 1.3 + MIN_FREE_SPACE_KB) or nil
+    local target_root = old_mount .. "app_store"  -- 默认原地更新
+    local need_migration = false
+
+    if needed then
+        local old_free = get_estimated_free_kb(old_mount)
+        if old_free and needed > old_free then
+            -- 当前挂载点空间不足，按优先级尝试其他存储位置
+            log.info("exapp", "old mount", old_mount, "full for update", aid, "need", needed, "free", old_free, "trying others")
+            local found = false
+            for _, type_key in ipairs(storage_priority) do
+                if type_key ~= old_type and storage_available[type_key] then
+                    local mp = STORAGE_DEFS[type_key].mount_point
+                    local free = get_estimated_free_kb(mp)
+                    if free and free >= needed then
+                        target_root = mp .. "app_store"
+                        log.info("exapp", "migrate", aid, "from", old_mount, "to", mp, "free", free, "KB")
+                        found = true
+                        need_migration = true
+                        break
+                    end
+                end
+            end
+            if not found then
+                log.error("exapp", "all storage full for update", aid, "need", needed, "KB")
+                sys.publish("APP_STORE_ERROR", "所有存储位置空间不足，无法更新")
+                sys.publish("APP_STORE_ACTION_DONE", aid, "update", false)
+                report_result(aid, "所有存储位置空间不足")
+                return
+            end
+        elseif not old_free then
+            log.warn("exapp", "cannot determine free space on", old_mount, "for update", aid, "proceeding anyway")
         end
     end
 
-    -- 删除旧版本文件（保留 data/ 目录）
-    local ret, list = io.lsdir(old_path, 100, 0)
-    if ret and list then
-        for _, item in ipairs(list) do
-            if item.name ~= "data" then
-                local full_path = old_path .. item.name
-                if item.type == 1 then
-                    rmdir_recursive(full_path)
-                else
-                    os.remove(full_path)
+    -- 跨存储迁移：将data/复制到新位置，然后删除旧应用目录
+    if need_migration then
+        local new_app_root = target_root .. "/" .. aid .. "/"
+        if not io.dexist(target_root) then io.mkdir(target_root) end
+        if not io.dexist(new_app_root) then io.mkdir(new_app_root) end
+
+        -- 拷贝旧data/到新位置
+        local old_data = old_path .. "data/"
+        local new_data = new_app_root .. "data/"
+        if io.dexist(old_data) then
+            log.info("exapp", "migrating data from", old_data, "to", new_data)
+            copy_data_dir(old_data, new_data)
+        end
+
+        -- 删除旧应用目录（已迁移完成）
+        rmdir_recursive(old_path)
+        old_path = new_app_root
+    else
+        -- 原地更新：删除旧版本文件（保留 data/ 目录）
+        local ret, list = io.lsdir(old_path, 100, 0)
+        if ret and list then
+            for _, item in ipairs(list) do
+                if item.name ~= "data" then
+                    local full_path = old_path .. item.name
+                    if item.type == 1 then
+                        rmdir_recursive(full_path)
+                    else
+                        os.remove(full_path)
+                    end
                 end
             end
         end
     end
 
-    -- 安装新版本（解压到同一目录，覆盖旧文件，data/ 保留）
+    -- 安装新版本到目标位置
     installed_info[aid] = nil
     installed_cnt = installed_cnt - 1
-    exapp.install_remote_app(aid, url, app_name, category, sort)
+    exapp.install_remote_app(aid, url, app_name, category, sort, target_root)
 end
 
 -- 图标下载与缓存

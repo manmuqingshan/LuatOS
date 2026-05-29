@@ -63,14 +63,14 @@ static __LUAT_C_CODE_IN_ISR__ void _audio_play_next_block(struct luat_audio_driv
 	next_play_cnt = (ctrl->current_play_cnt + 1) & 3;
 	uint8_t *next_play_buff = ctrl->play_buff_byte + ctrl->one_play_block_len * next_play_cnt;
 	if (!_luat_audio.current_request_block->is_wait_play_end && (ctrl->data_channel->user_play_stop || !ctrl->audio_output_enable)) {	// 播放状态为停止，播放空白音
-		ctrl->opts->fill(ctrl, next_play_buff, ctrl->one_play_block_len, ctrl->opts->is_signed, ctrl->data_channel->data_align);
+		ctrl->opts->fill(ctrl, next_play_buff, ctrl->one_play_block_len, ctrl->opts->is_signed, ctrl->common_param.data_align);
 		return;
 	}
 	// play数据从这里读取，只有1个消费者，所以不需要加锁
 	uint32_t read_len = luat_fifo_read(ctrl->data_channel->play_fifo, next_play_buff, ctrl->one_play_block_len);
 
 	if (read_len < ctrl->one_play_block_len) { 	// fifo没有完整的1个block
-		ctrl->opts->fill(ctrl, next_play_buff + read_len, ctrl->one_play_block_len - read_len, ctrl->opts->is_signed, ctrl->data_channel->data_align);
+		ctrl->opts->fill(ctrl, next_play_buff + read_len, ctrl->one_play_block_len - read_len, ctrl->opts->is_signed, ctrl->common_param.data_align);
 	}
 	if (!_luat_audio.current_request_block) {  // 没有请求块，直接返回
 		return;
@@ -546,6 +546,12 @@ static void _audio_decode_file_to_fifo(luat_audio_request_block_t *request_block
 static void _audio_start_request(luat_audio_request_block_t *request_block)
 {
 	int ret;
+	if (!request_block->data_channel->play_fifo) {
+		LLOGD("driver 0x%x create play fifo", request_block->data_channel->driver_ctrl->probe.probe_id);
+		request_block->data_channel->play_fifo = luat_fifo_create(LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER);
+    	request_block->data_channel->play_fifo_low_level = 32 * 1024;
+    	request_block->data_channel->play_fifo_high_level = request_block->data_channel->play_fifo->size - 16 * 1024;
+	}
 	request_block->cb(LUAT_AUDIO_REQUEST_EVENT_START, NULL, 0, request_block);
 	// 最后根据请求块的模式做不同的解码操作
 	if (request_block->is_tts) {	//TTS模式发送给tts_task处理
@@ -704,9 +710,6 @@ int luat_audio_driver_register(const luat_audio_driver_opts_t *opts, struct luat
 			_luat_audio.channel[i].driver_ctrl = &_luat_audio.driver_ctrl[i];
 			_luat_audio.channel[i].play_lock_mutex = luat_mutex_create();
 			_luat_audio.channel[i].soft_volume = 100;
-			_luat_audio.channel[i].play_fifo = luat_fifo_create(LUAT_AUDIO_CHANNEL_FIFO_DEFAULT_SIZE_POWER);
-    		_luat_audio.channel[i].play_fifo_low_level = 32 * 1024;
-    		_luat_audio.channel[i].play_fifo_high_level = _luat_audio.channel[i].play_fifo->size - 16 * 1024;
 			_luat_audio.all_driver_nums++;
 			LLOGC(luat_audio_debug_flag, "probe_id: %x driver register success index: %d", probe.probe_id, i);
 			return LUAT_ERROR_NONE;
