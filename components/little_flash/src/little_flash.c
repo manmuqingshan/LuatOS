@@ -653,6 +653,19 @@ lf_err_t little_flash_erase_write(const little_flash_t *lf, uint32_t addr, const
     return result;
 }
 
+static int little_flash_is_all_ff(const uint8_t* data, uint32_t len) {
+    uint32_t i = 0;
+    if (data == LF_NULL) {
+        return 0;
+    }
+    for (i = 0; i < len; i++) {
+        if (data[i] != 0xFF) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 lf_err_t little_flash_read(const little_flash_t *lf, uint32_t addr, uint8_t *data, uint32_t len){
     uint8_t cmd_data[4];
     uint32_t base_addr = addr;
@@ -673,34 +686,55 @@ lf_err_t little_flash_read(const little_flash_t *lf, uint32_t addr, uint8_t *dat
         while (len){
             uint32_t page_addr = addr/lf->chip_info.read_size;
             uint16_t column_addr = addr%lf->chip_info.read_size;
+            uint32_t read_len = 0;
+            uint8_t* read_ptr = LF_NULL;
+            lf_err_t read_check = LF_ERR_OK;
 
             cmd_data[0] = LF_NANDFLASH_PAGE_DATA_READ;
             cmd_data[1] = page_addr >> 16;
             cmd_data[2] = page_addr >> 8;
             cmd_data[3] = page_addr;
             lf->spi.transfer(lf,cmd_data, 4,LF_NULL,0);
-            if (little_flash_cheak_read(lf)){
-                goto error;
-            }
+            read_check = little_flash_cheak_read(lf);
             cmd_data[0] = LF_CMD_READ_DATA;
             cmd_data[1] = column_addr >> 8;
             cmd_data[2] = column_addr;
             cmd_data[3] = 0;
             if (column_addr){
                 if ((column_addr+len)<=lf->chip_info.read_size){
-                    lf->spi.transfer(lf,cmd_data, 4,&data[addr-base_addr],len);
+                    read_ptr = &data[addr-base_addr];
+                    read_len = len;
+                    lf->spi.transfer(lf,cmd_data, 4,read_ptr,read_len);
+                    if (read_check && !little_flash_is_all_ff(read_ptr, read_len)) {
+                        goto error;
+                    }
                     break;
                 }else{
-                    lf->spi.transfer(lf,cmd_data, 4,&data[addr-base_addr],lf->chip_info.read_size-column_addr);
+                    read_ptr = &data[addr-base_addr];
+                    read_len = lf->chip_info.read_size-column_addr;
+                    lf->spi.transfer(lf,cmd_data, 4,read_ptr,read_len);
+                    if (read_check && !little_flash_is_all_ff(read_ptr, read_len)) {
+                        goto error;
+                    }
                     len -= (lf->chip_info.read_size-column_addr);
                     addr += (lf->chip_info.read_size-column_addr);
                 }
             }else{
                 if (len<=lf->chip_info.read_size){
-                    lf->spi.transfer(lf,cmd_data, 4,&data[addr-base_addr],len);
+                    read_ptr = &data[addr-base_addr];
+                    read_len = len;
+                    lf->spi.transfer(lf,cmd_data, 4,read_ptr,read_len);
+                    if (read_check && !little_flash_is_all_ff(read_ptr, read_len)) {
+                        goto error;
+                    }
                     break;
                 }else{
-                    lf->spi.transfer(lf,cmd_data, 4,&data[addr-base_addr],lf->chip_info.read_size);
+                    read_ptr = &data[addr-base_addr];
+                    read_len = lf->chip_info.read_size;
+                    lf->spi.transfer(lf,cmd_data, 4,read_ptr,read_len);
+                    if (read_check && !little_flash_is_all_ff(read_ptr, read_len)) {
+                        goto error;
+                    }
                     len -= lf->chip_info.read_size;
                     addr += lf->chip_info.read_size;
                 }
@@ -718,7 +752,6 @@ error:
     }
     return LF_ERR_READ;
 }
-
 
 
 
