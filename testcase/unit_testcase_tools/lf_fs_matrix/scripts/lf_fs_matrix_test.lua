@@ -121,7 +121,8 @@ function lf_fs_matrix_test.test_lf_three_fs_matrix()
     local fs_list = {
         {name = "lfs2", offset = 0x0000000, size = 0x0800000},
         {name = "lfsn", offset = 0x0800000, size = 0x0800000},
-        {name = "pgfs", offset = 0x1000000, size = 0x0800000}
+        {name = "pgfs", offset = 0x1000000, size = 0x0800000},
+        {name = "lfs3", offset = 0x1800000, size = 0x0800000}
     }
     for _, item in ipairs(fs_list) do
         if fs_target and fs_target ~= "" and item.name ~= fs_target then
