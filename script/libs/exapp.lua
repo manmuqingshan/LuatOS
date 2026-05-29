@@ -825,7 +825,7 @@ local function app_task(app_path)
         "exftp", "exgnss", "exlcd", "exmodbus_rtu_ascii", "exmodbus_tcp" ,
         "exmodbus", "exmtn", "exmux", "exnetif", "exremotecam", "exremotefile",
         "exril_5101", "exsip", "exsipclient", "exsipproto", "extalk", "extp",
-        "exvib", "exvib1", "ex", "gc032a", "gc0310", "httpdns", "httpplus",
+        "exvib", "exvib1", "exwin", "gc032a", "gc0310", "httpdns", "httpplus",
         "lbsLoc", "lbsLoc2", "libnet", "netLed", "udpsrv",
         "xmodem", "sys", "sysplus"
     }
