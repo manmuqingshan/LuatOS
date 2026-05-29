@@ -14,7 +14,38 @@
 #include "lfs3.h"
 #include "little_flash.h"
 
-#define LFS3_LF_LOOKAHEAD_SIZE 16
+/*
+ * NOR flash: byte-addressable, small page (256 B), small erase (4 KB)
+ *
+ *   lfs3 uses rbyd (Radix B-yield) trees for metadata — NOT linear directory
+ *   traversal. Each tree node lives in one mdir block. The rcache is a
+ *   single-slot buffer: the optimal size is block_size (erase_size), so the
+ *   entire tree node is read in ONE SPI transaction. Smaller rcache forces
+ *   multiple reads per node (e.g., rcache=256 → 16 reads per 4KB block).
+ *
+ *   - read_size  = prog_size       (page-aligned SPI transactions)
+ *   - rcache     = erase_size      (= block_size; 1 read per rbyd tree node)
+ *   - pcache     = prog_size       (write unit, minimum)
+ *   - fcache     = erase_size      (large sequential write buffer per file)
+ *   - lookahead  = 64 B            (tracks 512 blocks per scan)
+ *   - block_recycles = 500         (NOR: 100K cycles)
+ *
+ * NAND flash: page-addressable, large page (2048 B), large erase (128+ KB)
+ *   - read_size = prog_size        (must read/write full NAND page)
+ *   - rcache    = prog_size        (NAND page buffer in device handles caching)
+ *   - pcache    = prog_size        (minimum)
+ *   - fcache    = prog_size        (minimum)
+ *   - lookahead = 32 B             (tracks 256 blocks; NAND has fewer blocks)
+ *   - block_recycles = 100         (NAND: 10K cycles, tighter wear-leveling)
+ */
+#define LFS3_NOR_LOOKAHEAD_SIZE   64
+#define LFS3_NOR_BLOCK_RECYCLES   500
+
+#define LFS3_NAND_LOOKAHEAD_SIZE  32
+#define LFS3_NAND_BLOCK_RECYCLES  100
+
+/* Static lookahead buffer large enough for both NOR and NAND */
+#define LFS3_LF_LOOKAHEAD_SIZE_MAX  64
 
 typedef struct {
     lfs3_t          lfs3;
@@ -23,7 +54,7 @@ typedef struct {
     size_t          offset;
     uint8_t        *rcache_buffer;
     uint8_t        *pcache_buffer;
-    uint8_t         lookahead_buffer[LFS3_LF_LOOKAHEAD_SIZE];
+    uint8_t         lookahead_buffer[LFS3_LF_LOOKAHEAD_SIZE_MAX];
 } lf_lfs3_ctx_t;
 
 static int lf3_read(const struct lfs3_cfg *cfg, lfs3_block_t block,
@@ -68,10 +99,47 @@ lfs3_t *flash_lfs3_lf(little_flash_t *flash, size_t offset, size_t maxsize) {
     ctx->flash  = flash;
     ctx->offset = offset;
 
-    lfs3_size_t cache_size = (lfs3_size_t)flash->chip_info.prog_size;
+    /* ------------------------------------------------------------------ *
+     * Tune read/prog/cache parameters per flash type.                     *
+     * NOR:  byte-addressable, 256 B pages, 4 KB erase.                   *
+     *       Larger caches reduce SPI round-trips on metadata.             *
+     * NAND: page-addressable, 2048 B pages, large erase blocks.          *
+     *       Caches must equal page size; device has its own page buffer.  *
+     * ------------------------------------------------------------------ */
+    int is_nand = (flash->chip_info.type == LF_DRIVER_NAND_FLASH);
+    lfs3_size_t prog_size = (lfs3_size_t)flash->chip_info.prog_size;
+    lfs3_size_t read_size, rcache_size, fcache_size;
+    lfs3_size_t lookahead_size;
+    int32_t     block_recycles;
 
-    ctx->rcache_buffer = (uint8_t *)luat_heap_malloc(cache_size);
-    ctx->pcache_buffer = (uint8_t *)luat_heap_malloc(cache_size);
+    if (is_nand) {
+        /* NAND: page is both read and write unit; caches must be >= page */
+        read_size      = prog_size;
+        rcache_size    = prog_size;
+        fcache_size    = 4 * prog_size;   /* 8KB: buffer 4 pages per file; reduces PROGRAM_EXEC calls */
+        lookahead_size = LFS3_NAND_LOOKAHEAD_SIZE;
+        block_recycles = LFS3_NAND_BLOCK_RECYCLES;
+        LLOGD("lfs3 nand cfg: prog=%u rcache=%u fcache=%u lookahead=%u",
+              (unsigned)prog_size, (unsigned)rcache_size,
+              (unsigned)fcache_size, (unsigned)lookahead_size);
+    } else {
+        /* NOR: lfs3 rbyd tree nodes live in one mdir block (= erase_size).
+         * Caching the entire block eliminates multiple SPI reads per tree
+         * node traversal. rcache = fcache = block_size for best perf.     */
+        lfs3_size_t block_size = (lfs3_size_t)flash->chip_info.erase_size;
+        read_size      = prog_size;
+        rcache_size    = block_size;   /* 1 SPI read per rbyd tree node */
+        fcache_size    = block_size;   /* large write buffer per file   */
+        lookahead_size = LFS3_NOR_LOOKAHEAD_SIZE;
+        block_recycles = LFS3_NOR_BLOCK_RECYCLES;
+        LLOGD("lfs3 nor cfg: prog=%u block=%u rcache=%u fcache=%u lookahead=%u",
+              (unsigned)prog_size, (unsigned)block_size,
+              (unsigned)rcache_size, (unsigned)fcache_size,
+              (unsigned)lookahead_size);
+    }
+
+    ctx->rcache_buffer = (uint8_t *)luat_heap_malloc(rcache_size);
+    ctx->pcache_buffer = (uint8_t *)luat_heap_malloc(prog_size);
     if (ctx->rcache_buffer == NULL || ctx->pcache_buffer == NULL) {
         luat_heap_free(ctx->rcache_buffer);
         luat_heap_free(ctx->pcache_buffer);
@@ -86,18 +154,18 @@ lfs3_t *flash_lfs3_lf(little_flash_t *flash, size_t offset, size_t maxsize) {
     cfg->erase        = lf3_erase;
     cfg->sync         = lf3_sync;
 
-    cfg->read_size    = (lfs3_size_t)flash->chip_info.read_size;
-    cfg->prog_size    = (lfs3_size_t)flash->chip_info.prog_size;
+    cfg->read_size    = read_size;
+    cfg->prog_size    = prog_size;
     cfg->block_size   = (lfs3_size_t)flash->chip_info.erase_size;
     cfg->block_count  = (lfs3_block_t)(
         (maxsize > 0 ? maxsize : (flash->chip_info.capacity - offset))
         / flash->chip_info.erase_size);
 
-    cfg->block_recycles   = 200;
-    cfg->rcache_size      = cache_size;
-    cfg->pcache_size      = cache_size;
-    cfg->fcache_size      = cache_size;
-    cfg->lookahead_size   = LFS3_LF_LOOKAHEAD_SIZE;
+    cfg->block_recycles   = block_recycles;
+    cfg->rcache_size      = rcache_size;
+    cfg->pcache_size      = prog_size;
+    cfg->fcache_size      = fcache_size;
+    cfg->lookahead_size   = lookahead_size;
     cfg->rcache_buffer    = ctx->rcache_buffer;
     cfg->pcache_buffer    = ctx->pcache_buffer;
     cfg->lookahead_buffer = ctx->lookahead_buffer;
