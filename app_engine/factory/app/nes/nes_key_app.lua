@@ -29,7 +29,13 @@
 
 local HW_DEBOUNCE_MS = 20          -- GPIO硬件消抖(ms)
 local CTRL_DEBOUNCE_MS = 30        -- 控制键软件防抖窗口(ms)，够快且防抖动
-local REPEAT_INTERVAL_MS = 60      -- 动作键连发间隔(ms)，约16Hz
+
+-- ticks 转毫秒：mcu.hz() 动态获取 tick 频率，兼容 Air1601/1602（20ms/tick）和 PC（1ms/tick）
+local function ticks_to_ms(diff_ticks)
+    local hz = mcu.hz() or 1
+    if hz <= 0 then hz = 1 end
+    return diff_ticks * 1000 / hz
+end
 
 -- ==================== 方向状态 ====================
 
@@ -62,12 +68,7 @@ local DIR_NAME_TO_BIT = {
 
 -- ==================== 控制键状态 ====================
 
-local ctrl_last_press = {}    -- key短名 → 上次按下时间戳(ms)
-
--- ==================== 动作键连发状态 ====================
-
-local act_repeat_timer = {}   -- key短名 → 连发定时器ID
-local act_repeat_phase = {}   -- key短名 → 当前连发阶段 (true=按下, false=释放)
+local ctrl_last_press = {}    -- key短名 → 上次按下时间戳(tick)
 
 -- ==================== 工具函数 ====================
 
@@ -124,45 +125,16 @@ local function create_direction_callback(sname)
     end
 end
 
---- 动作键回调：按下立即发布，按住自动连发（60ms间隔交替按/松）
+--- 动作键回调：按下发1，松开发0，NES模拟器自行处理按住状态
 local function create_action_callback(sname)
-    local function repeat_tick()
-        if act_repeat_phase[sname] then
-            -- 当前按下 → 释放
-            sys.publish("NES_KEY", sname, 0)
-            act_repeat_phase[sname] = false
-        else
-            -- 当前释放 → 按下
-            sys.publish("NES_KEY", sname, 1)
-            act_repeat_phase[sname] = true
-        end
-        act_repeat_timer[sname] = sys.timerStart(repeat_tick, REPEAT_INTERVAL_MS)
-    end
-
     return function(val)
         local pressed = (val == 0)
         log.info("nes_key", "ACT GPIO", sname, pressed and "DOWN" or "UP")
         sys.publish("NES_KEY", sname, pressed and 1 or 0)
-
-        if pressed then
-            -- 按住：启动连发定时器
-            if act_repeat_timer[sname] then
-                sys.timerStop(act_repeat_timer[sname])
-            end
-            act_repeat_phase[sname] = true
-            act_repeat_timer[sname] = sys.timerStart(repeat_tick, REPEAT_INTERVAL_MS)
-        else
-            -- 松开：停止连发
-            if act_repeat_timer[sname] then
-                sys.timerStop(act_repeat_timer[sname])
-                act_repeat_timer[sname] = nil
-            end
-            act_repeat_phase[sname] = nil
-        end
     end
 end
 
---- 控制键回调：仅按下沿 + 200ms软件防抖
+--- 控制键回调：仅按下沿 + 软件防抖（使用 ticks_to_ms 兼容不同 tick 频率）
 local function create_control_callback(sname)
     return function(val)
         local pressed = (val == 0)
@@ -170,7 +142,7 @@ local function create_control_callback(sname)
 
         local now = mcu.ticks()
         local last = ctrl_last_press[sname] or 0
-        if now - last >= CTRL_DEBOUNCE_MS then
+        if ticks_to_ms(now - last) >= CTRL_DEBOUNCE_MS then
             ctrl_last_press[sname] = now
             log.info("nes_key", "CTRL publish NES_CTRL", sname)
             sys.publish("NES_CTRL", sname)
@@ -196,7 +168,8 @@ end)
 
 -- ==================== 主初始化（延迟到LCD就绪后） ====================
 
-sys.subscribe("OPEN_WELCOME_WIN", function()
+--- 注册所有 NES 按键 GPIO，可多次调用（幂等）
+local function register_all_keys()
     local cfg = _G.project_config
     if not cfg or not cfg.nes_keys or type(cfg.nes_keys) ~= "table" then
         log.info("nes_key_app", "no nes_keys in config, skip")
@@ -238,4 +211,16 @@ sys.subscribe("OPEN_WELCOME_WIN", function()
         log.info("nes_key_app", key_name, "(", key_type, ")", "-> GPIO", pin)
     end
     log.info("nes_key_app", "registered", count, "NES keys")
+end
+
+sys.subscribe("OPEN_WELCOME_WIN", function()
+    register_all_keys()
+end)
+
+-- NES 游戏启动后 airui.nes 初始化可能覆盖 GPIO，收到通知后补注册
+sys.subscribe("NES_GAME_STARTED", function()
+    log.info("nes_key_app", "NES game started, re-register keys after 200ms")
+    sys.timerStart(function()
+        register_all_keys()
+    end, 200)
 end)
