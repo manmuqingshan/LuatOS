@@ -171,7 +171,7 @@ end
 
 -- 初始化 USB 检测 GPIO 为输入模式（无内部上下拉，外部分压网络已提供偏置）
 -- USB_5V → 100K → GPIO52 → 200K → GND，插入后分压约 3.33V 远高于 VIH 阈值
-gpio.setup(usb_gpio, nil, gpio.PULLUP)
+gpio.setup(usb_gpio, nil)
 
 -- 初始化 ADC 通道（仅一次，后续 read_battery 中直接 adc.get 读数）
 adc.open(adc_channel)

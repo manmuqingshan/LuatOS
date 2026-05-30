@@ -1013,7 +1013,10 @@ local function app_task(app_path)
                         if io.exists(p) then return p end
                     end
                 else
-                    -- 非Lua文件默认在 res/ 目录查找
+                    -- 非Lua文件：先在原始相对路径查找（如 /luadb/data/xxx），
+                    -- 再在 res/ 下查找（兼容 /luadb/xxx → res/xxx 的惯例）
+                    local direct_path = app_path .. relative_path
+                    if io.exists(direct_path) then return direct_path end
                     local res_path = app_path .. "res/" .. relative_path
                     if io.exists(res_path) then return res_path end
                 end

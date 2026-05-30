@@ -12,7 +12,7 @@ return {
 
     pins = {},
 
-    -- GPIO 供电上电时序（V004: airlink WiFi 模组 GPIO55 改为低电平有效）
+    -- GPIO 供电上电时序（V004: airlink WiFi 模组 GPIO55 低电平有效）
     power_on = {
         { pin = 55, dir = 0, level = 1, delay = 50 },
         { pin = 55, dir = 0, level = 0, delay = 120 },
@@ -69,7 +69,7 @@ return {
         usb_camera = false,
         spi_camera = false,
         i2c_sensor = false,
-        nes = false,
+        nes = true,
         battery = true,
     },
 
@@ -83,7 +83,7 @@ return {
         { pin =  0, key = "NES_KEY_START" },  -- 开始
         { pin = 22, key = "NES_KEY_SELECT"},  -- 选择
         { pin = 23, key = "NES_KEY_A"     },  -- A
-        { pin = 13, key = "NES_KEY_B"     },  -- B
+        { pin = 2, key = "NES_KEY_B"     },  -- B
     },
 
     ui = {
