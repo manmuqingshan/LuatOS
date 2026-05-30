@@ -1,7 +1,7 @@
 --[[
 @module  nes_key_app
-@summary NES游戏按键模块 v3.0 — 8方向计算 + 持续触发 + A/B组合 + 防抖
-@version 3.0
+@summary NES游戏按键模块 — 8方向计算 + 动作键连发 + 控制键快响应
+@version 1.0
 @date    2026.05.30
 @author  江访
 
@@ -13,29 +13,23 @@
     → 发布 NES_KEY(key, pressed) 单键事件 + 计算组合方向发布 NES_DIR(direction) 事件
     → 支持8方向组合（同时按两个相邻方向键=对角线方向）
   - 动作键: NES_KEY_A / NES_KEY_B
-    → 200ms窗口内先后按下触发 NES_COMBO("AB")，否则发布 NES_KEY 事件
-    → 组合优先：combo期间抑制单键事件
+    → 按下立即发布 NES_KEY(key, 1)，松开发布 NES_KEY(key, 0)
+    → 按住不放：自动连发，60ms间隔交替按/松
   - 控制键: NES_KEY_RETURN / NES_KEY_START / NES_KEY_SELECT
-    → 仅按下沿发布 NES_CTRL(key)，200ms软件防抖
+    → 仅按下沿发布 NES_CTRL(key)，30ms软件防抖
 
 发布事件：
   NES_KEY(key, pressed)    — key="UP"/"DOWN"/"LEFT"/"RIGHT"/"A"/"B", pressed=1按下/0释放
   NES_DIR(direction)       — 0=NONE, 1=UP, 2=UP_RIGHT, 3=RIGHT, 4=DOWN_RIGHT,
                                     5=DOWN, 6=DOWN_LEFT, 7=LEFT, 8=UP_LEFT
   NES_CTRL(key)            — key="RETURN"/"START"/"SELECT"，仅按下沿发布（带防抖）
-  NES_COMBO(combo)         — combo="AB"，A和B同时按下时发布
-
-通信（兼容旧接口）：
-  APP 发 NES_APP_BIND → 引擎读 _G.NES_KEY_CONFIG（优先）
-                        → 回退 project_config.nes_keys
-                        → 发 NES_KEY_CFG(cfg)
 ]]
 
 -- ==================== 配置常量 ====================
 
 local HW_DEBOUNCE_MS = 20          -- GPIO硬件消抖(ms)
-local CTRL_DEBOUNCE_MS = 200       -- 控制键软件防抖窗口(ms)
-local COMBO_WINDOW_MS = 200        -- A+B组合键检测窗口(ms)
+local CTRL_DEBOUNCE_MS = 30        -- 控制键软件防抖窗口(ms)，够快且防抖动
+local REPEAT_INTERVAL_MS = 60      -- 动作键连发间隔(ms)，约16Hz
 
 -- ==================== 方向状态 ====================
 
@@ -66,19 +60,14 @@ local DIR_NAME_TO_BIT = {
     RIGHT = 8,   -- bit3
 }
 
--- ==================== 动作键(A/B)状态 ====================
-
-local a_pressed = false
-local b_pressed = false
-local a_press_time = 0
-local b_press_time = 0
-local combo_active = false
-local pending_action = nil    -- 等待combo窗口的按键名 ("A" or "B")
-local pending_timer = nil     -- 等待combo窗口的定时器ID
-
 -- ==================== 控制键状态 ====================
 
 local ctrl_last_press = {}    -- key短名 → 上次按下时间戳(ms)
+
+-- ==================== 动作键连发状态 ====================
+
+local act_repeat_timer = {}   -- key短名 → 连发定时器ID
+local act_repeat_phase = {}   -- key短名 → 当前连发阶段 (true=按下, false=释放)
 
 -- ==================== 工具函数 ====================
 
@@ -135,81 +124,40 @@ local function create_direction_callback(sname)
     end
 end
 
---- 动作键回调：A/B 组合窗口检测（组合优先）
+--- 动作键回调：按下立即发布，按住自动连发（60ms间隔交替按/松）
 local function create_action_callback(sname)
-    local is_a = (sname == "A")
+    local function repeat_tick()
+        if act_repeat_phase[sname] then
+            -- 当前按下 → 释放
+            sys.publish("NES_KEY", sname, 0)
+            act_repeat_phase[sname] = false
+        else
+            -- 当前释放 → 按下
+            sys.publish("NES_KEY", sname, 1)
+            act_repeat_phase[sname] = true
+        end
+        act_repeat_timer[sname] = sys.timerStart(repeat_tick, REPEAT_INTERVAL_MS)
+    end
+
     return function(val)
         local pressed = (val == 0)
-        local now = mcu.ticks()
-        log.info("nes_key", "ACT GPIO", sname, pressed and "DOWN" or "UP", "tick", now)
-
-        -- 更新状态
-        if is_a then
-            a_pressed = pressed
-            if pressed then a_press_time = now end
-        else
-            b_pressed = pressed
-            if pressed then b_press_time = now end
-        end
+        log.info("nes_key", "ACT GPIO", sname, pressed and "DOWN" or "UP")
+        sys.publish("NES_KEY", sname, pressed and 1 or 0)
 
         if pressed then
-            -- === 按下事件 ===
-            local other_pressed = is_a and b_pressed or a_pressed
-
-            if combo_active then
-                log.info("nes_key", "ACT combo_active, ignore", sname)
-                return
+            -- 按住：启动连发定时器
+            if act_repeat_timer[sname] then
+                sys.timerStop(act_repeat_timer[sname])
             end
-
-            if other_pressed then
-                local other_time = is_a and b_press_time or a_press_time
-                if now - other_time <= COMBO_WINDOW_MS then
-                    if pending_timer then
-                        sys.timerStop(pending_timer)
-                        pending_timer = nil
-                    end
-                    pending_action = nil
-                    combo_active = true
-                    log.info("nes_key", "ACT publish NES_COMBO AB")
-                    sys.publish("NES_COMBO", "AB")
-                    return
-                end
-            end
-
-            pending_action = sname
-            if pending_timer then
-                sys.timerStop(pending_timer)
-            end
-            pending_timer = sys.timerStart(function()
-                if not combo_active and pending_action == sname then
-                    log.info("nes_key", "ACT timer publish NES_KEY", sname, 1)
-                    sys.publish("NES_KEY", sname, 1)
-                end
-                pending_timer = nil
-                pending_action = nil
-            end, COMBO_WINDOW_MS)
+            act_repeat_phase[sname] = true
+            act_repeat_timer[sname] = sys.timerStart(repeat_tick, REPEAT_INTERVAL_MS)
         else
-            -- === 释放事件 ===
-            if combo_active then
-                combo_active = false
-                log.info("nes_key", "ACT combo release", sname)
-                sys.publish("NES_KEY", sname, 0)
-                local other = is_a and "B" or "A"
-                local other_held = is_a and b_pressed or a_pressed
-                if other_held then
-                    log.info("nes_key", "ACT combo release, restore", other)
-                    sys.publish("NES_KEY", other, 1)
-                end
-            else
-                if pending_action == sname and pending_timer then
-                    sys.timerStop(pending_timer)
-                    pending_timer = nil
-                    pending_action = nil
-                else
-                    log.info("nes_key", "ACT publish NES_KEY", sname, 0)
-                    sys.publish("NES_KEY", sname, 0)
-                end
+            -- 松开：停止连发
+            if act_repeat_timer[sname] then
+                sys.timerStop(act_repeat_timer[sname])
+                act_repeat_timer[sname] = nil
             end
+            act_repeat_phase[sname] = nil
         end
     end
 end
