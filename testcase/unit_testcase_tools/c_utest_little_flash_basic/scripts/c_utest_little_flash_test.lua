@@ -22,5 +22,10 @@ function lf_suite.test_little_flash_utest_gc_trigger()
     assert(lf.utest("ftl_gc_trigger") == true, "lf.utest(ftl_gc_trigger) 应为 true")
 end
 
+function lf_suite.test_little_flash_utest_init_stats()
+    assert(lf and type(lf.utest) == "function", "lf.utest 不存在")
+    assert(lf.utest("ftl_init_stats") == true, "lf.utest(ftl_init_stats) 应为 true")
+end
+
 t.lf_suite = lf_suite
 return t

@@ -20,11 +20,15 @@ typedef struct {
 
 typedef struct {
     uint32_t page_count;
+    uint32_t pages_per_block;
+    uint32_t block_count;
     uint32_t logical_pages;
     uint32_t reserve_pages;
     uint32_t spare_begin;
     uint32_t spare_end;
     uint32_t free_spares;
+    uint32_t bad_blocks;
+    uint32_t bad_pages;
     uint32_t gc_low_watermark;
     uint32_t gc_high_watermark;
     uint32_t raw_capacity;

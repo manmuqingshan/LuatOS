@@ -22,6 +22,8 @@ class TestLfFsMatrixScript(unittest.TestCase):
         self.assertIn('"pgfs"', content)
         self.assertIn('"lfs3"', content)
         self.assertIn("LF_FS_MATRIX_RESULT", content)
+        self.assertIn("fs.fsstat", content)
+        self.assertIn("space_ok", content)
 
 
 if __name__ == "__main__":

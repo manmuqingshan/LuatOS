@@ -2,6 +2,92 @@
 #include "luat_malloc.h"
 #include <string.h>
 
+static lf_err_t little_flash_ftl_wait_ready(const little_flash_t *lf, uint32_t timeout_us) {
+    uint8_t status = 0;
+    uint32_t waited = 0;
+    lf_err_t ret;
+    if (!lf) {
+        return LF_ERR_BAD_ADDRESS;
+    }
+    while (waited < timeout_us) {
+        ret = little_flash_read_status(lf, LF_NANDFLASH_STATUS_REGISTER3, &status);
+        if (ret != LF_ERR_OK) {
+            return ret;
+        }
+        if ((status & LF_STATUS_REGISTER_BUSY) == 0) {
+            return LF_ERR_OK;
+        }
+        if (lf->wait_10us) {
+            lf->wait_10us(1);
+        }
+        waited += 10u;
+    }
+    return LF_ERR_TIMEOUT;
+}
+
+static lf_err_t little_flash_ftl_read_oob_marker(const little_flash_t *lf, uint32_t page_addr, uint8_t *marker) {
+    uint8_t cmd_data[4];
+    lf_err_t ret;
+    if (!lf || !marker) {
+        return LF_ERR_BAD_ADDRESS;
+    }
+    cmd_data[0] = LF_NANDFLASH_PAGE_DATA_READ;
+    cmd_data[1] = (uint8_t)(page_addr >> 16);
+    cmd_data[2] = (uint8_t)(page_addr >> 8);
+    cmd_data[3] = (uint8_t)(page_addr);
+    ret = lf->spi.transfer(lf, cmd_data, 4, LF_NULL, 0);
+    if (ret != LF_ERR_OK) {
+        return ret;
+    }
+    ret = little_flash_ftl_wait_ready(lf, 1000u);
+    if (ret != LF_ERR_OK) {
+        return ret;
+    }
+    cmd_data[0] = LF_CMD_READ_DATA;
+    cmd_data[1] = (uint8_t)(lf->chip_info.read_size >> 8);
+    cmd_data[2] = (uint8_t)(lf->chip_info.read_size);
+    cmd_data[3] = 0;
+    return lf->spi.transfer(lf, cmd_data, 4, marker, 1);
+}
+
+static void little_flash_ftl_mark_bad_block(little_flash_ftl_ctx_t *ctx, uint32_t block_index) {
+    uint32_t start = block_index * ctx->pages_per_block;
+    uint32_t end = start + ctx->pages_per_block;
+    uint32_t i;
+    for (i = start; i < end && i < ctx->page_count; i++) {
+        ctx->bad[i] = 1;
+    }
+}
+
+static void little_flash_ftl_scan_bad_blocks(little_flash_t *lf, little_flash_ftl_ctx_t *ctx) {
+    uint32_t block_index;
+    if (!lf || !ctx || !lf->spi.transfer) {
+        return;
+    }
+    for (block_index = 0; block_index < ctx->block_count; block_index++) {
+        uint32_t first_page = block_index * ctx->pages_per_block;
+        uint32_t second_page = first_page + 1u;
+        uint8_t marker0 = 0xFF;
+        uint8_t marker1 = 0xFF;
+        int is_bad = 0;
+        if (little_flash_ftl_read_oob_marker(lf, first_page, &marker0) != LF_ERR_OK) {
+            is_bad = 1;
+        }
+        if (!is_bad && second_page < ctx->page_count &&
+            little_flash_ftl_read_oob_marker(lf, second_page, &marker1) != LF_ERR_OK) {
+            is_bad = 1;
+        }
+        if (!is_bad && (marker0 != 0xFF || marker1 != 0xFF)) {
+            is_bad = 1;
+        }
+        if (is_bad) {
+            little_flash_ftl_mark_bad_block(ctx, block_index);
+            ctx->bad_blocks++;
+            ctx->bad_pages += ctx->pages_per_block;
+        }
+    }
+}
+
 static int little_flash_ftl_page_used(const little_flash_ftl_ctx_t *ctx, uint32_t page) {
     return ctx->p2l[page] != LF_FTL_INVALID_PAGE;
 }
@@ -25,7 +111,10 @@ static int little_flash_ftl_find_spare(const little_flash_ftl_ctx_t *ctx, uint32
 lf_err_t little_flash_ftl_init(little_flash_t *lf, uint8_t op_percent) {
     little_flash_ftl_ctx_t *ctx = NULL;
     uint32_t pages_per_block = 0;
+    uint32_t metadata_pages = 0;
     uint32_t min_reserve = 0;
+    uint32_t good_pages = 0;
+    uint32_t logical_target = 0;
     uint32_t i = 0;
     if (!lf || lf->chip_info.type != LF_DRIVER_NAND_FLASH) {
         return LF_ERR_OK;
@@ -44,17 +133,23 @@ lf_err_t little_flash_ftl_init(little_flash_t *lf, uint8_t op_percent) {
     ctx->raw_capacity = lf->chip_info.capacity;
     ctx->page_count = lf->chip_info.capacity / lf->chip_info.read_size;
     pages_per_block = lf->chip_info.erase_size / lf->chip_info.read_size;
-    ctx->reserve_pages = (ctx->page_count * op_percent) / 100;
-    min_reserve = pages_per_block * 2u + 8u; /* two metadata blocks + spare pool */
+    metadata_pages = pages_per_block * 2u;
+    if (ctx->page_count <= metadata_pages || pages_per_block == 0) {
+        lf->free(ctx);
+        return LF_ERR_BAD_ADDRESS;
+    }
+    ctx->pages_per_block = pages_per_block;
+    ctx->block_count = ctx->page_count / pages_per_block;
+    ctx->reserve_pages = ((ctx->page_count - metadata_pages) * op_percent) / 100;
+    min_reserve = 8u;
     if (ctx->reserve_pages < min_reserve) {
         ctx->reserve_pages = min_reserve;
     }
-    if (ctx->reserve_pages > (ctx->page_count / 2)) {
-        ctx->reserve_pages = ctx->page_count / 2;
+    if (ctx->reserve_pages > ((ctx->page_count - metadata_pages) / 2u)) {
+        ctx->reserve_pages = (ctx->page_count - metadata_pages) / 2u;
     }
-    ctx->logical_pages = ctx->page_count - ctx->reserve_pages;
-    ctx->spare_begin = ctx->logical_pages;
-    ctx->spare_end = ctx->page_count - (pages_per_block * 2u);
+    ctx->spare_begin = 0;
+    ctx->spare_end = ctx->page_count - metadata_pages;
     if (ctx->spare_begin >= ctx->spare_end) {
         lf->free(ctx);
         return LF_ERR_NO_MEM;
@@ -81,11 +176,34 @@ lf_err_t little_flash_ftl_init(little_flash_t *lf, uint8_t op_percent) {
     for (i = 0; i < ctx->page_count; i++) {
         ctx->p2l[i] = LF_FTL_INVALID_PAGE;
     }
-    for (i = 0; i < ctx->logical_pages; i++) {
-        ctx->l2p[i] = i;
-        ctx->p2l[i] = i;
+    little_flash_ftl_scan_bad_blocks(lf, ctx);
+    for (i = 0; i < ctx->spare_end; i++) {
+        if (!ctx->bad[i]) {
+            good_pages++;
+        }
     }
-    ctx->free_spares = ctx->spare_end - ctx->spare_begin;
+    if (good_pages <= ctx->reserve_pages) {
+        lf->free(ctx->bad);
+        lf->free(ctx->p2l);
+        lf->free(ctx->l2p);
+        lf->free(ctx);
+        return LF_ERR_NO_MEM;
+    }
+    logical_target = good_pages - ctx->reserve_pages;
+    ctx->logical_pages = 0;
+    for (i = 0; i < ctx->spare_end && ctx->logical_pages < logical_target; i++) {
+        if (!ctx->bad[i]) {
+            ctx->l2p[ctx->logical_pages] = i;
+            ctx->p2l[i] = ctx->logical_pages;
+            ctx->logical_pages++;
+        }
+    }
+    ctx->free_spares = 0;
+    for (i = 0; i < ctx->spare_end; i++) {
+        if (!ctx->bad[i] && !little_flash_ftl_page_used(ctx, i)) {
+            ctx->free_spares++;
+        }
+    }
     if (little_flash_ftl_meta_checkpoint(lf, ctx) != LF_ERR_OK) {
         lf->free(ctx->bad);
         lf->free(ctx->p2l);
@@ -96,6 +214,17 @@ lf_err_t little_flash_ftl_init(little_flash_t *lf, uint8_t op_percent) {
     lf->ftl_ctx = ctx;
     lf->ftl_enabled = 1;
     lf->chip_info.capacity = ctx->logical_pages * lf->chip_info.read_size;
+    LF_INFO("little_flash ftl init: blocks=%lu bad_blocks=%lu bad_pages=%lu logical_pages=%lu reserve_pages=%lu",
+            (unsigned long)ctx->block_count,
+            (unsigned long)ctx->bad_blocks,
+            (unsigned long)ctx->bad_pages,
+            (unsigned long)ctx->logical_pages,
+            (unsigned long)ctx->reserve_pages);
+    LF_INFO("little_flash ftl space: usable=%lu bytes reserve_free=%lu bytes reserve_total=%lu bytes raw=%lu bytes",
+            (unsigned long)(ctx->logical_pages * lf->chip_info.read_size),
+            (unsigned long)(ctx->free_spares * lf->chip_info.read_size),
+            (unsigned long)(ctx->reserve_pages * lf->chip_info.read_size),
+            (unsigned long)ctx->raw_capacity);
     return LF_ERR_OK;
 }
 
@@ -300,6 +429,56 @@ static int little_flash_ftl_utest_gc_trigger(void) {
     return 0;
 }
 
+static lf_err_t little_flash_ftl_utest_spi_transfer(const little_flash_t *lf, uint8_t *tx_buf, uint32_t tx_len, uint8_t *rx_buf, uint32_t rx_len) {
+    static uint32_t current_page = 0;
+    (void)lf;
+    if (!tx_buf) {
+        return LF_ERR_TRANSFER;
+    }
+    if (tx_buf[0] == LF_NANDFLASH_PAGE_DATA_READ && tx_len >= 4) {
+        current_page = ((uint32_t)tx_buf[1] << 16) | ((uint32_t)tx_buf[2] << 8) | tx_buf[3];
+        return LF_ERR_OK;
+    }
+    if (tx_buf[0] == LF_CMD_NANDFLASH_READ_STATUS_REGISTER && tx_len >= 2 && rx_buf && rx_len >= 1) {
+        rx_buf[0] = 0;
+        return LF_ERR_OK;
+    }
+    if (tx_buf[0] == LF_CMD_READ_DATA && tx_len >= 4 && rx_buf && rx_len >= 1) {
+        uint32_t block = current_page / 64u;
+        rx_buf[0] = (block == 1u) ? 0x00 : 0xFF;
+        return LF_ERR_OK;
+    }
+    return LF_ERR_OK;
+}
+
+static void little_flash_ftl_utest_wait_10us(uint32_t count) {
+    (void)count;
+}
+
+static int little_flash_ftl_utest_init_stats(void) {
+    little_flash_t lf;
+    little_flash_ftl_ctx_t *ctx = NULL;
+    memset(&lf, 0, sizeof(lf));
+    lf.chip_info.type = LF_DRIVER_NAND_FLASH;
+    lf.chip_info.capacity = 2048 * 512;
+    lf.chip_info.read_size = 2048;
+    lf.chip_info.erase_size = 131072;
+    lf.malloc = luat_heap_malloc;
+    lf.free = luat_heap_free;
+    lf.wait_10us = little_flash_ftl_utest_wait_10us;
+    lf.spi.transfer = little_flash_ftl_utest_spi_transfer;
+    if (little_flash_ftl_init(&lf, 15) != LF_ERR_OK) {
+        return -1;
+    }
+    ctx = (little_flash_ftl_ctx_t *)lf.ftl_ctx;
+    if (!ctx || ctx->bad_blocks != 1u || ctx->logical_pages == 0u || ctx->free_spares == 0u) {
+        little_flash_ftl_deinit(&lf);
+        return -1;
+    }
+    little_flash_ftl_deinit(&lf);
+    return 0;
+}
+
 int little_flash_ftl_utest_case(const char *case_name) {
     if (!case_name || strcmp(case_name, "ftl_identity_map") == 0) {
         return little_flash_ftl_utest_identity_map();
@@ -312,6 +491,9 @@ int little_flash_ftl_utest_case(const char *case_name) {
     }
     if (strcmp(case_name, "ftl_gc_trigger") == 0) {
         return little_flash_ftl_utest_gc_trigger();
+    }
+    if (strcmp(case_name, "ftl_init_stats") == 0) {
+        return little_flash_ftl_utest_init_stats();
     }
     return -1;
 }
