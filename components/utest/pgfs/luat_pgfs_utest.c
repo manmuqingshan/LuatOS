@@ -3,6 +3,5 @@
 
 int luat_pgfs_utest(lua_State* L, const char* case_name) {
     (void)L;
-    (void)case_name;
-    return pgfs_run_c_layer_tests();
+    return pgfs_run_c_layer_case(case_name);
 }
