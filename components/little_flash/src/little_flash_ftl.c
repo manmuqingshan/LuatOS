@@ -275,6 +275,7 @@ lf_err_t little_flash_ftl_map_page(const little_flash_t *lf, uint32_t logical_pa
 lf_err_t little_flash_ftl_mark_bad_and_remap(little_flash_t *lf, uint32_t logical_page, uint32_t bad_physical_page) {
     little_flash_ftl_ctx_t *ctx = NULL;
     uint32_t spare_page = 0;
+    uint32_t current_physical = 0;
     if (!lf || !lf->ftl_enabled || !lf->ftl_ctx) {
         return LF_ERR_BAD_ADDRESS;
     }
@@ -282,12 +283,24 @@ lf_err_t little_flash_ftl_mark_bad_and_remap(little_flash_t *lf, uint32_t logica
     if (logical_page >= ctx->logical_pages || bad_physical_page >= ctx->page_count) {
         return LF_ERR_BAD_ADDRESS;
     }
+    current_physical = ctx->l2p[logical_page];
+    if (current_physical >= ctx->page_count) {
+        return LF_ERR_BAD_ADDRESS;
+    }
+    if (ctx->bad[bad_physical_page]) {
+        if (current_physical != bad_physical_page) {
+            return LF_ERR_OK;
+        }
+    }
+    if (current_physical != bad_physical_page) {
+        return LF_ERR_BAD_ADDRESS;
+    }
     ctx->p2l[bad_physical_page] = LF_FTL_INVALID_PAGE;
     ctx->bad[bad_physical_page] = 1;
     if (little_flash_ftl_find_spare(ctx, &spare_page) != 0) {
         return LF_ERR_ERASE;
     }
-    ctx->p2l[ctx->l2p[logical_page]] = LF_FTL_INVALID_PAGE;
+    ctx->p2l[current_physical] = LF_FTL_INVALID_PAGE;
     ctx->l2p[logical_page] = spare_page;
     ctx->p2l[spare_page] = logical_page;
     if (little_flash_ftl_meta_append_journal(lf, ctx, logical_page, spare_page) != LF_ERR_OK) {
@@ -429,33 +442,113 @@ static int little_flash_ftl_utest_gc_trigger(void) {
     return 0;
 }
 
-static lf_err_t little_flash_ftl_utest_spi_transfer(const little_flash_t *lf, uint8_t *tx_buf, uint32_t tx_len, uint8_t *rx_buf, uint32_t rx_len) {
-    static uint32_t current_page = 0;
-    (void)lf;
-    if (!tx_buf) {
-        return LF_ERR_TRANSFER;
-    }
-    if (tx_buf[0] == LF_NANDFLASH_PAGE_DATA_READ && tx_len >= 4) {
-        current_page = ((uint32_t)tx_buf[1] << 16) | ((uint32_t)tx_buf[2] << 8) | tx_buf[3];
-        return LF_ERR_OK;
-    }
-    if (tx_buf[0] == LF_CMD_NANDFLASH_READ_STATUS_REGISTER && tx_len >= 2 && rx_buf && rx_len >= 1) {
-        rx_buf[0] = 0;
-        return LF_ERR_OK;
-    }
-    if (tx_buf[0] == LF_CMD_READ_DATA && tx_len >= 4 && rx_buf && rx_len >= 1) {
-        uint32_t block = current_page / 64u;
-        rx_buf[0] = (block == 1u) ? 0x00 : 0xFF;
-        return LF_ERR_OK;
-    }
-    return LF_ERR_OK;
+typedef enum {
+    LF_UTEST_FAULT_NONE = 0,
+    LF_UTEST_FAULT_BLOCK1_BAD,
+    LF_UTEST_FAULT_OOB_READ_FAIL_BLOCK0,
+    LF_UTEST_FAULT_STATUS_BUSY_ALWAYS
+} little_flash_ftl_utest_fault_t;
+
+typedef struct {
+    little_flash_ftl_utest_fault_t fault;
+    uint32_t current_page;
+} little_flash_ftl_utest_state_t;
+
+static little_flash_ftl_utest_state_t g_lf_ftl_utest_state;
+
+static void little_flash_ftl_utest_state_reset(little_flash_ftl_utest_fault_t fault) {
+    memset(&g_lf_ftl_utest_state, 0, sizeof(g_lf_ftl_utest_state));
+    g_lf_ftl_utest_state.fault = fault;
 }
 
 static void little_flash_ftl_utest_wait_10us(uint32_t count) {
     (void)count;
 }
 
+static lf_err_t little_flash_ftl_utest_spi_transfer(const little_flash_t *lf, uint8_t *tx_buf, uint32_t tx_len, uint8_t *rx_buf, uint32_t rx_len) {
+    (void)lf;
+    if (!tx_buf) {
+        return LF_ERR_TRANSFER;
+    }
+    if (tx_buf[0] == LF_NANDFLASH_PAGE_DATA_READ && tx_len >= 4) {
+        g_lf_ftl_utest_state.current_page = ((uint32_t)tx_buf[1] << 16) | ((uint32_t)tx_buf[2] << 8) | tx_buf[3];
+        return LF_ERR_OK;
+    }
+    if (tx_buf[0] == LF_CMD_NANDFLASH_READ_STATUS_REGISTER && tx_len >= 2 && rx_buf && rx_len >= 1) {
+        if (g_lf_ftl_utest_state.fault == LF_UTEST_FAULT_STATUS_BUSY_ALWAYS) {
+            rx_buf[0] = LF_STATUS_REGISTER_BUSY;
+        } else {
+            rx_buf[0] = 0;
+        }
+        return LF_ERR_OK;
+    }
+    if (tx_buf[0] == LF_CMD_READ_DATA && tx_len >= 4 && rx_buf && rx_len >= 1) {
+        uint32_t block = g_lf_ftl_utest_state.current_page / 64u;
+        if (g_lf_ftl_utest_state.fault == LF_UTEST_FAULT_OOB_READ_FAIL_BLOCK0 && block == 0u) {
+            return LF_ERR_TRANSFER;
+        }
+        if (g_lf_ftl_utest_state.fault == LF_UTEST_FAULT_BLOCK1_BAD && block == 1u) {
+            rx_buf[0] = 0x00;
+        } else {
+            rx_buf[0] = 0xFF;
+        }
+        return LF_ERR_OK;
+    }
+    return LF_ERR_OK;
+}
+
+static void little_flash_ftl_utest_prepare_lf(little_flash_t *lf, little_flash_ftl_utest_fault_t fault) {
+    memset(lf, 0, sizeof(*lf));
+    little_flash_ftl_utest_state_reset(fault);
+    lf->chip_info.type = LF_DRIVER_NAND_FLASH;
+    lf->chip_info.capacity = 2048 * 512;
+    lf->chip_info.read_size = 2048;
+    lf->chip_info.erase_size = 131072;
+    lf->malloc = luat_heap_malloc;
+    lf->free = luat_heap_free;
+    lf->wait_10us = little_flash_ftl_utest_wait_10us;
+    lf->spi.transfer = little_flash_ftl_utest_spi_transfer;
+}
+
 static int little_flash_ftl_utest_init_stats(void) {
+    little_flash_t lf;
+    little_flash_ftl_ctx_t *ctx = NULL;
+    little_flash_ftl_utest_prepare_lf(&lf, LF_UTEST_FAULT_BLOCK1_BAD);
+    if (little_flash_ftl_init(&lf, 15) != LF_ERR_OK) {
+        return -1;
+    }
+    ctx = (little_flash_ftl_ctx_t *)lf.ftl_ctx;
+    if (!ctx || ctx->bad_blocks != 1u || ctx->logical_pages == 0u || ctx->free_spares == 0u) {
+        little_flash_ftl_deinit(&lf);
+        return -1;
+    }
+    little_flash_ftl_deinit(&lf);
+    return 0;
+}
+
+static int little_flash_ftl_utest_oob_read_error_scan(void) {
+    little_flash_t lf;
+    little_flash_ftl_ctx_t *ctx = NULL;
+    little_flash_ftl_utest_prepare_lf(&lf, LF_UTEST_FAULT_OOB_READ_FAIL_BLOCK0);
+    if (little_flash_ftl_init(&lf, 15) != LF_ERR_OK) {
+        return -1;
+    }
+    ctx = (little_flash_ftl_ctx_t *)lf.ftl_ctx;
+    if (!ctx || ctx->bad_blocks == 0u) {
+        little_flash_ftl_deinit(&lf);
+        return -1;
+    }
+    little_flash_ftl_deinit(&lf);
+    return 0;
+}
+
+static int little_flash_ftl_utest_wait_ready_timeout(void) {
+    little_flash_t lf;
+    little_flash_ftl_utest_prepare_lf(&lf, LF_UTEST_FAULT_STATUS_BUSY_ALWAYS);
+    return little_flash_ftl_wait_ready(&lf, 50u) == LF_ERR_TIMEOUT ? 0 : -1;
+}
+
+static int little_flash_ftl_utest_recover_crc_invalid(void) {
     little_flash_t lf;
     little_flash_ftl_ctx_t *ctx = NULL;
     memset(&lf, 0, sizeof(lf));
@@ -465,13 +558,72 @@ static int little_flash_ftl_utest_init_stats(void) {
     lf.chip_info.erase_size = 131072;
     lf.malloc = luat_heap_malloc;
     lf.free = luat_heap_free;
-    lf.wait_10us = little_flash_ftl_utest_wait_10us;
-    lf.spi.transfer = little_flash_ftl_utest_spi_transfer;
     if (little_flash_ftl_init(&lf, 15) != LF_ERR_OK) {
         return -1;
     }
     ctx = (little_flash_ftl_ctx_t *)lf.ftl_ctx;
-    if (!ctx || ctx->bad_blocks != 1u || ctx->logical_pages == 0u || ctx->free_spares == 0u) {
+    ctx->cp_a.crc ^= 0x12345678u;
+    ctx->cp_b.crc ^= 0x87654321u;
+    if (little_flash_ftl_recover(&lf) != LF_ERR_READ) {
+        little_flash_ftl_deinit(&lf);
+        return -1;
+    }
+    little_flash_ftl_deinit(&lf);
+    return 0;
+}
+
+static int little_flash_ftl_utest_recover_journal_out_of_range(void) {
+    little_flash_t lf;
+    little_flash_ftl_ctx_t *ctx = NULL;
+    memset(&lf, 0, sizeof(lf));
+    lf.chip_info.type = LF_DRIVER_NAND_FLASH;
+    lf.chip_info.capacity = 2048 * 512;
+    lf.chip_info.read_size = 2048;
+    lf.chip_info.erase_size = 131072;
+    lf.malloc = luat_heap_malloc;
+    lf.free = luat_heap_free;
+    if (little_flash_ftl_init(&lf, 15) != LF_ERR_OK) {
+        return -1;
+    }
+    ctx = (little_flash_ftl_ctx_t *)lf.ftl_ctx;
+    ctx->journal_count = 1;
+    ctx->journal[0].logical_page = ctx->logical_pages + 1u;
+    ctx->journal[0].physical_page = 0u;
+    if (little_flash_ftl_recover(&lf) != LF_ERR_BAD_ADDRESS) {
+        little_flash_ftl_deinit(&lf);
+        return -1;
+    }
+    little_flash_ftl_deinit(&lf);
+    return 0;
+}
+
+static int little_flash_ftl_utest_repeat_mark_bad_idempotent(void) {
+    little_flash_t lf;
+    little_flash_ftl_ctx_t *ctx = NULL;
+    uint32_t first_mapping = 0;
+    uint32_t free_spares_before = 0;
+    memset(&lf, 0, sizeof(lf));
+    lf.chip_info.type = LF_DRIVER_NAND_FLASH;
+    lf.chip_info.capacity = 2048 * 512;
+    lf.chip_info.read_size = 2048;
+    lf.chip_info.erase_size = 131072;
+    lf.malloc = luat_heap_malloc;
+    lf.free = luat_heap_free;
+    if (little_flash_ftl_init(&lf, 15) != LF_ERR_OK) {
+        return -1;
+    }
+    ctx = (little_flash_ftl_ctx_t *)lf.ftl_ctx;
+    if (little_flash_ftl_mark_bad_and_remap(&lf, 7, 7) != LF_ERR_OK) {
+        little_flash_ftl_deinit(&lf);
+        return -1;
+    }
+    first_mapping = ctx->l2p[7];
+    free_spares_before = ctx->free_spares;
+    if (little_flash_ftl_mark_bad_and_remap(&lf, 7, 7) != LF_ERR_OK) {
+        little_flash_ftl_deinit(&lf);
+        return -1;
+    }
+    if (ctx->l2p[7] != first_mapping || ctx->free_spares != free_spares_before) {
         little_flash_ftl_deinit(&lf);
         return -1;
     }
@@ -494,6 +646,21 @@ int little_flash_ftl_utest_case(const char *case_name) {
     }
     if (strcmp(case_name, "ftl_init_stats") == 0) {
         return little_flash_ftl_utest_init_stats();
+    }
+    if (strcmp(case_name, "ftl_oob_read_error_scan") == 0) {
+        return little_flash_ftl_utest_oob_read_error_scan();
+    }
+    if (strcmp(case_name, "ftl_wait_ready_timeout") == 0) {
+        return little_flash_ftl_utest_wait_ready_timeout();
+    }
+    if (strcmp(case_name, "ftl_recover_crc_invalid") == 0) {
+        return little_flash_ftl_utest_recover_crc_invalid();
+    }
+    if (strcmp(case_name, "ftl_recover_journal_out_of_range") == 0) {
+        return little_flash_ftl_utest_recover_journal_out_of_range();
+    }
+    if (strcmp(case_name, "ftl_repeat_mark_bad_idempotent") == 0) {
+        return little_flash_ftl_utest_repeat_mark_bad_idempotent();
     }
     return -1;
 }

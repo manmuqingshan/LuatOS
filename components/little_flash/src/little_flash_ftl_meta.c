@@ -74,10 +74,16 @@ lf_err_t little_flash_ftl_meta_recover(little_flash_t *lf, little_flash_ftl_ctx_
     for (i = 0; i < ctx->journal_count; i++) {
         uint32_t l = ctx->journal[i].logical_page;
         uint32_t p = ctx->journal[i].physical_page;
-        if (l < ctx->logical_pages && p < ctx->page_count && !ctx->bad[p]) {
-            ctx->l2p[l] = p;
-            ctx->p2l[p] = l;
+        uint32_t old_p = 0;
+        if (l >= ctx->logical_pages || p >= ctx->page_count || ctx->bad[p]) {
+            return LF_ERR_BAD_ADDRESS;
         }
+        old_p = ctx->l2p[l];
+        if (old_p < ctx->page_count && old_p != p && ctx->p2l[old_p] == l) {
+            ctx->p2l[old_p] = LF_FTL_INVALID_PAGE;
+        }
+        ctx->l2p[l] = p;
+        ctx->p2l[p] = l;
     }
     return LF_ERR_OK;
 }
