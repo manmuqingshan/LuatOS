@@ -4,6 +4,10 @@
 #define LUAT_LOG_TAG "socket_utest"
 #include "luat_log.h"
 
+#ifdef LUAT_BSP_PC
+#include "luat_pc_dtls_utest.h"
+#endif
+
 static int finish_socket_utest(lua_State *L, int status, lua_KContext ctx) {
     (void)ctx;
     if (status != LUA_OK && status != LUA_YIELD) {
@@ -16,6 +20,38 @@ static int finish_socket_utest(lua_State *L, int status, lua_KContext ctx) {
     }
     lua_pushboolean(L, lua_toboolean(L, -1));
     return 1;
+}
+
+static int run_socket_utest_code(lua_State *L, const char *code) {
+    int status;
+    if (luaL_loadstring(L, code) != LUA_OK) {
+        if (lua_isstring(L, -1)) {
+            LLOGE("%s", lua_tostring(L, -1));
+        }
+        lua_pop(L, 1);
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    status = lua_pcallk(L, 0, 1, 0, 0, finish_socket_utest);
+    return finish_socket_utest(L, status, 0);
+}
+
+static int run_dtls_loopback_utest(lua_State *L) {
+#ifdef LUAT_BSP_PC
+    luat_pc_dtls_utest_server_t *server = NULL;
+    static const uint8_t psk[] = "luatos-dtls-psk";
+    if (luat_pc_dtls_utest_server_start(&server, "luatos-dtls-id", psk, sizeof(psk) - 1) != 0) {
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+    LLOGE("%s", luat_pc_dtls_utest_server_error(server));
+    luat_pc_dtls_utest_server_stop(server, 1000);
+    lua_pushboolean(L, 0);
+    return 1;
+#else
+    lua_pushboolean(L, 0);
+    return 1;
+#endif
 }
 
 static const char *get_socket_utest_code(const char *case_name) {
@@ -87,19 +123,12 @@ static const char *get_socket_utest_code(const char *case_name) {
 
 int luat_socket_utest(lua_State *L, const char *case_name) {
     const char *code = get_socket_utest_code(case_name);
-    int status;
+    if (case_name && strcmp(case_name, "dtls_loopback_psk") == 0) {
+        return run_dtls_loopback_utest(L);
+    }
     if (!code) {
         lua_pushboolean(L, 0);
         return 1;
     }
-    if (luaL_loadstring(L, code) != LUA_OK) {
-        if (lua_isstring(L, -1)) {
-            LLOGE("%s", lua_tostring(L, -1));
-        }
-        lua_pop(L, 1);
-        lua_pushboolean(L, 0);
-        return 1;
-    }
-    status = lua_pcallk(L, 0, 1, 0, 0, finish_socket_utest);
-    return finish_socket_utest(L, status, 0);
+    return run_socket_utest_code(L, code);
 }
