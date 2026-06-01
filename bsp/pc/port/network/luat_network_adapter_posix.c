@@ -957,11 +957,30 @@ static int posix_socket_receive(int socket_id, uint64_t tag, uint8_t *buf, uint3
             pthread_mutex_unlock(&c->udp_lock);
             return sz;
         }
-        if (!c->udp_data || len == 0) {
+        if (!c->udp_data) {
             pthread_mutex_unlock(&c->udp_lock);
             return 0;
         }
         int preserve_udp_remain = (flags & NETWORK_RX_FLAG_PRESERVE_UDP_REMAIN) != 0;
+        if (len == 0) {
+            posix_udp_data_t *old = NULL;
+            if (remote_ip) {
+#ifndef LUAT_USE_LWIP
+                remote_ip->is_ipv6 = 0;
+#endif
+                network_set_ip_ipv4(remote_ip, c->udp_data->from.sin_addr.s_addr);
+            }
+            if (remote_port) *remote_port = ntohs(c->udp_data->from.sin_port);
+            if (!preserve_udp_remain) {
+                old = c->udp_data;
+                c->udp_data = (posix_udp_data_t *)old->next;
+            }
+            pthread_mutex_unlock(&c->udp_lock);
+            if (old) {
+                luat_heap_free(old);
+            }
+            return 0;
+        }
         size_t remain = c->udp_data->len - c->udp_data->offset;
         size_t copy_len = len;
         if (copy_len > remain) copy_len = remain;

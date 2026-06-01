@@ -78,7 +78,8 @@ NW_STATE_LINK_OFF(0) → NW_STATE_OFF_LINE(1) → NW_STATE_CONNECTING(3)
 - Public `socket.rx(ctrl, buff, limit)` semantics for UDP are: return at most `limit` bytes from the current datagram, then discard the unread tail of that datagram.
 - TCP is different: unread bytes stay queued and can be read by the next `socket.rx(...)`.
 - TLS/DTLS internal reads are the only receive path that should preserve unread UDP tail data across partial reads, and they must do it explicitly with `NETWORK_RX_FLAG_PRESERVE_UDP_REMAIN`.
-- When modifying adapter `socket_receive()` implementations, do not globally preserve UDP unread remainder for normal reads. Use `bsp/pc/port/network/luat_network_adapter_posix.c` and `components/network/adapter_lwip2/net_lwip2.c` as the reference shape for the flag-gated behavior.
+- When modifying adapter `socket_receive()` implementations, do not globally preserve UDP unread remainder for normal reads. `bsp/pc/port/network/luat_network_adapter_posix.c` and `components/network/adapter_lwip2/net_lwip2.c` are the current reference shape for the flag-gated behavior.
+- `components/network/lwip_with_sdk/net_lwip.c` and `components/ethernet/w5500/w5500.c` still keep the older behavior today; align them separately if you need repo-wide consistency.
 
 ### Debug Macros
 - `DBG()` — prints only when `ctrl->is_debug` is true (per-socket)

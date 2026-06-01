@@ -105,6 +105,19 @@ function udp_limit_suite.test_udp_rx_limit_discards_tail()
 
         local succ2, len2 = socket.rx(netc, buff)
         assert(succ2 and len2 == 0, "udp tail should be discarded")
+        buff:del()
+
+        buff = zbuff.create(128)
+        assert(srv:send(payload, "127.0.0.1", client_port), "server second send failed")
+
+        local evt_ok2, param2 = wait_socket_evt(client_topic, socket.EVENT, 5000)
+        assert(evt_ok2 and param2 == 0, "client second receive timeout")
+
+        local succ3, len3 = socket.rx(netc, buff, 0, 0)
+        assert(succ3 and len3 == 0, "zero-limit rx should return 0")
+
+        local succ4, len4 = socket.rx(netc, buff)
+        assert(succ4 and len4 == 0, "zero-limit rx should still discard udp tail")
     end, debug.traceback)
 
     close_client(netc)

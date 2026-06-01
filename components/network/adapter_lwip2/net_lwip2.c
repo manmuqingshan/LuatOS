@@ -1473,7 +1473,7 @@ static int net_lwip2_socket_receive(int socket_id, uint64_t tag,  uint8_t *buf, 
 				}
 				dummy_len = net_lwip2_socket_read_data(socket_id, buf + read_len, &read_len, len, p);
 				prvlwip.socket[socket_id].rx_wait_size -= dummy_len;
-				if (!preserve_udp_remain && dummy_len && (remain_len > dummy_len))
+				if (!preserve_udp_remain && (remain_len > dummy_len))
 				{
 					prvlwip.socket[socket_id].rx_wait_size -= (remain_len - dummy_len);
 					llist_del(&p->node);
