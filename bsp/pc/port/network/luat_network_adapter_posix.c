@@ -114,6 +114,7 @@ typedef struct posix_udp_data {
     struct sockaddr_in from;
     void              *next;
     size_t             len;
+    size_t             offset;
     char               data[4];   /* variable-length tail */
 } posix_udp_data_t;
 
@@ -495,6 +496,7 @@ static void *udp_recv_thread(void *arg)
         memcpy(d->data, tmp, nread);
         d->from = from;
         d->len  = nread;
+        d->offset = 0;
         d->next = NULL;
 
         pthread_mutex_lock(&conn->udp_lock);
@@ -951,7 +953,7 @@ static int posix_socket_receive(int socket_id, uint64_t tag, uint8_t *buf, uint3
         posix_conn_t *c = &sockets[socket_id];
         pthread_mutex_lock(&c->udp_lock);
         if (buf == NULL) {
-            int sz = c->udp_data ? (int)c->udp_data->len : 0;
+            int sz = c->udp_data ? (int)(c->udp_data->len - c->udp_data->offset) : 0;
             pthread_mutex_unlock(&c->udp_lock);
             return sz;
         }
@@ -959,8 +961,9 @@ static int posix_socket_receive(int socket_id, uint64_t tag, uint8_t *buf, uint3
             pthread_mutex_unlock(&c->udp_lock);
             return 0;
         }
-        if (len > (uint32_t)c->udp_data->len) len = (uint32_t)c->udp_data->len;
-        memcpy(buf, c->udp_data->data, len);
+        size_t remain = c->udp_data->len - c->udp_data->offset;
+        if (len > remain) len = (uint32_t)remain;
+        memcpy(buf, c->udp_data->data + c->udp_data->offset, len);
         if (remote_ip) {
 #ifndef LUAT_USE_LWIP
             remote_ip->is_ipv6 = 0;
@@ -968,10 +971,16 @@ static int posix_socket_receive(int socket_id, uint64_t tag, uint8_t *buf, uint3
             network_set_ip_ipv4(remote_ip, c->udp_data->from.sin_addr.s_addr);
         }
         if (remote_port) *remote_port = ntohs(c->udp_data->from.sin_port);
-        posix_udp_data_t *old = c->udp_data;
-        c->udp_data = (posix_udp_data_t *)old->next;
+        c->udp_data->offset += len;
+        posix_udp_data_t *old = NULL;
+        if (c->udp_data->offset >= c->udp_data->len) {
+            old = c->udp_data;
+            c->udp_data = (posix_udp_data_t *)old->next;
+        }
         pthread_mutex_unlock(&c->udp_lock);
-        luat_heap_free(old);
+        if (old) {
+            luat_heap_free(old);
+        }
         return (int)len;
     }
 }

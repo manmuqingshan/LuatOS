@@ -366,7 +366,7 @@ TLS_RECV:
 	{
 		if (!ctrl->is_tcp)
 		{
-			if ((remote_port == ctrl->remote_port) && network_check_ip_same(&remote_ip, &ctrl->online_ip))
+			if ((remote_port != ctrl->remote_port) || !network_check_ip_same(&remote_ip, &ctrl->online_ip))
 			{
 				goto TLS_RECV;
 			}
