@@ -137,6 +137,7 @@ target("luatos-lua")
     set_kind("binary")
     set_targetdir("$(builddir)/out")
 
+    add_defines("LUAT_BSP_PC")
     add_files("src/*.c",{public = true})
     add_files("port/**.c")
 
