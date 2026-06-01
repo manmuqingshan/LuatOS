@@ -49,9 +49,9 @@ return {
     },
 
     -- ===== 功能开关（只写 = true 的项）=====
-    -- PC 模拟器: WiFi + 以太网可用，其余硬件不存在
+    -- PC 模拟器: 仅以太网可用
     features = {
-        wifi = true,                     -- 启用 WiFi
+        ethernet = true,                 -- 启用以太网
     },
 
     -- ===== UI 显示控制（只写 = true 的项）=====

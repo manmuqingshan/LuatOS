@@ -129,10 +129,9 @@ local function load_project_config(project)
                 tp  = { model = "tp_gt911", params = { port = 0, pin_rst = 26, pin_int = gpio.WAKEUP0 } },
             },
             features = {
-                wifi = true, ethernet = true,
+                ethernet = true,
             },
             ui = {
-                show_wifi_icon = true,
                 show_brightness_slider = true,
                 show_storage_settings = true,
             },

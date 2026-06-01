@@ -14,7 +14,7 @@ return {
     chip = "Air8101",                                  -- 主控芯片: WiFi(exnetif) + RGB屏
     baseboard = "Air8101核心板V1.0",                   -- 底板型号
 
-    -- ===== 引脚功能复用 =====
+    -- ===== 引脚功能复用（填引脚号，不填 GPIO 号） =====
     pins = {
         { pin = 11, func = "I2C1_SDA"  },  -- I2C1 数据线（触摸通信）
         { pin = 12, func = "I2C1_SCL"  },  -- I2C1 时钟线
