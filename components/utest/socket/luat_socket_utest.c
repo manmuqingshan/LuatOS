@@ -60,7 +60,7 @@ static char *build_dtls_loopback_utest_code(uint16_t helper_port) {
         "assert(netc, 'socket.create failed') "
         "local token = 'dtls-utest:' .. os.date('%%Y%%m%%d%%H%%M%%S') .. ':' .. nonce .. ':' .. tostring(attempt) "
         "local ok, err = xpcall(function() "
-        "  assert(socket.config(netc, nil, true, true, nil, nil, nil, 'luatos-dtls-psk', nil, 'luatos-dtls-id'), 'socket.config failed') "
+        "  assert(socket.config(netc, nil, true, true, nil, nil, nil, 'luatos-dtls-psk', 'luatos-dtls-id', nil), 'socket.config failed') "
         "  local succ, online = socket.connect(netc, '127.0.0.1', helper_port) "
         "  assert(succ, 'dtls_connect_timeout') "
         "  local connect_pending = not online "

@@ -357,7 +357,7 @@ TLS_RECV:
 	// 加2ms延迟，确保数据接收完成
 	luat_rtos_task_sleep(2);
 #endif
-	result = network_socket_receive(ctrl, buf, len, 0, &remote_ip, &remote_port);
+	result = network_socket_receive(ctrl, buf, len, NETWORK_RX_FLAG_PRESERVE_UDP_REMAIN, &remote_ip, &remote_port);
 	if (result < 0)
 	{
 		return -0x004C;
@@ -2550,7 +2550,7 @@ int network_rx(network_ctrl_t *ctrl, uint8_t *data, uint32_t len, int flags, lua
 				{
 					break;
 				}
-			}while(network_socket_receive(ctrl, NULL, len, flags, remote_ip, remote_port) > 0);
+			}while(network_socket_receive(ctrl, NULL, len, flags | NETWORK_RX_FLAG_PRESERVE_UDP_REMAIN, remote_ip, remote_port) > 0);
 
 			if ( !is_error )
 			{
@@ -2599,7 +2599,7 @@ int network_rx(network_ctrl_t *ctrl, uint8_t *data, uint32_t len, int flags, lua
 					DBG("socket %d ssl data need more", ctrl->socket_id);
 					break;
 				}
-			}while(network_socket_receive(ctrl, NULL, len, flags, remote_ip, remote_port) > 0);
+			}while(network_socket_receive(ctrl, NULL, len, flags | NETWORK_RX_FLAG_PRESERVE_UDP_REMAIN, remote_ip, remote_port) > 0);
 
 			if ( !is_error )
 			{

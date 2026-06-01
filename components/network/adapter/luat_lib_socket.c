@@ -325,7 +325,7 @@ static int l_socket_config(lua_State *L)
 	const char *client_cert = NULL;
 	const char *client_key = NULL;
 	const char *client_password = NULL;
-	size_t server_cert_len, client_cert_len, client_key_len, client_password_len;
+	size_t server_cert_len = 0, client_cert_len = 0, client_key_len = 0, client_password_len = 0;
 
 	uint16_t local_port = luaL_optinteger(L, ++param_pos, 0);
 	if (lua_isboolean(L, ++param_pos))
@@ -374,7 +374,9 @@ static int l_socket_config(lua_State *L)
 		network_init_tls(l_ctrl->netc, (server_cert || client_cert)?2:0);
 		if (is_udp)
 		{
-			network_set_psk_info(l_ctrl->netc, (const unsigned char *)server_cert, server_cert_len, (const unsigned char *)client_key, client_key_len);
+			const unsigned char *psk_id = (const unsigned char *)(client_cert ? client_cert : client_key);
+			size_t psk_id_len = client_cert ? client_cert_len : client_key_len;
+			network_set_psk_info(l_ctrl->netc, (const unsigned char *)server_cert, server_cert_len, psk_id, psk_id_len);
 		}
 		else
 		{

@@ -22,11 +22,6 @@
 #include "mbedtls/net_sockets.h"
 #include "mbedtls/ssl.h"
 
-#if !defined(MBEDTLS_NET_C)
-#define MBEDTLS_NET_C
-#include "../../../components/mbedtls3/library/net_sockets.c"
-#endif
-
 typedef struct dtls_utest_timer {
     uint64_t start_ms;
     uint32_t int_ms;

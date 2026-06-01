@@ -89,9 +89,21 @@ Output: `build/out/luatos-lua.exe` (Windows) or `build/out/luatos-lua` (Linux/ma
 
 - Canonical helper: `bsp\pc\pc_utest_coverage.ps1`
 - Typical usage:
+  - `cd bsp\pc && .\pc_utest_coverage.ps1 -Suite c_utest_dtls_basic`
   - `cd bsp\pc && .\pc_utest_coverage.ps1 -Suite c_utest_tcp_basic`
+  - `cd bsp\pc && .\pc_utest_coverage.ps1 -Suite c_utest_http_basic -SkipBuild`
+  - `cd bsp\pc && .\pc_utest_coverage.ps1 -Suite c_utest_https_basic -SkipBuild`
 - After the first suite build, reuse the same binary for more suites with `-SkipBuild`
+- `-Suite` and `-TestcaseScripts` are mutually exclusive; pass only one of them
 - Coverage HTML is written to `build\coverage\<suite>\html\index.html`
+- Current network utest suites:
+  - `c_utest_dtls_basic`: PC-only DTLS-PSK loopback against `127.0.0.1`
+  - `c_utest_tcp_basic`: TCP reachability against `www.qq.com:80`
+  - `c_utest_http_basic`: HTTP reachability against `http://www.qq.com`
+  - `c_utest_https_basic`: HTTPS reachability against `https://www.qq.com`
+- Additional PC socket regression:
+  - `socket_udp_limit_basic`: verifies `socket.rx(..., limit)` truncates UDP data and discards the unread datagram tail
+- DTLS loopback depends on the PC mbedTLS3 config in `include\mbedtls_config_pc_mbedtls3.h` enabling DTLS server/PSK support
 
 ## FEATURES
 

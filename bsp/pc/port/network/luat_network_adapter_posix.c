@@ -961,9 +961,11 @@ static int posix_socket_receive(int socket_id, uint64_t tag, uint8_t *buf, uint3
             pthread_mutex_unlock(&c->udp_lock);
             return 0;
         }
+        int preserve_udp_remain = (flags & NETWORK_RX_FLAG_PRESERVE_UDP_REMAIN) != 0;
         size_t remain = c->udp_data->len - c->udp_data->offset;
-        if (len > remain) len = (uint32_t)remain;
-        memcpy(buf, c->udp_data->data + c->udp_data->offset, len);
+        size_t copy_len = len;
+        if (copy_len > remain) copy_len = remain;
+        memcpy(buf, c->udp_data->data + c->udp_data->offset, copy_len);
         if (remote_ip) {
 #ifndef LUAT_USE_LWIP
             remote_ip->is_ipv6 = 0;
@@ -971,9 +973,10 @@ static int posix_socket_receive(int socket_id, uint64_t tag, uint8_t *buf, uint3
             network_set_ip_ipv4(remote_ip, c->udp_data->from.sin_addr.s_addr);
         }
         if (remote_port) *remote_port = ntohs(c->udp_data->from.sin_port);
-        c->udp_data->offset += len;
         posix_udp_data_t *old = NULL;
-        if (c->udp_data->offset >= c->udp_data->len) {
+        if (preserve_udp_remain && (copy_len < remain)) {
+            c->udp_data->offset += copy_len;
+        } else {
             old = c->udp_data;
             c->udp_data = (posix_udp_data_t *)old->next;
         }
@@ -981,7 +984,7 @@ static int posix_socket_receive(int socket_id, uint64_t tag, uint8_t *buf, uint3
         if (old) {
             luat_heap_free(old);
         }
-        return (int)len;
+        return (int)copy_len;
     }
 }
 

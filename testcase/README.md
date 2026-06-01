@@ -40,11 +40,19 @@ build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\unit_test
 
 ```powershell
 cd bsp\pc
+.\pc_utest_coverage.ps1 -Suite c_utest_dtls_basic
 .\pc_utest_coverage.ps1 -Suite c_utest_tcp_basic
 .\pc_utest_coverage.ps1 -Suite c_utest_http_basic -SkipBuild
 .\pc_utest_coverage.ps1 -Suite c_utest_https_basic -SkipBuild
 ```
 
+- `-Suite` 与 `-TestcaseScripts` 二选一，不能同时传
+- 当前网络相关 suite：
+  - `c_utest_dtls_basic`：PC 本地 `127.0.0.1` DTLS-PSK 回环
+  - `c_utest_tcp_basic`：`www.qq.com:80` TCP 连通性
+  - `c_utest_http_basic`：`http://www.qq.com` HTTP 连通性
+  - `c_utest_https_basic`：`https://www.qq.com` HTTPS 连通性
+  - `socket_udp_limit_basic`：PC 本地 UDP `socket.rx(limit)` 读截断后丢弃剩余 datagram
 - 也可以继续直接运行模拟器：
 
 ```powershell
