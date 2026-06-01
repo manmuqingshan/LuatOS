@@ -34,6 +34,25 @@ build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\unit_test
 
 注意：该运行方式不支持在同一条命令中传入多个目标测试用例目录。
 
+## C层 utest（PC 模拟器）
+
+针对 `xxx.utest("case")` 的 C 层用例，推荐把 Lua runner 放在 `testcase/unit_testcase_tools/c_utest_*/scripts/`，并用 PC 覆盖率 helper 执行：
+
+```powershell
+cd bsp\pc
+.\pc_utest_coverage.ps1 -Suite c_utest_tcp_basic
+.\pc_utest_coverage.ps1 -Suite c_utest_http_basic -SkipBuild
+.\pc_utest_coverage.ps1 -Suite c_utest_https_basic -SkipBuild
+```
+
+- 也可以继续直接运行模拟器：
+
+```powershell
+build\out\luatos-lua.exe ..\..\testcase\common\scripts\ ..\..\testcase\unit_testcase_tools\c_utest_tcp_basic\scripts\
+```
+
+- 覆盖率报告输出到 `build\coverage\<suite>\html\index.html`
+
 ## 快速开始
 
 ### 1. 创建新的测试用例目录

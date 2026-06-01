@@ -85,6 +85,14 @@ Recommended:
 
 Output: `build/out/luatos-lua.exe` (Windows) or `build/out/luatos-lua` (Linux/macOS)
 
+### C-Layer UTest Coverage
+
+- Canonical helper: `bsp\pc\pc_utest_coverage.ps1`
+- Typical usage:
+  - `cd bsp\pc && .\pc_utest_coverage.ps1 -Suite c_utest_tcp_basic`
+- After the first suite build, reuse the same binary for more suites with `-SkipBuild`
+- Coverage HTML is written to `build\coverage\<suite>\html\index.html`
+
 ## FEATURES
 
 - Lua 5.3 VM execution

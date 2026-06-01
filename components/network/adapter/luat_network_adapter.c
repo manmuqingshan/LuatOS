@@ -1595,15 +1595,19 @@ int network_socket_connect(network_ctrl_t *ctrl, luat_ip_addr_t *remote_ip)
 	uint16_t local_port = ctrl->local_port;
 	if (!local_port)
 	{
-		local_port = ctrl->adapter_index;
-		local_port *= 1000;
 		G_LOCK;
 		adapter->port++;
 		if (adapter->port >= 500)
 		{
 			adapter->port = 0;
 		}
-		local_port += 50000 + adapter->port;
+		uint32_t local_port_seed = (uint32_t)ctrl->adapter_index * 1000U + adapter->port;
+		/* Keep auto-selected client ports in the high range even when adapter_index is large. */
+		if (local_port_seed > 15535U)
+		{
+			local_port_seed %= 15536U;
+		}
+		local_port = (uint16_t)(50000U + local_port_seed);
 		G_UNLOCK;
 //		local_port += 50000 + adapter->port + offset * 10;
 //		DBG("network %d local port auto select %u",offset, local_port);
@@ -2236,6 +2240,7 @@ int network_listen(network_ctrl_t *ctrl, uint32_t timeout_ms)
 	}
 	if (network_base_connect(ctrl, NULL))
 	{
+		network_socket_force_close(ctrl);
 		ctrl->state = NW_STATE_OFF_LINE;
 		ctrl->wait_target_state = NW_WAIT_NONE;
 		NW_UNLOCK;

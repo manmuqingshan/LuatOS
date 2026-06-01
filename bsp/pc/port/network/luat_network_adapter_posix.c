@@ -203,7 +203,9 @@ static int32_t posix_nw_event_handler(lua_State *L, void *ptr)
     rtos_msg_t *msg = (rtos_msg_t *)lua_topointer(L, -1);
     posix_nw_event_t *e = (posix_nw_event_t *)msg->ptr;
     if (e) {
-        ctrl.socket_cb(&e->event, &e->param);
+        if (ctrl.socket_cb) {
+            ctrl.socket_cb(&e->event, &e->param);
+        }
         luat_heap_free(e);
     }
     return 0;
@@ -245,14 +247,20 @@ static uint32_t posix_get_host_ipv4_u32(void)
 }
 
 /* ─── Helpers to start a detached thread ────────────────────────────────────── */
-static void start_detached_thread(void *(*fn)(void*), void *arg)
+static int start_detached_thread(void *(*fn)(void*), void *arg)
 {
     pthread_t tid;
     pthread_attr_t attr;
+    int ret;
+
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    pthread_create(&tid, &attr, fn, arg);
+    ret = pthread_create(&tid, &attr, fn, arg);
     pthread_attr_destroy(&attr);
+    if (ret != 0) {
+        LLOGE("pthread_create failed, ret=%d", ret);
+    }
+    return ret;
 }
 
 /* ─── TCP read loop (called from I/O threads after connect/accept) ───────────── */
@@ -437,6 +445,9 @@ static void *tcp_accept_thread(void *arg)
         if (conn->fd != INVALID_SOCK_FD) { sock_close(conn->fd); conn->fd = INVALID_SOCK_FD; }
         /* Clear recv buffer */
         if (conn->recv_buff) { luat_heap_free(conn->recv_buff); conn->recv_buff = NULL; conn->recv_size = 0; }
+        if (conn->server_fd != INVALID_SOCK_FD && !conn->io_stop) {
+            conn->state = SC_LISTENING;
+        }
         pthread_mutex_unlock(&g_socket_mutex);
     }
 
@@ -614,7 +625,7 @@ static int close_socket_internal(int socket_id, int force)
 }
 
 /* ─── Vtable: socket management ─────────────────────────────────────────────── */
-static int posix_check_ready(void *user_data) { (void)user_data; return posix_network_enabled(); }
+static uint8_t posix_check_ready(void *user_data) { (void)user_data; return (uint8_t)posix_network_enabled(); }
 
 static int posix_socket_check(int socket_id, uint64_t tag, void *user_data)
 {
@@ -740,7 +751,16 @@ static int posix_socket_connect(int socket_id, uint64_t tag, uint16_t local_port
         /* Non-blocking connect: EINPROGRESS/WSAEWOULDBLOCK expected */
         c->state = SC_CONNECTING;
         c->io_stop = 0; c->io_running = 1;
-        start_detached_thread(tcp_connect_thread, (void*)(intptr_t)socket_id);
+        if (start_detached_thread(tcp_connect_thread, (void*)(intptr_t)socket_id) != 0) {
+            pthread_mutex_lock(&g_socket_mutex);
+            c->state = SC_CLOSED;
+            c->io_running = 0;
+            sock_fd_t fd_to_close = c->fd;
+            c->fd = INVALID_SOCK_FD;
+            pthread_mutex_unlock(&g_socket_mutex);
+            if (fd_to_close != INVALID_SOCK_FD) sock_close(fd_to_close);
+            return -1;
+        }
     } else {
         /* UDP: "connect" = store peer addr, bind locally, start recv thread */
         c->remote_addr = saddr;
@@ -753,7 +773,16 @@ static int posix_socket_connect(int socket_id, uint64_t tag, uint16_t local_port
         }
         c->state = SC_CONNECTING;
         c->io_stop = 0; c->io_running = 1;
-        start_detached_thread(udp_recv_thread, (void*)(intptr_t)socket_id);
+        if (start_detached_thread(udp_recv_thread, (void*)(intptr_t)socket_id) != 0) {
+            pthread_mutex_lock(&g_socket_mutex);
+            c->state = SC_CLOSED;
+            c->io_running = 0;
+            sock_fd_t fd_to_close = c->fd;
+            c->fd = INVALID_SOCK_FD;
+            pthread_mutex_unlock(&g_socket_mutex);
+            if (fd_to_close != INVALID_SOCK_FD) sock_close(fd_to_close);
+            return -1;
+        }
         /* UDP connect is instant */
         pthread_mutex_lock(&g_socket_mutex);
         c->state = SC_CONNECTED;
@@ -812,7 +841,16 @@ static int posix_socket_listen(int socket_id, uint64_t tag, uint16_t local_port,
     pthread_mutex_unlock(&g_socket_mutex);
 
     LLOGI("socket[%d] 开始监听端口 %d", socket_id, local_port);
-    start_detached_thread(tcp_accept_thread, (void*)(intptr_t)socket_id);
+    if (start_detached_thread(tcp_accept_thread, (void*)(intptr_t)socket_id) != 0) {
+        pthread_mutex_lock(&g_socket_mutex);
+        c->state = SC_CLOSED;
+        c->io_running = 0;
+        sock_fd_t srv_to_close = c->server_fd;
+        c->server_fd = INVALID_SOCK_FD;
+        pthread_mutex_unlock(&g_socket_mutex);
+        if (srv_to_close != INVALID_SOCK_FD) sock_close(srv_to_close);
+        return -1;
+    }
     cb_to_nw_task(EV_NW_SOCKET_LISTEN, socket_id, 0, 0);
     return 0;
 }
@@ -1081,7 +1119,10 @@ static int posix_dns(const char *domain_name, uint32_t len, void *param, void *u
     memcpy(q->domain, domain_name, copy_len);
     q->domain[copy_len] = 0;
     q->param = param;
-    start_detached_thread(dns_resolve_thread, q);
+    if (start_detached_thread(dns_resolve_thread, q) != 0) {
+        luat_heap_free(q);
+        return -1;
+    }
     return 0;
 }
 
